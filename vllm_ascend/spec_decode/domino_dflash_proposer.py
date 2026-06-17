@@ -9,10 +9,13 @@ from vllm_ascend.spec_decode.dflash_proposer import AscendDflashProposer
 class AscendDominoDflashProposer(AscendDflashProposer):
     """NPU DFlash proposer with the Domino causal correction head.
 
-    This class extends :class:`AscendDflashProposer` with Domino-specific
-    configuration parsing and (in a follow-up change) sequential GRU sampling.
-    The parallel DFlash backbone and context-KV precomputation are inherited
-    unchanged.
+    The parallel DFlash backbone forward is reused, but token sampling is
+    performed sequentially: the first ``pure_draft_prefix_len`` speculative
+    tokens are sampled from the backbone logits, and subsequent tokens use
+    GRU-conditioned logit corrections.
+
+    Because Domino sampling is inherently sequential, ACL graphs are disabled
+    for this proposer; the backbone runs eagerly together with the GRU head.
     """
 
     def __init__(
@@ -39,7 +42,74 @@ class AscendDominoDflashProposer(AscendDflashProposer):
         )
         self.gru_hidden_dim = int(dflash_config["gru_hidden_dim"])
 
-    def _get_model(self) -> Any:
-        # Load the same DFlashQwen3 model as the base proposer.
-        # The Domino head is part of the shared vllm model layer.
-        return super()._get_model()
+        # Sequential GRU sampling cannot be captured by the ACL graph.
+        self.use_cuda_graph = False
+
+    def _run_merged_draft(
+        self,
+        num_input_tokens,
+        batch_size,
+        token_indices_to_sample,
+        target_positions,
+        inputs_embeds,
+        multi_steps_attn_metadata,
+        num_tokens,
+        is_prefill=None,
+    ) -> torch.Tensor:
+        """Run one Domino speculative decoding step.
+
+        The DFlash backbone is executed once in parallel for all query positions,
+        then tokens are sampled sequentially with the Domino correction head.
+        """
+        model_kwargs = self.build_model_inputs_first_pass(num_input_tokens)
+
+        ret_hidden_states = self.model(**model_kwargs)
+        if not self.model_returns_tuple():
+            last_hidden_states = ret_hidden_states
+        else:
+            last_hidden_states, _ = ret_hidden_states
+
+        # ``num_input_tokens`` equals batch_size * num_query_per_req for DFlash.
+        num_query_per_req = 1 + self.num_speculative_tokens
+        query_hidden_states = last_hidden_states[: batch_size * num_query_per_req]
+        hidden_3d = query_hidden_states.view(
+            batch_size, num_query_per_req, self.hidden_size
+        )
+        input_ids_2d = self.input_ids[: batch_size * num_query_per_req].view(
+            batch_size, num_query_per_req
+        )
+
+        draft_token_ids = torch.zeros(
+            batch_size,
+            self.num_speculative_tokens,
+            dtype=torch.int64,
+            device=self.device,
+        )
+
+        for req_idx in range(batch_size):
+            # The bonus token at query position 0 seeds the Domino GRU state.
+            bonus_token = input_ids_2d[req_idx, 0]
+            gru_state = self.model.update_domino_gru_state(
+                bonus_token.unsqueeze(0), None
+            )
+
+            for step in range(self.num_speculative_steps):
+                query_pos = step + 1
+                hidden = hidden_3d[req_idx, query_pos, :].unsqueeze(0)
+
+                if step < self.pure_draft_prefix_len:
+                    logits = self.model.compute_logits(hidden)
+                else:
+                    logits, gru_state = self.model.compute_domino_logits(
+                        hidden, gru_state
+                    )
+
+                token = logits.argmax(dim=-1).view(())
+                draft_token_ids[req_idx, step] = token
+
+                # Update the GRU state with the sampled token for the next step.
+                gru_state = self.model.update_domino_gru_state(
+                    token.unsqueeze(0), gru_state
+                )
+
+        return draft_token_ids
