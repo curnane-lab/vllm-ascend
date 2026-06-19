@@ -93,7 +93,7 @@ class AscendDominoDflashProposer(AscendDflashProposer):
                 bonus_token.unsqueeze(0), None
             )
 
-            for step in range(self.num_speculative_steps):
+            for step in range(self.num_speculative_tokens):
                 query_pos = step + 1
                 hidden = hidden_3d[req_idx, query_pos, :].unsqueeze(0)
 
