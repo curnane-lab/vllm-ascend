@@ -40,6 +40,7 @@ class AscendDominoDflashProposer(AscendDflashProposer):
         self.pure_draft_prefix_len = int(
             dflash_config.get("pure_draft_prefix_len", 0)
         )
+        self.shift_label = bool(dflash_config.get("shift_label", False))
         self.gru_hidden_dim = int(dflash_config["gru_hidden_dim"])
 
         # Sequential GRU sampling cannot be captured by the ACL graph.
@@ -141,12 +142,20 @@ class AscendDominoDflashProposer(AscendDflashProposer):
                 query_pos = step + 1
                 hidden = hidden_3d[req_idx, query_pos, :].unsqueeze(0)
 
-                if step < self.pure_draft_prefix_len:
-                    logits = self.model.compute_logits(hidden)
-                else:
+                # SpecForge sets ``suffix_start = pure_prefix`` when shift_label
+                # is True (Domino is applied to every speculative position),
+                # and ``suffix_start = 1 + pure_prefix`` otherwise (the first
+                # ``pure_prefix`` speculative positions use the bare backbone
+                # logits). Mirror that here.
+                use_domino = (
+                    self.shift_label or step >= self.pure_draft_prefix_len
+                )
+                if use_domino:
                     logits, gru_state = self.model.compute_domino_logits(
                         hidden, gru_state
                     )
+                else:
+                    logits = self.model.compute_logits(hidden)
 
                 token = logits.argmax(dim=-1).view(())
                 draft_token_ids[req_idx, step] = token
