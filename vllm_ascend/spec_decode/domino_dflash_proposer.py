@@ -92,6 +92,37 @@ class AscendDominoDflashProposer(AscendDflashProposer):
             batch_size, num_query_per_req
         )
 
+        # One-shot debug: dump the input_ids/hidden layout for the first request
+        # so we can verify that position 0 holds the bonus token (vs mask) and
+        # that hidden_3d[:, 1:] are the draft query hidden states.
+        if not getattr(self, "_domino_layout_dbg", False):
+            self._domino_layout_dbg = True
+            import logging
+
+            _dbg = logging.getLogger("vllm_ascend.spec_decode.domino")
+            try:
+                _dbg.warning(
+                    "[Domino layout] num_input=%d batch=%d nspec=%d nqpr=%d "
+                    "input_ids[0]=%s parallel_drafting_token_id=%s",
+                    num_input_tokens,
+                    batch_size,
+                    self.num_speculative_tokens,
+                    num_query_per_req,
+                    input_ids_2d[0].tolist(),
+                    getattr(self, "parallel_drafting_token_id", "?"),
+                )
+                _dbg.warning(
+                    "[Domino layout] hidden_3d[0] norms per pos = %s",
+                    [round(hidden_3d[0, p].float().norm().item(), 3)
+                     for p in range(num_query_per_req)],
+                )
+                _dbg.warning(
+                    "[Domino layout] pure_draft_prefix_len=%d",
+                    self.pure_draft_prefix_len,
+                )
+            except Exception as exc:  # pragma: no cover
+                _dbg.warning("[Domino layout] dbg failed: %s", exc)
+
         draft_token_ids = torch.zeros(
             batch_size,
             self.num_speculative_tokens,
