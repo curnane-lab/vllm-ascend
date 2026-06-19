@@ -69,13 +69,26 @@ class AscendDominoDflashProposer(AscendDflashProposer):
         else:
             last_hidden_states, _ = ret_hidden_states
 
-        # ``num_input_tokens`` equals batch_size * num_query_per_req for DFlash.
+        # ``num_input_tokens`` equals batch_size * num_query_per_req only on the
+        # real propose path. ACL-graph profiling / dummy_run can pass an
+        # arbitrary capture size (e.g. ``num_input_tokens != batch * (1+nspec)``).
+        # In that case the backbone forward is sufficient for memory/profile
+        # accounting; we skip the sequential Domino sampling and return zeros.
         num_query_per_req = 1 + self.num_speculative_tokens
-        query_hidden_states = last_hidden_states[: batch_size * num_query_per_req]
+        expected = batch_size * num_query_per_req
+        if num_input_tokens != expected or last_hidden_states.shape[0] < expected:
+            return torch.zeros(
+                batch_size,
+                self.num_speculative_tokens,
+                dtype=torch.int64,
+                device=self.device,
+            )
+
+        query_hidden_states = last_hidden_states[:expected]
         hidden_3d = query_hidden_states.view(
             batch_size, num_query_per_req, self.hidden_size
         )
-        input_ids_2d = self.input_ids[: batch_size * num_query_per_req].view(
+        input_ids_2d = self.input_ids[:expected].view(
             batch_size, num_query_per_req
         )
 
