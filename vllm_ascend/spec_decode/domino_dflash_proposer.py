@@ -93,19 +93,17 @@ class AscendDominoDflashProposer(AscendDflashProposer):
             batch_size, num_query_per_req
         )
 
-        # Pre-compute base_logits for all speculative steps in a single batched
-        # GEMM.  This replaces num_spec separate compute_logits calls (each a
-        # small [1, H] → [1, vocab] GEMM) with one [B*nspec, H] → [B*nspec,
-        # vocab] GEMM, dramatically reducing kernel-launch overhead on NPU.
+        # Gather spec hidden states for all steps (batched across requests).
+        # base_logits is computed per-step inside the loop (not pre-computed)
+        # to keep peak memory at [B, vocab] (~2MB) instead of [B*nspec, vocab]
+        # (~14MB for B=4), which avoids NPU memory-allocator pressure that
+        # caused TPOT P95 spikes and request-queue TTFT inflation.
         pos_offset = 0 if self.shift_label else 1
         nspec = self.num_speculative_tokens
         step_indices = torch.arange(
             nspec, device=self.device
         ) + pos_offset  # [nspec]
         spec_hidden = hidden_3d[:, step_indices, :]  # [B, nspec, H]
-        base_logits_all = self.model.compute_logits(
-            spec_hidden.reshape(batch_size * nspec, self.hidden_size)
-        ).view(batch_size, nspec, -1)  # [B, nspec, vocab]
 
         draft_token_ids = torch.empty(
             batch_size,
@@ -120,11 +118,12 @@ class AscendDominoDflashProposer(AscendDflashProposer):
 
         for step in range(nspec):
             hidden = spec_hidden[:, step, :]  # [B, H]
+            base_logits = self.model.compute_logits(hidden)  # [B, vocab]
             if step < self.pure_draft_prefix_len:
-                logits = base_logits_all[:, step, :]
+                logits = base_logits
             else:
                 bias = self.model.compute_domino_bias(hidden, gru_state)
-                logits = base_logits_all[:, step, :] + bias
+                logits = base_logits + bias
 
             tokens = logits.argmax(dim=-1)  # [B]
             draft_token_ids[:, step] = tokens
