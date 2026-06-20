@@ -138,24 +138,34 @@ class AscendDominoDflashProposer(AscendDflashProposer):
                 bonus_token.unsqueeze(0), None
             )
 
+            # DFlash hidden-to-prediction mapping depends on shift_label:
+            # - shift_label=False (fill-in-the-blank): hidden[p] predicts the
+            #   token at position p, so spec tokens come from hidden positions
+            #   1..num_spec (position 0 is the bonus/anchor itself).
+            # - shift_label=True (next-token): hidden[p] predicts the token at
+            #   position p+1, so the first spec token comes from hidden[0]
+            #   (the bonus position) and we use positions 0..num_spec-1.
+            #
+            # In both cases the first ``pure_draft_prefix_len`` spec steps use
+            # pure backbone logits; the rest use the Domino correction head.
+            # This mirrors SpecForge's suffix_start:
+            #   shift_label=False → suffix_start = 1 + pure_prefix
+            #   shift_label=True  → suffix_start = pure_prefix
+            # which yields exactly pure_prefix pure-backbone spec steps in both
+            # modes (the +1 offset in the False case accounts for the skipped
+            # bonus position).
+            pos_offset = 0 if self.shift_label else 1
+
             for step in range(self.num_speculative_tokens):
-                query_pos = step + 1
+                query_pos = step + pos_offset
                 hidden = hidden_3d[req_idx, query_pos, :].unsqueeze(0)
 
-                # SpecForge sets ``suffix_start = pure_prefix`` when shift_label
-                # is True (Domino is applied to every speculative position),
-                # and ``suffix_start = 1 + pure_prefix`` otherwise (the first
-                # ``pure_prefix`` speculative positions use the bare backbone
-                # logits). Mirror that here.
-                use_domino = (
-                    self.shift_label or step >= self.pure_draft_prefix_len
-                )
-                if use_domino:
+                if step < self.pure_draft_prefix_len:
+                    logits = self.model.compute_logits(hidden)
+                else:
                     logits, gru_state = self.model.compute_domino_logits(
                         hidden, gru_state
                     )
-                else:
-                    logits = self.model.compute_logits(hidden)
 
                 token = logits.argmax(dim=-1).view(())
                 draft_token_ids[req_idx, step] = token
