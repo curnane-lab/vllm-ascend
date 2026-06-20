@@ -93,86 +93,41 @@ class AscendDominoDflashProposer(AscendDflashProposer):
             batch_size, num_query_per_req
         )
 
-        # One-shot debug: dump the input_ids/hidden layout for the first request
-        # so we can verify that position 0 holds the bonus token (vs mask) and
-        # that hidden_3d[:, 1:] are the draft query hidden states.
-        if not getattr(self, "_domino_layout_dbg", False):
-            self._domino_layout_dbg = True
-            import logging
+        # Pre-compute base_logits for all speculative steps in a single batched
+        # GEMM.  This replaces num_spec separate compute_logits calls (each a
+        # small [1, H] → [1, vocab] GEMM) with one [B*nspec, H] → [B*nspec,
+        # vocab] GEMM, dramatically reducing kernel-launch overhead on NPU.
+        pos_offset = 0 if self.shift_label else 1
+        nspec = self.num_speculative_tokens
+        step_indices = torch.arange(
+            nspec, device=self.device
+        ) + pos_offset  # [nspec]
+        spec_hidden = hidden_3d[:, step_indices, :]  # [B, nspec, H]
+        base_logits_all = self.model.compute_logits(
+            spec_hidden.reshape(batch_size * nspec, self.hidden_size)
+        ).view(batch_size, nspec, -1)  # [B, nspec, vocab]
 
-            _dbg = logging.getLogger("vllm_ascend.spec_decode.domino")
-            try:
-                _dbg.warning(
-                    "[Domino layout] num_input=%d batch=%d nspec=%d nqpr=%d "
-                    "input_ids[0]=%s parallel_drafting_token_id=%s",
-                    num_input_tokens,
-                    batch_size,
-                    self.num_speculative_tokens,
-                    num_query_per_req,
-                    input_ids_2d[0].tolist(),
-                    getattr(self, "parallel_drafting_token_id", "?"),
-                )
-                _dbg.warning(
-                    "[Domino layout] hidden_3d[0] norms per pos = %s",
-                    [round(hidden_3d[0, p].float().norm().item(), 3)
-                     for p in range(num_query_per_req)],
-                )
-                _dbg.warning(
-                    "[Domino layout] pure_draft_prefix_len=%d",
-                    self.pure_draft_prefix_len,
-                )
-            except Exception as exc:  # pragma: no cover
-                _dbg.warning("[Domino layout] dbg failed: %s", exc)
-
-        draft_token_ids = torch.zeros(
+        draft_token_ids = torch.empty(
             batch_size,
-            self.num_speculative_tokens,
+            nspec,
             dtype=torch.int64,
             device=self.device,
         )
 
-        for req_idx in range(batch_size):
-            # The bonus token at query position 0 seeds the Domino GRU state.
-            bonus_token = input_ids_2d[req_idx, 0]
-            gru_state = self.model.update_domino_gru_state(
-                bonus_token.unsqueeze(0), None
-            )
+        # Seed all requests' GRU states in one batched call.
+        bonus_tokens = input_ids_2d[:, 0]  # [B]
+        gru_state = self.model.update_domino_gru_state(bonus_tokens, None)
 
-            # DFlash hidden-to-prediction mapping depends on shift_label:
-            # - shift_label=False (fill-in-the-blank): hidden[p] predicts the
-            #   token at position p, so spec tokens come from hidden positions
-            #   1..num_spec (position 0 is the bonus/anchor itself).
-            # - shift_label=True (next-token): hidden[p] predicts the token at
-            #   position p+1, so the first spec token comes from hidden[0]
-            #   (the bonus position) and we use positions 0..num_spec-1.
-            #
-            # In both cases the first ``pure_draft_prefix_len`` spec steps use
-            # pure backbone logits; the rest use the Domino correction head.
-            # This mirrors SpecForge's suffix_start:
-            #   shift_label=False → suffix_start = 1 + pure_prefix
-            #   shift_label=True  → suffix_start = pure_prefix
-            # which yields exactly pure_prefix pure-backbone spec steps in both
-            # modes (the +1 offset in the False case accounts for the skipped
-            # bonus position).
-            pos_offset = 0 if self.shift_label else 1
+        for step in range(nspec):
+            hidden = spec_hidden[:, step, :]  # [B, H]
+            if step < self.pure_draft_prefix_len:
+                logits = base_logits_all[:, step, :]
+            else:
+                bias = self.model.compute_domino_bias(hidden, gru_state)
+                logits = base_logits_all[:, step, :] + bias
 
-            for step in range(self.num_speculative_tokens):
-                query_pos = step + pos_offset
-                hidden = hidden_3d[req_idx, query_pos, :].unsqueeze(0)
-
-                if step < self.pure_draft_prefix_len:
-                    logits = self.model.compute_logits(hidden)
-                else:
-                    logits, gru_state = self.model.compute_domino_logits(
-                        hidden, gru_state
-                    )
-
-                token = logits.argmax(dim=-1).view(())
-                draft_token_ids[req_idx, step] = token
-
-                # Update the GRU state with the sampled token for the next step.
-                gru_state = self.model.update_domino_gru_state(
-                    token.unsqueeze(0), gru_state
-                )
+            tokens = logits.argmax(dim=-1)  # [B]
+            draft_token_ids[:, step] = tokens
+            gru_state = self.model.update_domino_gru_state(tokens, gru_state)
 
         return draft_token_ids
