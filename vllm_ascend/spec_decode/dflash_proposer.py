@@ -133,7 +133,7 @@ class AscendDflashProposer(AscendEagleProposer):
         ).to(torch.int32)
 
         if hasattr(cad, "actual_seq_lengths_q"):
-            cad.actual_seq_lengths_q = [num_query_per_req] * batch_size
+            cad.actual_seq_lengths_q = new_query_start_loc[1:].tolist()
         if hasattr(cad, "decode_token_per_req"):
             cad.decode_token_per_req = num_query_per_req
 
@@ -262,6 +262,17 @@ class AscendDflashProposer(AscendEagleProposer):
         return dict(
             input_ids=self.input_ids[:num_input_tokens], positions=self.positions[:num_input_tokens], inputs_embeds=None
         )
+
+    def _get_eagle3_use_aux_hidden_state_from_config(self) -> bool:
+        use_aux_hidden_state = True
+        dflash_config = getattr(
+            self.draft_model_config.hf_config, "dflash_config", None
+        )
+        if dflash_config is not None:
+            use_aux_hidden_state = dflash_config.get(
+                "use_aux_hidden_state", True
+            )
+        return use_aux_hidden_state
 
     def _raise_if_multimodal(self):
         pass

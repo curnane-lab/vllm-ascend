@@ -604,7 +604,7 @@ class NPUModelRunner(GPUModelRunner):
             self.decode_token_per_req = 1 + spec_token_num
             if get_pp_group().is_last_rank:
                 self.drafter = self._get_drafter()
-                if self.speculative_config.method == "eagle3":
+                if self.speculative_config.method in ("eagle3", "dflash"):
                     assert isinstance(self.drafter, AscendEagleProposer)
                     self.use_aux_hidden_state_outputs = self.drafter.eagle3_use_aux_hidden_state
                 elif self.speculative_config.method == "extract_hidden_states":
@@ -2259,7 +2259,8 @@ class NPUModelRunner(GPUModelRunner):
         with record_function_or_nullcontext("post process"):
             aux_hidden_states = None
             if self.use_aux_hidden_state_outputs:
-                hidden_states, aux_hidden_states = hidden_states
+                if isinstance(hidden_states, tuple):
+                    hidden_states, aux_hidden_states = hidden_states
             if self.pcp_size > 1:
                 # NOTE we must `slice` hidden_states because pcp_allgather_restore_idx
                 # ignores the padding from CUDA Graph.
@@ -4632,27 +4633,23 @@ class NPUModelRunner(GPUModelRunner):
         self.calculate_reorder_batch_threshold()
 
     def calculate_reorder_batch_threshold(self) -> None:
-        """
-        Check that if any backends reorder batches; that the reordering
-        is compatible (e.g., decode threshold is the same)
-        """
+        """Choose the minimum reorder batch threshold from all attention groups."""
+        min_none_high = lambda a, b: a if b is None else b if a is None else min(a, b)
+
+        reorder_batch_thresholds: list[int | None] = []
         for group in self._attn_group_iterator():
             attn_metadata_builder_i = group.get_metadata_builder()
-            if hasattr(attn_metadata_builder_i, "reorder_batch_threshold"):  # noqa
-                # check that if any backends reorder batches; that the reordering
-                # is compatible (e.g., decode threshold is the same)
-                reorder_batch_threshold_i = attn_metadata_builder_i.reorder_batch_threshold
-                if reorder_batch_threshold_i is not None:  # noqa
-                    if self.reorder_batch_threshold is not None:
-                        if reorder_batch_threshold_i != self.reorder_batch_threshold:
-                            raise ValueError(
-                                f"Attention backend reorders decodes with "
-                                f"threshold {reorder_batch_threshold_i} but other "
-                                f"backend uses threshold "
-                                f"{self.reorder_batch_threshold}"
-                            )
-                    else:
-                        self.reorder_batch_threshold = reorder_batch_threshold_i  # noqa
+            if hasattr(attn_metadata_builder_i, "reorder_batch_threshold"):
+                reorder_batch_thresholds.append(
+                    attn_metadata_builder_i.reorder_batch_threshold
+                )
+
+        if len(reorder_batch_thresholds) == 0:
+            self.reorder_batch_threshold = None
+            return
+
+        from functools import reduce
+        self.reorder_batch_threshold = reduce(min_none_high, reorder_batch_thresholds)
 
     def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
         """
