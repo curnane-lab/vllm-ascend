@@ -639,7 +639,12 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
 
         # 2.1: Process the multi-query part
         if spec_sequence_masks is not None:
-            cu_seqlens = spec_query_start_loc[: attn_metadata.num_spec_decodes + 1]
+            num_spec_decodes = attn_metadata.num_spec_decodes
+            spec_state_indices_actual = spec_state_indices_tensor[:num_spec_decodes]
+            num_accepted_tokens_actual = num_accepted_tokens[:num_spec_decodes]
+            spec_query_start_loc_actual = spec_query_start_loc[: num_spec_decodes + 1]
+
+            cu_seqlens = spec_query_start_loc_actual
             actual_seq_lengths = torch.cat([cu_seqlens[:1], cu_seqlens[1:] - cu_seqlens[:-1]])
             query_spec = l2norm_fwd(query_spec)
             key_spec = l2norm_fwd(key_spec)
@@ -656,8 +661,8 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 state=ssm_state,
                 scale=key_spec.shape[-1] ** -0.5,
                 actual_seq_lengths=actual_seq_lengths,
-                ssm_state_indices=spec_state_indices_tensor.flatten(),
-                num_accepted_tokens=num_accepted_tokens.to(torch.int32),
+                ssm_state_indices=spec_state_indices_actual.flatten(),
+                num_accepted_tokens=num_accepted_tokens_actual.to(torch.int32),
             ).unsqueeze(0)
         else:
             core_attn_out_spec, last_recurrent_state = None, None
