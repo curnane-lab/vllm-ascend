@@ -19,6 +19,7 @@
 
 import gc
 import math
+import os
 import sys
 import time
 from collections import defaultdict
@@ -1848,6 +1849,30 @@ class NPUModelRunner(GPUModelRunner):
                     else:
                         target_hidden_states = hidden_states[token_indices]
             assert self.drafter is not None
+            if os.environ.get("DFLASH_K9_DEBUG") == "1" and not getattr(
+                self, "_dflash_k9_debug_runner_logged", False
+            ):
+                self._dflash_k9_debug_runner_logged = True
+                aux_shapes = None
+                if aux_hidden_states is not None:
+                    aux_shapes = [tuple(h.shape) for h in aux_hidden_states]
+                logger.info(
+                    "DFLASH_K9_DEBUG runner method=%s use_aux=%s aux_shapes=%s "
+                    "target_hidden_shape=%s target_token_shape=%s token_indices=%s "
+                    "token_indices_to_sample=%s spec_metadata_present=%s",
+                    self.speculative_config.method,
+                    self.use_aux_hidden_state_outputs,
+                    aux_shapes,
+                    tuple(target_hidden_states.shape),
+                    tuple(target_token_ids.shape),
+                    token_indices[: min(token_indices.numel(), 32)].detach().cpu().tolist()
+                    if "token_indices" in locals() and isinstance(token_indices, torch.Tensor)
+                    else None,
+                    token_indices_to_sample[: min(token_indices_to_sample.numel(), 32)].detach().cpu().tolist()
+                    if isinstance(token_indices_to_sample, torch.Tensor)
+                    else None,
+                    spec_decode_metadata is not None,
+                )
             draft_token_ids = self.drafter._propose(
                 target_token_ids=target_token_ids,
                 target_positions=target_positions,

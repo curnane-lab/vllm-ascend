@@ -15,11 +15,14 @@
 # limitations under the License.
 #
 
+import os
+
 import torch
 import torch_npu
 from einops import rearrange
 from vllm.distributed import get_pcp_group
 from vllm.forward_context import get_forward_context
+from vllm.logger import logger
 from vllm.model_executor.layers.fla.ops.l2norm import l2norm_fwd
 
 from vllm_ascend.utils import vllm_version_is
@@ -646,6 +649,22 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
 
             cu_seqlens = spec_query_start_loc_actual
             actual_seq_lengths = torch.cat([cu_seqlens[:1], cu_seqlens[1:] - cu_seqlens[:-1]])
+            if os.environ.get("DFLASH_K9_DEBUG") == "1" and not getattr(
+                self, "_dflash_k9_debug_gdn_logged", False
+            ):
+                self._dflash_k9_debug_gdn_logged = True
+                logger.info(
+                    "DFLASH_K9_DEBUG gdn num_spec_decodes=%s spec_query_start_loc=%s "
+                    "actual_seq_lengths=%s spec_state_indices_shape=%s spec_state_indices=%s "
+                    "num_accepted_tokens=%s query_spec_shape=%s",
+                    num_spec_decodes,
+                    spec_query_start_loc_actual.detach().cpu().tolist(),
+                    actual_seq_lengths.detach().cpu().tolist(),
+                    tuple(spec_state_indices_tensor.shape),
+                    spec_state_indices_actual.detach().cpu().view(-1)[:32].tolist(),
+                    num_accepted_tokens_actual.detach().cpu().tolist(),
+                    tuple(query_spec.shape),
+                )
             query_spec = l2norm_fwd(query_spec)
             key_spec = l2norm_fwd(key_spec)
             # Dispatches to the vllm-ascend AscendC custom operator

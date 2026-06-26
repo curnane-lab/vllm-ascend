@@ -1,8 +1,10 @@
+import os
 from typing import Any
 
 import torch
 from vllm.config import CUDAGraphMode, VllmConfig
 from vllm.forward_context import get_forward_context
+from vllm.logger import logger
 from vllm.v1.attention.backends.utils import CommonAttentionMetadata
 
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX, set_ascend_forward_context
@@ -144,6 +146,31 @@ class AscendDflashProposer(AscendEagleProposer):
         cad.causal = False
         cad.attn_mask = None
         cad.attn_state = AscendAttentionState.ChunkedPrefill
+
+        if os.environ.get("DFLASH_K9_DEBUG") == "1" and not getattr(
+            self, "_dflash_k9_debug_first_pass_logged", False
+        ):
+            self._dflash_k9_debug_first_pass_logged = True
+            debug_query = min(num_query_per_req, 16)
+            debug_sample = min(self.num_speculative_tokens, 16)
+            logger.info(
+                "DFLASH_K9_DEBUG first_pass batch=%s K=%s num_context=%s "
+                "num_query_per_req=%s input_ids=%s positions=%s slot_mapping=%s "
+                "token_indices=%s query_start_loc=%s seq_lens=%s actual_seq_lengths_q=%s "
+                "mask_token_id=%s",
+                batch_size,
+                self.num_speculative_tokens,
+                num_context,
+                num_query_per_req,
+                self.input_ids[:debug_query].detach().cpu().tolist(),
+                self.positions[:debug_query].detach().cpu().tolist(),
+                query_slot_mapping[:debug_query].detach().cpu().tolist(),
+                token_indices_to_sample[:debug_sample].detach().cpu().tolist(),
+                cad.query_start_loc[: min(batch_size + 1, 8)].detach().cpu().tolist(),
+                cad.seq_lens[: min(batch_size, 8)].detach().cpu().tolist(),
+                getattr(cad, "actual_seq_lengths_q", None),
+                self.parallel_drafting_token_id,
+            )
 
         return num_query_total, token_indices_to_sample, cad, None
 

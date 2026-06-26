@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
+import os
 from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from functools import partial
@@ -953,10 +954,38 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
 
     def compute_draft_token_ids(self, hidden_states: torch.Tensor):
         logits = self.model.logits_processor(self.model.lm_head, hidden_states)
-        if not hasattr(self.model, "draft_id_to_target_id") or self.model.draft_id_to_target_id is None:
-            return greedy_sample(logits)
-        logits = logits.contiguous()
         next_token = greedy_sample(logits)
+        has_d2t = hasattr(self.model, "draft_id_to_target_id") and self.model.draft_id_to_target_id is not None
+        if os.environ.get("DFLASH_K9_DEBUG") == "1" and self.method == "dflash" and not getattr(
+            self, "_dflash_k9_debug_logits_logged", False
+        ):
+            self._dflash_k9_debug_logits_logged = True
+            debug_len = min(next_token.numel(), 16)
+            debug_bias = None
+            debug_remapped = None
+            if has_d2t:
+                debug_bias_tensor = torch.index_select(
+                    self.model.draft_id_to_target_id,
+                    dim=0,
+                    index=next_token[:debug_len].view(-1),
+                ).view(-1)
+                debug_bias = debug_bias_tensor.detach().cpu().tolist()
+                debug_remapped = (next_token[:debug_len].view(-1) + debug_bias_tensor).detach().cpu().tolist()
+            lm_head_weight = getattr(getattr(self.model, "lm_head", None), "weight", None)
+            logger.info(
+                "DFLASH_K9_DEBUG logits hidden_shape=%s logits_shape=%s has_d2t=%s "
+                "lm_head_shape=%s raw_next=%s d2t_bias=%s remapped=%s",
+                tuple(hidden_states.shape),
+                tuple(logits.shape),
+                has_d2t,
+                tuple(lm_head_weight.shape) if lm_head_weight is not None else None,
+                next_token[:debug_len].detach().cpu().tolist(),
+                debug_bias,
+                debug_remapped,
+            )
+        if not has_d2t:
+            return next_token
+        logits = logits.contiguous()
         bias = torch.index_select(self.model.draft_id_to_target_id, dim=0, index=next_token.view(-1)).view(
             next_token.shape
         )
@@ -1038,6 +1067,26 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
             )
 
         sample_hidden_states = last_hidden_states[token_indices_to_sample]
+
+        if os.environ.get("DFLASH_K9_DEBUG") == "1" and self.method == "dflash" and not getattr(
+            self, "_dflash_k9_debug_sample_logged", False
+        ):
+            self._dflash_k9_debug_sample_logged = True
+            debug_len = min(token_indices_to_sample.numel(), 32)
+            logger.info(
+                "DFLASH_K9_DEBUG sample num_input_tokens=%s num_indices=%s K=%s "
+                "last_hidden_shape=%s hidden_shape=%s token_indices=%s sample_hidden_shape=%s "
+                "parallel_drafting=%s reduce_sample=%s",
+                num_input_tokens,
+                num_indices,
+                self.num_speculative_tokens,
+                tuple(last_hidden_states.shape),
+                tuple(hidden_states.shape),
+                token_indices_to_sample[:debug_len].detach().cpu().tolist(),
+                tuple(sample_hidden_states.shape),
+                self.parallel_drafting,
+                get_ascend_config().enable_reduce_sample,
+            )
 
         if get_ascend_config().enable_reduce_sample and self.method in ("eagle3", "dflash"):
             draft_token_ids = self.compute_draft_token_ids(sample_hidden_states)
