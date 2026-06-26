@@ -1068,9 +1068,14 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
 
         sample_hidden_states = last_hidden_states[token_indices_to_sample]
 
-        if os.environ.get("DFLASH_K9_DEBUG") == "1" and self.method == "dflash" and not getattr(
-            self, "_dflash_k9_debug_sample_logged", False
-        ):
+        should_log_dflash_sample = (
+            os.environ.get("DFLASH_K9_DEBUG") == "1"
+            and self.method == "dflash"
+            and not getattr(self, "_dflash_k9_debug_sample_logged", False)
+            and token_indices_to_sample.numel() > 0
+            and torch.any(token_indices_to_sample != 0).item()
+        )
+        if should_log_dflash_sample:
             self._dflash_k9_debug_sample_logged = True
             debug_len = min(token_indices_to_sample.numel(), 32)
             logger.info(
@@ -1116,6 +1121,38 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
                     logits = logits[:num_indices]
                     token_indices_to_sample = token_indices_to_sample[:num_indices]
                 draft_token_ids = logits.argmax(dim=-1)
+                if os.environ.get("DFLASH_K9_DEBUG") == "1" and self.method == "dflash" and not getattr(
+                    self, "_dflash_k9_debug_non_reduce_logits_logged", False
+                ):
+                    self._dflash_k9_debug_non_reduce_logits_logged = True
+                    debug_len = min(draft_token_ids.numel(), 32)
+                    has_d2t = (
+                        hasattr(self.model, "draft_id_to_target_id")
+                        and self.model.draft_id_to_target_id is not None
+                    )
+                    debug_bias = None
+                    debug_remapped = None
+                    if has_d2t:
+                        debug_bias_tensor = torch.index_select(
+                            self.model.draft_id_to_target_id,
+                            dim=0,
+                            index=draft_token_ids[:debug_len].view(-1),
+                        ).view(-1)
+                        debug_bias = debug_bias_tensor.detach().cpu().tolist()
+                        debug_remapped = (
+                            draft_token_ids[:debug_len].view(-1) + debug_bias_tensor
+                        ).detach().cpu().tolist()
+                    lm_head_weight = getattr(getattr(self.model, "lm_head", None), "weight", None)
+                    logger.info(
+                        "DFLASH_K9_DEBUG non_reduce_logits logits_shape=%s has_d2t=%s "
+                        "lm_head_shape=%s raw_argmax=%s d2t_bias=%s remapped=%s",
+                        tuple(logits.shape),
+                        has_d2t,
+                        tuple(lm_head_weight.shape) if lm_head_weight is not None else None,
+                        draft_token_ids[:debug_len].detach().cpu().tolist(),
+                        debug_bias,
+                        debug_remapped,
+                    )
 
         # Early exit if there is only one draft token to be generated.
         if self.num_speculative_tokens == 1 or self.parallel_drafting:
