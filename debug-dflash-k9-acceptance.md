@@ -41,7 +41,7 @@ The debug commit emits one-time server log lines containing the marker `DFLASH_K
 
 - DFlash first pass query expansion
 - DFlash sample row selection and logits/d2t remapping
-- DFlash non-reduce sampling raw argmax and optional d2t remap
+- DFlash non-reduce sampling raw argmax, top-k logits, optional d2t remap, and first draft row
 - Model runner aux hidden state handoff
 - GDN spec decode metadata
 

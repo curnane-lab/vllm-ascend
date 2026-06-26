@@ -1078,10 +1078,11 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
         if should_log_dflash_sample:
             self._dflash_k9_debug_sample_logged = True
             debug_len = min(token_indices_to_sample.numel(), 32)
+            dflash_config = getattr(self.draft_model_config.hf_config, "dflash_config", None)
             logger.info(
                 "DFLASH_K9_DEBUG sample num_input_tokens=%s num_indices=%s K=%s "
                 "last_hidden_shape=%s hidden_shape=%s token_indices=%s sample_hidden_shape=%s "
-                "parallel_drafting=%s reduce_sample=%s",
+                "parallel_drafting=%s reduce_sample=%s dflash_config=%s",
                 num_input_tokens,
                 num_indices,
                 self.num_speculative_tokens,
@@ -1091,6 +1092,7 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
                 tuple(sample_hidden_states.shape),
                 self.parallel_drafting,
                 get_ascend_config().enable_reduce_sample,
+                dflash_config,
             )
 
         if get_ascend_config().enable_reduce_sample and self.method in ("eagle3", "dflash"):
@@ -1121,9 +1123,13 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
                     logits = logits[:num_indices]
                     token_indices_to_sample = token_indices_to_sample[:num_indices]
                 draft_token_ids = logits.argmax(dim=-1)
-                if os.environ.get("DFLASH_K9_DEBUG") == "1" and self.method == "dflash" and not getattr(
-                    self, "_dflash_k9_debug_non_reduce_logits_logged", False
-                ):
+                should_log_non_reduce = (
+                    os.environ.get("DFLASH_K9_DEBUG") == "1"
+                    and self.method == "dflash"
+                    and should_log_dflash_sample
+                    and not getattr(self, "_dflash_k9_debug_non_reduce_logits_logged", False)
+                )
+                if should_log_non_reduce:
                     self._dflash_k9_debug_non_reduce_logits_logged = True
                     debug_len = min(draft_token_ids.numel(), 32)
                     has_d2t = (
@@ -1142,16 +1148,26 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
                         debug_remapped = (
                             draft_token_ids[:debug_len].view(-1) + debug_bias_tensor
                         ).detach().cpu().tolist()
+                    topk_values, topk_indices = torch.topk(logits[:1], k=min(5, logits.shape[-1]), dim=-1)
                     lm_head_weight = getattr(getattr(self.model, "lm_head", None), "weight", None)
+                    draft_row = None
+                    if self.parallel_drafting and draft_token_ids.numel() >= self.num_speculative_tokens:
+                        draft_row = draft_token_ids[: self.num_speculative_tokens].detach().cpu().tolist()
                     logger.info(
                         "DFLASH_K9_DEBUG non_reduce_logits logits_shape=%s has_d2t=%s "
-                        "lm_head_shape=%s raw_argmax=%s d2t_bias=%s remapped=%s",
+                        "lm_head_shape=%s raw_argmax=%s d2t_bias=%s remapped=%s "
+                        "topk_ids=%s topk_values=%s draft_row=%s logits_min=%s logits_max=%s",
                         tuple(logits.shape),
                         has_d2t,
                         tuple(lm_head_weight.shape) if lm_head_weight is not None else None,
                         draft_token_ids[:debug_len].detach().cpu().tolist(),
                         debug_bias,
                         debug_remapped,
+                        topk_indices[0].detach().cpu().tolist(),
+                        topk_values[0].detach().float().cpu().tolist(),
+                        draft_row,
+                        float(logits[:1].min().detach().cpu()),
+                        float(logits[:1].max().detach().cpu()),
                     )
 
         # Early exit if there is only one draft token to be generated.
