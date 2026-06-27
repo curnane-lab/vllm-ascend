@@ -1603,8 +1603,29 @@ class NPUModelRunner(GPUModelRunner):
 
         # Compute the draft token ids.
         # draft_token_indices:      [  1,   2,   3, 105, 106, 208]
-        draft_token_ids = self.input_ids.gpu[logits_indices]
-        draft_token_ids = draft_token_ids[target_logits_indices + 1]
+        draft_input_ids = self.input_ids.gpu[logits_indices]
+        draft_token_ids = draft_input_ids[target_logits_indices + 1]
+        if os.environ.get("DFLASH_K9_DEBUG") == "1" and getattr(self, "speculative_config", None) is not None:
+            method = getattr(self.speculative_config, "method", None)
+            if method == "dflash" and not getattr(self, "_dflash_v7_metadata_logged", False):
+                self._dflash_v7_metadata_logged = True
+                debug_len = min(int(draft_token_ids.numel()), 32)
+                input_debug_len = min(int(draft_input_ids.numel()), 40)
+                logger.info(
+                    "DFLASH_K9_DEBUG metadata num_draft_tokens=%s cu_scheduled=%s "
+                    "logits_indices=%s target_logits_indices=%s bonus_logits_indices=%s "
+                    "draft_input_ids=%s metadata_draft_token_ids=%s",
+                    num_draft_tokens.tolist(),
+                    cu_num_scheduled_tokens.tolist(),
+                    logits_indices[:input_debug_len].detach().cpu().tolist(),
+                    target_logits_indices[:debug_len].detach().cpu().tolist(),
+                    bonus_logits_indices[: min(int(bonus_logits_indices.numel()), 32)]
+                    .detach()
+                    .cpu()
+                    .tolist(),
+                    draft_input_ids[:input_debug_len].detach().cpu().tolist(),
+                    draft_token_ids[:debug_len].detach().cpu().tolist(),
+                )
         if self.pcp_size > 1:
             logits_indices = logits_indices_pcp
         return SpecDecodeMetadata(
