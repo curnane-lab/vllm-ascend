@@ -41,7 +41,7 @@ The debug commit emits one-time server log lines containing the marker `DFLASH_K
 
 - DFlash first pass query expansion
 - DFlash sample row selection and logits/d2t remapping
-- DFlash target verifier metadata draft-token reconstruction and greedy rejection comparison logs
+- DFlash target verifier metadata draft-token reconstruction and common-path target argmax comparison logs
 - Model runner aux hidden state handoff
 - GDN spec decode metadata
 

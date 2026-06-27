@@ -408,6 +408,35 @@ def rejection_sample(
         else:
             target_argmax = target_logits.argmax(dim=-1).view(-1)
 
+        if os.environ.get("DFLASH_K9_DEBUG") == "1" and not getattr(
+            rejection_sample, "_dflash_v8_logged", False
+        ):
+            rejection_sample._dflash_v8_logged = True
+            debug_len = min(int(draft_token_ids.numel()), 32)
+            topk_k = min(5, int(target_logits.shape[-1]))
+            topk_values, topk_ids = torch.topk(target_logits[:1], k=topk_k, dim=-1)
+            logger.info(
+                "DFLASH_K9_DEBUG rejection_common batch=%s max_spec_len=%s has_triton=%s "
+                "all_greedy=%s all_random=%s reduce_sample=%s num_draft_tokens=%s "
+                "cu_num_draft_tokens=%s draft_token_ids=%s target_argmax=%s mismatch=%s "
+                "target_topk_ids=%s target_topk_values=%s bonus_token_ids=%s target_logits_shape=%s",
+                batch_size,
+                max_spec_len,
+                HAS_TRITON,
+                sampling_metadata.all_greedy,
+                sampling_metadata.all_random,
+                get_ascend_config().enable_reduce_sample,
+                num_draft_tokens,
+                cu_num_draft_tokens.detach().cpu().tolist(),
+                draft_token_ids[:debug_len].detach().cpu().tolist(),
+                target_argmax[:debug_len].detach().cpu().tolist(),
+                (draft_token_ids[:debug_len] != target_argmax[:debug_len]).detach().cpu().tolist(),
+                topk_ids[0].detach().cpu().tolist(),
+                topk_values[0].detach().cpu().tolist(),
+                bonus_token_ids[: min(int(bonus_token_ids.shape[0]), 4)].detach().cpu().view(-1).tolist(),
+                tuple(target_logits.shape),
+            )
+
         if HAS_TRITON:
             rejection_greedy_sample_with_triton(
                 output_token_ids,
@@ -887,27 +916,6 @@ def rejection_greedy_sample_pytorch(
 
     # Find the first mismatch position of each request.
     mismatch_global = draft_token_ids != target_argmax
-    if os.environ.get("DFLASH_K9_DEBUG") == "1" and not getattr(
-        rejection_greedy_sample_pytorch, "_dflash_v7_logged", False
-    ):
-        rejection_greedy_sample_pytorch._dflash_v7_logged = True
-        debug_len = min(int(draft_token_ids.numel()), 32)
-        output_debug_len = min(int(output_token_ids.shape[0]), 4)
-        logger.info(
-            "DFLASH_K9_DEBUG rejection batch=%s max_spec_len=%s draft_tokens_per_req=%s "
-            "cu_num_draft_tokens=%s draft_token_ids=%s target_argmax=%s mismatch=%s "
-            "bonus_token_ids=%s is_greedy=%s output_before=%s",
-            batch_size,
-            max_spec_len,
-            draft_tokens_per_req.detach().cpu().tolist(),
-            cu_num_draft_tokens.detach().cpu().tolist(),
-            draft_token_ids[:debug_len].detach().cpu().tolist(),
-            target_argmax[:debug_len].detach().cpu().tolist(),
-            mismatch_global[:debug_len].detach().cpu().tolist(),
-            bonus_token_ids[:output_debug_len].detach().cpu().view(-1).tolist(),
-            is_greedy[:output_debug_len].detach().cpu().tolist(),
-            output_token_ids[:output_debug_len].detach().cpu().tolist(),
-        )
     if max_spec_len == 0:
         first_mismatch_pos_per_req = torch.zeros(batch_size, dtype=torch.long, device=device)
     else:
