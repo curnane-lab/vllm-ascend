@@ -3684,6 +3684,14 @@ class NPUModelRunner(GPUModelRunner):
                     aux_layers = self._get_eagle3_aux_layers_from_config()
                     if not aux_layers:
                         aux_layers = self.model.get_eagle3_default_aux_hidden_state_layers()
+                    elif self.speculative_config.method == "dflash":
+                        raw_aux_layers = aux_layers
+                        aux_layers = tuple(layer_id + 1 for layer_id in raw_aux_layers)
+                        logger.info(
+                            "Using DFlash auxiliary layers with vLLM capture offset: raw=%s effective=%s",
+                            raw_aux_layers,
+                            aux_layers,
+                        )
                     self.model.set_aux_hidden_state_layers(aux_layers)
 
             if self.lora_config:
