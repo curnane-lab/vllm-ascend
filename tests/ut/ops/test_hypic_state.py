@@ -107,30 +107,42 @@ def test_compose_zero_prefix_matches_zero_start():
 
 
 @pytest.mark.skipif(not HAS_NPU, reason="torch_npu unavailable")
-def test_transition_extraction_linearity_npu():
+@pytest.mark.parametrize("seg_lens", [[130], [70, 60]])  # non-varlen / varlen segments
+def test_transition_extraction_linearity_npu(seg_lens):
     """T_C extracted with (h0=I, u=0) must satisfy S(h0) = T_C @ h0 + S(0)."""
     from vllm_ascend.ops.hypic.transition import extract_segment_transitions
     from vllm_ascend.ops.triton.fla.chunk_delta_h import chunk_gated_delta_rule_fwd_h
+    from vllm_ascend.ops.triton.fla.cumsum import chunk_local_cumsum
 
     device = "npu"
-    B, T, H, K = 1, 130, 2, 64  # spans 3 chunks of 64
+    B, H, K = 1, 2, 64
+    T = sum(seg_lens)
+    cu_seqlens = None
+    if len(seg_lens) > 1:
+        bounds = [0]
+        for n in seg_lens:
+            bounds.append(bounds[-1] + n)
+        cu_seqlens = torch.tensor(bounds, dtype=torch.long, device=device)
+
     gen = torch.Generator(device=device).manual_seed(0)
     k = torch.randn(B, T, H, K, device=device, dtype=torch.bfloat16, generator=gen)
     w = torch.randn(B, T, H, K, device=device, dtype=torch.bfloat16, generator=gen) * 0.1
     u = torch.randn(B, T, H, K, device=device, dtype=torch.bfloat16, generator=gen) * 0.1
-    g = torch.nn.functional.logsigmoid(torch.randn(B, T, H, device=device, generator=gen))
-    g = g.cumsum(dim=1).contiguous()  # stand-in for chunk_local_cumsum output
+    g_raw = torch.nn.functional.logsigmoid(torch.randn(B, T, H, device=device, generator=gen))
+    # Production format: chunk-LOCAL cumulative log-decay (resets per 64-chunk).
+    g = chunk_local_cumsum(g_raw, chunk_size=64, cu_seqlens=cu_seqlens)
 
-    t_c = extract_segment_transitions(k, w, g)
-    assert t_c.shape == (B, H, K, K)
+    n_seq = len(seg_lens)
+    t_c = extract_segment_transitions(k, w, g, cu_seqlens=cu_seqlens)
+    assert t_c.shape == (n_seq, H, K, K)
 
-    h0 = torch.randn(B, H, K, K, device=device, dtype=torch.float32, generator=gen)
+    h0 = torch.randn(n_seq, H, K, K, device=device, dtype=torch.float32, generator=gen)
     zero = torch.zeros_like(h0)
     _, _, s_h0 = chunk_gated_delta_rule_fwd_h(
-        k=k, w=w, u=u, g=g, initial_state=h0, output_final_state=True
+        k=k, w=w, u=u, g=g, initial_state=h0, output_final_state=True, cu_seqlens=cu_seqlens
     )
     _, _, s_0 = chunk_gated_delta_rule_fwd_h(
-        k=k, w=w, u=u, g=g, initial_state=zero, output_final_state=True
+        k=k, w=w, u=u, g=g, initial_state=zero, output_final_state=True, cu_seqlens=cu_seqlens
     )
 
     rhs = torch.matmul(t_c, h0) + s_0

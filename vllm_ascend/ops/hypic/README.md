@@ -42,3 +42,11 @@ Key facts these build on (verified against this codebase, v0.21.0rc1):
   scalar-family models (Ring-2.5) must re-rotate `S_{C|0}` before composing
   (see `compose_states` docstring).
 - T_C extraction currently requires head dim K ≤ 128 (h-kernel block layout).
+- The h-kernel always stores per-chunk intermediate states `h [B, NT, H, K, K]`;
+  in transition mode these are unused (transient waste of ~NT × H × 32 KB per
+  segment). A dedicated kernel or a `store_intermediate=False` variant is
+  future work.
+- Integration into the production prefill path (`chunk_gated_delta_rule_fwd`,
+  which already computes `(k, w, g)` via the WY chain) is the next increment;
+  `extract_segment_transitions` deliberately reuses those tensors rather than
+  recomputing them.

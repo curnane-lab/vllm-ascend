@@ -50,7 +50,11 @@ def extract_segment_transitions(
     """
     if k.dim() != 4:
         raise ValueError(f"expected k of shape [B, T, Hg, K], got {k.shape}")
-    B, _, Hg, K = k.shape
+    B, T, Hg, K = k.shape
+    if w.shape[:2] != (B, T) or w.shape[-1] != K:
+        raise ValueError(f"w shape {w.shape} inconsistent with k shape {k.shape}")
+    if g.shape[:2] != (B, T):
+        raise ValueError(f"g shape {g.shape} inconsistent with k shape {k.shape}")
     H = w.shape[-2]
     if K > _MAX_SUPPORTED_HEAD_DIM:
         raise ValueError(
