@@ -3,6 +3,10 @@
 This package ports the model-side primitives of **Hypic** (arXiv:2607.01299)
 to vllm-ascend, targeting Qwen3.5-style GDN hybrid stacks.
 
+**Reference spec**: `SGLANG_REFERENCE_SPEC.md` — implementation-neutral
+semantics reverse-engineered from the SGLang HYPIC fork, the mapping to this
+package, and the cross-stack oracle/validation protocol.
+
 ## What is here (increment 1)
 
 | Module | Content | Status |
