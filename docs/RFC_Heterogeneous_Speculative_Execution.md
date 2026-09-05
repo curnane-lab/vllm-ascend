@@ -1,15 +1,20 @@
 # RFC: Heterogeneous Speculative Execution for Agent Serving
 
-- **Status**: Draft (mother document)
+- **Status**: Draft v1.1 (mother document)
 - **Branch**: `hypic-qwen35`
 - **Scope**: Unified theory and research program covering Track A (speculative
-  agent execution), Track B (implicit grammar + calibrated action oracle),
-  Track C (state-tree speculation as serving infrastructure), and Track D
-  (branch speculation). Individual tracks should NOT re-invent evaluation
-  frameworks; they inherit the definitions, utility model, and metrics here.
+  agent execution), Track B (utility-calibrated action oracle), Track C
+  (state-tree speculation as serving infrastructure), and Track D (branch
+  speculation). Individual tracks should NOT re-invent evaluation frameworks;
+  they inherit the definitions, utility model, and metrics here.
 - **Provenance**: distilled from an extended design analysis spanning
   Hypic (arXiv:2607.01299), DFlash, ESP, PIPO, ToolSpec, MiniPIC, RedKnot,
   Bole (arXiv:2608.01651), ECHO, and the vllm/vllm-ascend codebases.
+- **v1.1 changes**: decidable applicability domain (Domain Certificate);
+  utility-aware action decision rule; vectorized resource-cost model;
+  perfect-future oracle experiment (M-A0) as go/no-go gate; Track B renamed
+  and re-scoped; Track C re-metriced around Cached-State Forking; related-work
+  boundary matrix; corrected exact/cheap claim in §3.1.
 
 ---
 
@@ -69,7 +74,7 @@ instance.
 |---|---|---|---|
 | **Token** | DFlash, FSM, retrieval, n-gram | exact token equality | wasted draft + verification compute |
 | **State** | `(T_C, S_{C|0})` composition, state fork | algebraic (by construction) | wasted state compute |
-| **Action** | workflow grammar, action predictor | calibrated probability | wasted I/O, prefetch, bandwidth, staging |
+| **Action** | workflow grammar, retrieval, LLM predictor, agent memory, tool schema | calibrated probability + utility | wasted I/O, prefetch, bandwidth, staging |
 | **Branch** | action predictor, top-k | calibrated probability + final state | m× resource amplification |
 
 Branch is a **composition** of Action speculation with resource amplification
@@ -87,11 +92,14 @@ The classical speculative-decoding contract:
 draft tokens → Target parallel forward → exact comparison → accept longest prefix
 ```
 
-Guarantee: **exact** (output distribution identical to non-speculative
-decoding under the standard acceptance rule). Cost: one Target forward pass.
-This is the only layer that is both exact and cheap.
+Guarantee: **exact, model-level output equivalence** under the standard
+acceptance rule. Cost: one Target forward pass. Token is the only layer with
+exact, model-level output verification under that contract; State instead
+offers construction-level correctness inside a bounded domain with zero
+verification cost (§3.2). The two are different guarantee types and must not
+be conflated.
 
-### 3.2 State: Verification by Construction (Bounded Applicability Domain)
+### 3.2 State: Verification by Construction (Decidable Applicability Domain)
 
 Definition. A speculative state transform `F_s` needs **no** Target
 verification if it is algebraically equivalent to the Target transition `T`
@@ -115,14 +123,42 @@ end-to-end numerical exactness. `D` must explicitly exclude or bound:
 - kernel/precision mismatches (e.g., Triton vs. AscendC extraction paths;
   fp32 staging discipline).
 
-Any claim of exactness outside `D` is a bug. Empirically (paper
-arXiv:2607.01299 + our CPU validation): linear-layer composition matches a
-single-pass recompute to ~6e-5 relative norm at layer 0 (FP16 noise), fp64
-~1e-16 / fp32 ~8e-8 in reference tests; end-to-end task-level deviation is
-model-family dependent (near-lossless for strong-decay dense-transition
-families; up to ~3–4 points for scalar slow-decay families).
+Any claim of exactness outside `D` is a bug.
 
-### 3.3 Action: Verification by Calibration
+**Domain Certificate (v1.1).** `D` is not a disclaimer; it is a decidable
+predicate. Decompose:
+
+```
+D = D_architecture ∩ D_cache ∩ D_precision ∩ D_sequence
+```
+
+with machine-checkable membership conditions, e.g.:
+
+- `D_architecture`: layer is a supported linear-attention variant (GDN/KDA/
+  scalar family); transition-operator family known.
+- `D_cache`: segment was persisted with the required tuple `(T_C, S_{C|0},
+  conv_tail)`; seam width `w` within validated range; hash verified
+  (`seg_hash` + token-id recheck).
+- `D_precision`: states staged and stored in fp32; kernel inputs in model
+  native dtype; extraction path cross-validated (Triton vs. AscendC).
+- `D_sequence`: composition applied in segment position order; per-branch
+  state forked from a certified parent state.
+
+Most conditions are static at startup (architecture, precision, kernel path);
+the remainder are checked per segment at cache-hit time. **Every composed or
+forked state must carry a domain certificate** (`domain_valid ∈ {true, false}`
+plus the failing predicate) in logs and diagnostics; a false certificate
+forces fallback to recompute. This turns "verification by construction" from
+a paper statement into a system primitive.
+
+Empirical anchors (paper arXiv:2607.01299 + our CPU validation): linear-layer
+composition matches a single-pass recompute to ~6e-5 relative norm at layer 0
+(FP16 noise); fp64 ~1e-16 / fp32 ~8e-8 in reference tests; end-to-end
+task-level deviation is model-family dependent (near-lossless for
+strong-decay dense-transition families; up to ~3–4 points for scalar
+slow-decay families).
+
+### 3.3 Action: Verification by Calibration — and by Utility
 
 For actions there is generally no cheap deterministic verifier; the object of
 verification is the probability that the action will actually occur:
@@ -131,11 +167,25 @@ verification is the probability that the action will actually occur:
 p_t(a) = P(A_{t+1} = a | S_≤t)
 ```
 
-The system speculates only when a calibrated confidence clears a threshold:
+**Coverage is not utility (v1.1).** A conformal guarantee
+`P(A_{t+1} ∈ A_t) ≥ 1−α` only says the true action is probably in the set;
+it says nothing about whether speculating on it is profitable (a 100%-certain
+1 ms action with a 3 ms prefetch cost is a loss; a 65% 500 ms action with a
+20 ms cost may be a win). The action-layer decision rule is therefore:
 
-- Acceptance set `A(S) = { a : calibrated_conf(a|S) ≥ τ }`.
-- `|A(S)| = 1` → aggressive single speculation.
-- `|A(S)| > 1` → multi-candidate prefetch, or branch speculation (Track D),
+```
+Speculate(a)  ⟺  CalibratedRisk(a) ≤ ε  ∧  E[ U(a) | S_t ] > 0
+```
+
+i.e., calibrated risk **and** positive expected utility under the model of
+§4 — conformal calibration and the utility gate are joint conditions, not
+sequential stages.
+
+Operationalization via the acceptance set:
+
+- `A(S) = { a : calibrated_conf(a|S) ≥ τ }`.
+- `|A(S)| = 1` → aggressive single speculation (subject to the rule above).
+- `|A(S)| > 1` → multi-candidate prefetch, branch speculation (Track D),
   or abstain.
 
 **Hard requirement: online / weighted conformal calibration.** Vanilla
@@ -169,7 +219,8 @@ Per-speculation net utility:
 U(a) = L_hidden(a) − C_spec(a) − C_resource(a) − C_failure(a)
 ```
 
-Speculate iff `U(a) > 0` with a confidence margin.
+Speculate iff `U(a) > 0` (jointly with the action-layer rule of §3.3 where
+applicable).
 
 - **`L_hidden`** — latency actually removed from the critical path:
   `L_hidden = L_baseline − L_residual`. Report also the
@@ -179,12 +230,20 @@ Speculate iff `U(a) > 0` with a confidence margin.
   different objectives and must not be averaged into one number.
 - **`C_spec`** — cost of the speculative work itself: compute, memory
   bandwidth, network, KV, retrieval, tool invocation, staging.
-- **`C_resource`** — queueing/contention cost, mandatory:
-  `C_resource = ΔW_q(λ, ρ) + ΔB + ΔM`, the marginal impact of speculative
-  work on queue waiting, bandwidth, and memory across concurrent requests.
-  This term is what flips the sign of `U` between low and high concurrency
-  (the ECHO lesson): speculative prefetch is profitable at low λ and can be
-  anti-profitable at high λ.
+- **`C_resource`** (v1.1, vectorized) — contention cost with explicit unit
+  conversion (time, bandwidth, and memory are NOT summed raw):
+
+  ```
+  C_resource = c_q·ΔW_q + c_b·ΔBW + c_m·ΔMEM + c_n·ΔNET = cᵀΔR
+  ```
+
+  `ΔW_q` = marginal queueing delay added to co-running requests;
+  `ΔBW`, `ΔMEM`, `ΔNET` = marginal bandwidth, memory-occupancy, and network
+  consumption. Coefficients `c_q, c_b, c_m, c_n` convert each resource to a
+  common latency-equivalent cost and are calibrated per deployment (they are
+  policy knobs, not constants of nature). This term flips the sign of `U`
+  between low and high concurrency (the ECHO lesson): speculative prefetch is
+  profitable at low λ and can be anti-profitable at high λ.
 - **`C_failure`** — failure-cost class per object (table in §2), including
   rollback/staging cost for effectful actions and m× amplification for
   branches.
@@ -197,6 +256,9 @@ latency, high calibrated confidence.
 
 ## 5. Research Tracks
 
+Execution order is **A → C → B → D**: first prove money is on the table,
+then build on unique assets, then invest in prediction, then amplification.
+
 ### Track A — Side-Effect-Free Speculative Execution (engineering mainline)
 
 Pipeline:
@@ -208,37 +270,51 @@ predict next action → READ/SEARCH/RETRIEVE → PREFETCH → TOKENIZE
 
 Goal: critical-path latency reduction, not FLOPs.
 
-Experiment matrix: baseline vs. speculation across prediction accuracy,
-hidden latency, speculation overhead, queueing impact (λ sweep), end-to-end
-p50/p95/p99; ablations per stage (prefetch / tokenize / KV prep / prefill).
-Milestone M-A1: measurable p50 TTFT/step-latency reduction on an agentic
-trace with zero correctness change; M-A2: λ-threshold characterization.
+**M-A0 (go/no-go gate): Perfect-Future Oracle Benchmark.** Before building
+any predictor, replay a complete agent trace with the *ground-truth* future
+action as the oracle, and compare four arms: perfect-oracle prefetch /
+predictor-arm / random-prefetch / no-speculation. Measure Latency Hidden
+Ratio, queueing penalty (λ sweep), and end-to-end p50/p95/p99. If the
+perfect oracle hides only a few percent of the critical path, Tracks B/D are
+de-prioritized regardless of predictor quality; if it hides 30–50%, the
+program is validated for investment. No grammar, no conformal, no training
+in this phase.
 
-### Track B — Implicit Grammar + Online Calibration (research mainline)
+M-A1: measurable p50 TTFT/step-latency reduction on an agentic trace with a
+real predictor and zero correctness change. M-A2: λ-threshold
+characterization (`cᵀΔR` calibration).
+
+### Track B — Utility-Calibrated Action Oracle (research mainline)
 
 Pipeline:
 
 ```
-trajectories → workflow mining → candidate actions
-→ online/weighted conformal calibration → action set A(S)
+oracle sources (workflow grammar / retrieval / LLM predictor /
+agent memory / tool schema)
+→ calibrated action oracle (online/weighted conformal)
+→ utility gate E[U]>0 (§3.3, §4)
 → speculative execution (Track A runtime)
 ```
 
+Grammar is one oracle source among several; the named component is the
+oracle, not the mining.
+
 Research questions:
 
-1. Does the mined grammar generalize across tasks and tool sets (the
-   overfitting failure mode of workflow mining)?
+1. Does the oracle generalize across tasks and tool sets (the overfitting
+   failure mode of workflow mining)?
 2. Does online conformal maintain coverage under distribution shift?
-3. Is calibrated confidence aligned with realized latency utility?
-4. Do mispredictions create systematic resource waste (C_failure audit)?
+3. Is calibrated confidence aligned with realized utility
+   (`E[U]>0` precision/recall)?
+4. Do mispredictions create systematic resource waste (`C_failure` audit)?
 
 Related-work defense: workflow mining / process mining / Agent Workflow
 Memory already cover trajectory→workflow induction. **Claim is NOT grammar
-mining; claim is "calibrated grammar as a speculative execution oracle"** —
-the middle layer (calibrated action oracle with coverage guarantees) is the
+mining; claim is a utility-calibrated action oracle as a speculative
+execution primitive** — the joint calibration×utility middle layer is the
 novel component.
 
-### Track C — State-Tree Speculation as Serving Infrastructure (unique asset)
+### Track C — Cached-State Forking (unique asset)
 
 Positioning (mandatory, verbatim spirit):
 
@@ -248,16 +324,38 @@ Positioning (mandatory, verbatim spirit):
 > reusable serving primitive, with explicit integration of segment-level
 > PIC state reuse (`(T_C, S_{C|0})`) and NPU execution.
 
-Non-claim: tree-structured state speculation itself. Claim: **state
-speculation as serving infrastructure** — fork-and-compose GDN state at
-branch points as a cheap primitive (few 128×128 matrices vs. full KV trees),
-integrated with the segment cache.
+The named primitive is **Cached-State Forking**: the segment cache supplies
+certified parent states (`S0` from PIC reuse), and state fork composes
+multiple futures from them:
 
-First experiment (M-C1): implement a 3-branch GDN state fork on top of
-`vllm_ascend/ops/hypic/state.py::compose_states`; measure branch cost vs.
-acceptance gain against single-sequence drafting; verify against the
-bounded-domain discipline of §3.2. M-C2: integration with segment-cache
-hit states; M-C3: NPU kernel path (Triton → AscendC consistency check).
+```
+                 Segment Cache (certified parent state S0)
+                    │
+              ┌─────┴─────┐
+              ▼           ▼
+        compose(A)   compose(B)
+              │           │
+             S1          S2
+```
+
+This is why the work belongs to Hypic/PIC serving rather than being "another
+Bole-style decode algorithm": PIC provides *cached states*, state tree
+provides *forking from cached states*. Non-claim: tree-structured state
+speculation itself.
+
+**Metrics (v1.1, re-scoped).** Acceptance gain is demoted to an intermediate
+diagnostic; the primitive metrics are:
+
+- **State Fork Cost Ratio** = `C_fork+compose / C_full state recompute`;
+- **Branch State Coverage** = candidate future states maintainable per fixed
+  state budget;
+- **End-to-end utility** = final arbiter (p50/p95 latency, `U` per §4).
+
+M-C1: implement a 3-branch GDN state fork on top of
+`vllm_ascend/ops/hypic/state.py::compose_states`; measure the two primitive
+metrics and fork overhead; verify domain certificates (§3.2) hold.
+M-C2: integration with segment-cache hit states. M-C3: NPU kernel path
+(Triton → AscendC consistency check).
 
 ### Track D — Branch Speculation (conditional, last)
 
@@ -281,8 +379,10 @@ effectful branches; high-concurrency regimes.
 | Latency Hidden Ratio | `L_hidden / L_baseline` | action / branch |
 | FLOPs saved | baseline − actual (per generated token) | token / state |
 | Overhead ratio | `C_spec / L_baseline` | all |
-| Queueing impact | `ΔW_q(λ, ρ)` at swept λ | all |
+| Queueing impact | `cᵀΔR` at swept λ | all |
 | Failure cost | per-class audit (§2 table) | all |
+| State Fork Cost Ratio | `C_fork+compose / C_full recompute` | state |
+| Branch State Coverage | future states per fixed state budget | state |
 | End-to-end | p50 / p95 / p99 TTFT and per-step latency | system |
 
 No track may report acceptance rate as a headline metric without the
@@ -304,24 +404,37 @@ corresponding utility.
 | ECHO | verification cost under concurrency | first contention analysis |
 | MCTS / ToT | multi-branch search | (Track D is speculation, not search) |
 
-Residual claim (the intersection that remains):
+Boundary matrix (v1.1) — the residual intersection is four-dimensional:
+
+| | Predict | Execute ahead | Verify | Resource-aware |
+|---|---|---|---|---|
+| ToolSpec | ✓ | ✗ | ✓ | ✗ |
+| LLMCompiler | ✓ | ✓ | planner-level | limited |
+| Cursor | ✓ | ✓ | staging | ✗ |
+| Bole | ✓ | ✓ | construction | ✗ |
+| Hypic/PIC | ✗ | ✓ | construction-ish | ✓ |
+| **Ours** | ✓ | ✓ | **heterogeneous** | **✓** |
+
+Residual claim:
 
 > **Heterogeneous verification semantics (recompute / construction /
-> calibration / transaction) + calibrated action speculation with online
-> conformal guarantees + resource-aware utility model + serving-level
+> calibration / transaction) + utility-calibrated action speculation with
+> online conformal guarantees + resource-aware utility model + serving-level
 > integration on NPU.**
 
 ---
 
 ## 8. Success Criteria
 
-- Track A: p50 critical-path latency −≥20% on agentic trace at matched
-  correctness; documented λ-threshold.
+- Track A: M-A0 oracle study quantifies the latency ceiling; M-A1 achieves
+  p50 critical-path latency −≥20% on agentic trace at matched correctness;
+  documented λ-threshold.
 - Track B: conformal coverage within ±2% of target α under induced
-  distribution shift; grammar-transfer evaluation across ≥3 task families.
-- Track C: 3-branch fork cost < 10% of one Target forward per branch;
-  acceptance gain vs. single-sequence draft ≥ +15% at equal budget;
-  state-level parity within bounded-domain tolerance (§3.2).
+  distribution shift; oracle-transfer evaluation across ≥3 task families;
+  `E[U]>0` precision/recall reported.
+- Track C: State Fork Cost Ratio ≪ 1 with Branch State Coverage ≥3;
+  domain certificates hold on all composed/forked states; end-to-end utility
+  positive at equal budget.
 - Track D: positive `U_branch` demonstrated inside the declared activation
   region, negative outside it (both results required).
 
@@ -330,9 +443,11 @@ Residual claim (the intersection that remains):
 ## 9. Milestones
 
 1. **M0 (this document)**: shared definitions, utility model, metrics.
-2. **M-A1/A2**: Track A engineering validation.
-3. **M-C1**: Track C fork prototype on `compose_states` (2–4 weeks est.).
-4. **M-B1**: Track B calibration prototype + coverage evaluation.
-5. **M-D1**: Track D conditional evaluation.
-6. **M-Z**: consolidated paper draft — "Speculative Execution with
+2. **M-A0**: perfect-future oracle benchmark (go/no-go gate).
+3. **M-C1**: Cached-State Forking prototype on `compose_states`.
+4. **M-A1/A2**: Track A predictor integration + λ calibration.
+5. **M-B1**: Track B utility-calibrated oracle prototype + coverage
+   evaluation.
+6. **M-D1**: Track D conditional evaluation.
+7. **M-Z**: consolidated paper draft — "Speculative Execution with
    Heterogeneous Verification".
