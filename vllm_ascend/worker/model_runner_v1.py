@@ -4565,15 +4565,15 @@ class NPUModelRunner(GPUModelRunner):
                                 k_page_bytes = attn_tensor_page_size // num_blocks
                                 ssm_page_bytes, conv_page_bytes = hybrid_mamba_pages.get(
                                     layer_name, (k_page_bytes, 0))
-                                if (k_page_bytes != ssm_page_bytes
-                                        and 2 * k_page_bytes <= ssm_page_bytes):
+                                if 2 * k_page_bytes == ssm_page_bytes:
                                     # "strided" in-page split: block i's K and V
                                     # pages live inside mamba ssm slot i, so
                                     # same-id containment holds for any block-id
                                     # assignment and cross-group byte collisions
-                                    # (D8) are structurally impossible. The
-                                    # config-time guard guarantees the geometry
-                                    # below is expressible.
+                                    # (D8) are structurally impossible. Selected
+                                    # only at 2*k == ssm (the zero-capacity-cost
+                                    # geometry); the config-time guard guarantees
+                                    # the geometry below is expressible.
                                     if enable_fa_quant(self.vllm_config):
                                         raise RuntimeError(
                                             "The in-page strided hybrid KV layout "

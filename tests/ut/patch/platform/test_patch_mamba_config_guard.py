@@ -10,10 +10,13 @@ Two layers are pinned here (Qwen3.5-4B, bf16, Atlas 910B3 byte constants):
 
 * `_hybrid_pool_layout` / `_strided_layout_infeasibility` — the post-fix
   policy. The runner now derives the FA views from the layout plan, so the
-  legacy "unsafe"/"shifted" classes no longer gate admission: 512/256/128
-  use the in-page strided split (FA K/V live inside the same-id ssm slot),
-  640/768/2048 use disjoint spans behind an enlarged padded page, and only
-  sizes the strided split cannot express (e.g. 384) are rejected.
+  legacy "unsafe"/"shifted" classes no longer gate admission: 512 uses the
+  in-page strided split (FA K/V tile the ssm slot exactly; the only
+  zero-capacity-cost strided geometry — smaller sizes pay the measured
+  ~2.9x FIA strided slow path for no offsetting benefit), 128/256/640/768/
+  2048 use disjoint spans behind an enlarged padded page (contiguous views,
+  fast FIA), and only sizes the strided split cannot express (e.g. 384)
+  are rejected.
 """
 
 import pytest
@@ -77,16 +80,18 @@ def test_layout_plan_natural_alignment_keeps_legacy_page():
     assert page == 1024 * KV_PAGE_PER_TOKEN + CONV_PAGE
 
 
-@pytest.mark.parametrize("block_size", [128, 256, 512])
-def test_layout_plan_small_blocks_use_strided_in_page_split(block_size):
-    layout, page = plan(block_size)
+def test_layout_plan_512_uses_strided_in_page_split():
+    # 512 is the only zero-capacity-cost strided geometry (2*k == ssm page):
+    # K+V kernel blocks tile the ssm slot exactly. Smaller sizes would pay
+    # the measured ~2.9x FIA strided slow path for nothing, so they go
+    # disjoint instead.
+    layout, page = plan(512)
     assert layout == "strided"
-    # padded page unchanged: the ssm page hosts both K and V in place
     assert page == SSM_PAGE + CONV_PAGE
 
 
-@pytest.mark.parametrize("block_size", [640, 768, 2048, 4096])
-def test_layout_plan_mid_and_large_blocks_use_disjoint_spans(block_size):
+@pytest.mark.parametrize("block_size", [128, 256, 640, 768, 2048, 4096])
+def test_layout_plan_non_perfect_blocks_use_disjoint_spans(block_size):
     layout, page = plan(block_size)
     assert layout == "disjoint"
     # enlarged page: attention K+V spans sit above the [conv|ssm] spans

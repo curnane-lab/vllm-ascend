@@ -81,8 +81,17 @@ def _hybrid_pool_layout(
       "strided":  FA K/V become 4-D as_strided views whose kernel-block
                   stride is ssm_page/chunk, so block i's K and V pages live
                   inside mamba ssm slot i. Same-id containment holds for any
-                  block-id assignment (structural safety). Requires
-                  2*k_page <= ssm page; the padded page is unchanged.
+                  block-id assignment (structural safety). Selected only when
+                  2*k_page == ssm_page — the one geometry where the split
+                  costs zero pool capacity. NOTE: FIA paged decode takes a
+                  measured ~2.9x slow path on such strided views
+                  (exp_kv results/d9_fia_stride_perf.log), so looser
+                  geometries must NOT use it; they go "disjoint".
+      "disjoint": the padded page is enlarged to attn_page + ssm + conv so
+                  the [conv|ssm] spans and the FA [pad|K|V] spans occupy
+                  disjoint byte ranges; every view stays contiguous (FIA
+                  keeps its fast path). Costs ssm_block_page_size extra pool
+                  bytes per block.
       "disjoint": the padded page is enlarged to attn_page + ssm + conv so
                   the [conv|ssm] spans and the FA [pad|K|V] spans occupy
                   disjoint byte ranges; every view stays contiguous. Costs
@@ -96,7 +105,7 @@ def _hybrid_pool_layout(
     padded_page = max(attn_page, ssm_block_page_size) + conv_block_page_size
     if k_page == ssm_block_page_size:
         return "legacy", padded_page
-    if not use_mla and 2 * k_page <= ssm_block_page_size:
+    if not use_mla and 2 * k_page == ssm_block_page_size:
         return "strided", padded_page
     return "disjoint", attn_page + ssm_block_page_size + conv_block_page_size
 
