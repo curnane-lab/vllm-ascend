@@ -1,5 +1,6 @@
 # mypy: ignore-errors
 import math
+import os
 
 import vllm.model_executor.models.config
 from vllm.logger import logger
@@ -92,9 +93,58 @@ def verify_and_update_config(cls, vllm_config) -> None:
         attn_token_page_size = 2 * attn_head_size * attn_num_kv_heads * get_dtype_size(kv_cache_dtype)
 
     attn_block_size = kernel_block_size * cdiv(ssm_block_page_size, kernel_block_size * attn_single_token_k_page_size)
-    assert attn_single_token_k_page_size * attn_block_size == ssm_block_page_size, (
-        "Cannot align ssm_page_size and attn_page_size."
-    )
+    # B-2 experiment: allow forcing a smaller hybrid block size via env var.
+    # The default path is byte-identical to upstream behavior; the override
+    # deliberately breaks the "K page == ssm page" equality to shrink the
+    # EAGLE/MTP drop-one-block recompute tax.
+    _force_bs = int(os.environ.get("VLLM_ASCEND_HYBRID_BLOCK_SIZE", "0"))
+    if _force_bs > 0:
+        # D8 根因守卫（详见 results/bs512_rootcause.md）：
+        # 混合池把 FA 视图 [pad|K|V] 与 mamba 视图 [conv|ssm] 叠在同一物理张量上，
+        # 安全性要求 ① K页==ssm页 且 pad==conv（完美逐 id 互锁，默认 1024 命中），
+        # 或 ② pad>conv（FA 区被推入高地址段，实际负载的 mamba 活块 id 达不到）。
+        # 其余情形（pad≤conv 且 K页≠ssm页，如 512/640/768）会发生跨组字节碰撞：
+        # mamba ssm 就地写会覆写其它请求的 FA K → NaN → 输出坍塌（静默！）。
+        _k_page = attn_single_token_k_page_size * _force_bs
+        _attn_page = 2 * _k_page
+        _page = max(_attn_page, ssm_block_page_size) + conv_block_page_size
+        _pad = _page - _attn_page
+        _perfect_interlock = (_k_page == ssm_block_page_size and _pad == conv_block_page_size)
+        _shifted_safe = _pad > conv_block_page_size
+        if not (_perfect_interlock or _shifted_safe):
+            raise ValueError(
+                f"VLLM_ASCEND_HYBRID_BLOCK_SIZE={_force_bs} is UNSAFE for hybrid "
+                f"pool layout: per-block K page {_k_page} B != ssm page "
+                f"{ssm_block_page_size} B and per-block FA pad {_pad} B <= conv "
+                f"page {conv_block_page_size} B. GDN in-place ssm writes would "
+                f"overwrite other requests' attention K cache (silent NaN "
+                f"corruption). Use the natural aligned block size "
+                f"({attn_block_size}) or a size with pad > conv (e.g. smaller "
+                f"blocks whose FA region is shifted beyond live mamba blocks)."
+            )
+        if _shifted_safe and not _perfect_interlock:
+            logger.warning(
+                "VLLM_ASCEND_HYBRID_BLOCK_SIZE=%d: provisionally safe — FA region "
+                "is shifted past the mamba state region by %d B/block; safe only "
+                "while live mamba blocks stay below ~N*(%d)/(%d) (N=pool blocks). "
+                "Not structurally guaranteed.",
+                _force_bs, _pad - conv_block_page_size, _pad - conv_block_page_size,
+                ssm_block_page_size,
+            )
+        logger.warning(
+            "VLLM_ASCEND_HYBRID_BLOCK_SIZE=%d: overriding hybrid page alignment "
+            "(natural attn_block_size=%d, ssm_block_page_size=%d B). Attention K "
+            "page per block (%d B) != ssm page. Experimental.",
+            _force_bs,
+            attn_block_size,
+            ssm_block_page_size,
+            attn_single_token_k_page_size * _force_bs,
+        )
+        attn_block_size = _force_bs
+    else:
+        assert attn_single_token_k_page_size * attn_block_size == ssm_block_page_size, (
+            "Cannot align ssm_page_size and attn_page_size."
+        )
 
     # override attention block size if either (a) the
     # user has not set it or (b) the user has set it
@@ -109,12 +159,16 @@ def verify_and_update_config(cls, vllm_config) -> None:
     # compute new attention page size
     attn_page_size = cache_config.block_size * attn_token_page_size
 
-    # pad mamba page size for conv_blocks
+    # pad mamba page size for conv_blocks. The ssm state must always fit in
+    # the padded page, hence the max() with ssm_block_page_size (only binding
+    # when the B-2 env override shrinks attn_page_size below the ssm page;
+    # the default path is unchanged because attn_page_size >= ssm page there).
+    _mamba_page_target = max(attn_page_size, ssm_block_page_size) + conv_block_page_size
     if (
         cache_config.mamba_page_size_padded is None
-        or cache_config.mamba_page_size_padded != attn_page_size + conv_block_page_size
+        or cache_config.mamba_page_size_padded != _mamba_page_target
     ):
-        cache_config.mamba_page_size_padded = attn_page_size + conv_block_page_size
+        cache_config.mamba_page_size_padded = _mamba_page_target
         mamba_padding_pct = 100 * conv_block_page_size / cache_config.mamba_page_size_padded
         logger.info(
             "Padding mamba page size by %.2f%% to ensure "
