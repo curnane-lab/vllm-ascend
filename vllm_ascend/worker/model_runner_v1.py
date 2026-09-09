@@ -19,6 +19,7 @@
 
 import logging
 import math
+import os
 import sys
 import time
 from collections import defaultdict
@@ -3859,6 +3860,30 @@ class NPUModelRunner(GPUModelRunner):
         kv_cache_raw_tensors = self._allocate_kv_cache_tensors(kv_cache_config)
         # Change the memory buffer to the desired shape
         kv_caches = self._reshape_kv_cache_tensors(kv_cache_config, kv_cache_raw_tensors)
+
+        # D8 instrumentation (temporary, env-guarded): dump pool layout map.
+        if os.environ.get("D8_LAYOUT"):
+            import json as _json
+
+            _tens = [
+                {"shared_by": list(t.shared_by), "size": t.size}
+                for t in kv_cache_config.kv_cache_tensors
+            ]
+            _views = []
+            for _ln, _kc in kv_caches.items():
+                _ts = list(_kc) if isinstance(_kc, (list, tuple)) else [_kc]
+                for _i, _tt in enumerate(_ts):
+                    if torch.is_tensor(_tt):
+                        _views.append({
+                            "layer": _ln,
+                            "idx": _i,
+                            "bytes": _tt.numel() * _tt.element_size(),
+                            "data_ptr": _tt.data_ptr(),
+                            "shape": list(_tt.shape),
+                        })
+            with open(os.environ["D8_LAYOUT"], "w") as _f:
+                _json.dump({"tensors": _tens, "views": _views}, _f, indent=1)
+            logger.warning("D8_LAYOUT written to %s", os.environ["D8_LAYOUT"])
 
         # Set up cross-layer KV cache sharing
         for layer_name, target_layer_name in self.shared_kv_cache_layers.items():

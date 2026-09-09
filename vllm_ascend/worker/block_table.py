@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import os as _os  # D8 instrumentation
+import json as _json  # D8 instrumentation
 from vllm.distributed import get_dcp_group
 from vllm.utils.math_utils import cdiv
 from vllm.v1.attention.backends.utils import PAD_SLOT_ID
@@ -458,6 +460,21 @@ class MultiGroupBlockTable:
     def commit_block_table(self, num_reqs: int) -> None:
         for block_table in self.block_tables:
             block_table.commit_block_table(num_reqs)
+        # D8 instrumentation (temporary, env-guarded): dump per-group block ids.
+        _d8bt = _os.environ.get("D8_BT")
+        if _d8bt:
+            rec = {"groups": []}
+            for bt in self.block_tables:
+                used = int(bt.num_blocks_per_row[:num_reqs].sum()) if hasattr(bt, "num_blocks_per_row") else 0
+                rows = bt.get_numpy_array()[:num_reqs, :8]
+                rec["groups"].append({
+                    "is_mamba": bool(getattr(bt, "is_mamba_group", False)),
+                    "block_size": bt.physical_block_size,
+                    "rows_nonzero": [sorted(set(r[r != 0].tolist())) for r in rows],
+                    "used_cols": used,
+                })
+            with open(_d8bt, "a") as _f:
+                _f.write(_json.dumps(rec) + "\n")
 
     def clear(self) -> None:
         for block_table in self.block_tables:
