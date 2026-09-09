@@ -270,6 +270,54 @@ def get_tp_context(drafter):
     return getattr(drafter, "tp_group_context", nullcontext())
 
 
+def _build_strided_hybrid_kv_views(
+    raw_tensor: torch.Tensor,
+    kv_cache_spec: AttentionSpec,
+    kv_cache_shape: tuple[int, ...],
+    num_blocks: int,
+    block_size_chunk: int,
+    ssm_page_bytes: int,
+    conv_page_bytes: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Build strided FA K/V views for a hybrid attn+mamba pool page.
+
+    The mamba views of the pool keep the tensor-level [conv|ssm] spans (the
+    GDN kernels address the ssm state pool by natural block size). Block i's
+    K and V pages are placed inside the ssm slot of block i: the kernel-block
+    stride is ssm_page_bytes // block_size_chunk, and each V kernel block sits
+    one natural K kernel block behind its K block. Same-id containment holds
+    for any block-id assignment, so cross-group byte collisions (D8) are
+    structurally impossible. The config-time guard
+    (patch_mamba_config._strided_layout_infeasibility) guarantees the
+    geometry is expressible.
+    """
+    dtype = kv_cache_spec.dtype
+    dtype_size = get_dtype_size(dtype)
+    sub_slot_bytes = ssm_page_bytes // block_size_chunk
+    k_shape = kv_cache_shape[1:]
+    v_shape = k_shape
+    if hasattr(kv_cache_spec, "head_size_v"):
+        v_shape = (*kv_cache_shape[1:-1], kv_cache_spec.head_size_v)
+    k_block_bytes = int(np.prod(k_shape[1:])) * dtype_size
+    v_block_bytes = int(np.prod(v_shape[1:])) * dtype_size
+    assert ssm_page_bytes % block_size_chunk == 0
+    assert sub_slot_bytes % 512 == 0
+    assert k_block_bytes + v_block_bytes <= sub_slot_bytes
+    assert (num_blocks * conv_page_bytes) % dtype_size == 0
+    flat = raw_tensor.view(dtype)
+    block_stride = sub_slot_bytes // dtype_size
+    conv_span = flat.storage_offset() + num_blocks * conv_page_bytes // dtype_size
+    k_cache = torch.as_strided(flat,
+                               size=k_shape,
+                               stride=(block_stride, k_shape[2] * k_shape[3], k_shape[3], 1),
+                               storage_offset=conv_span)
+    v_cache = torch.as_strided(flat,
+                               size=v_shape,
+                               stride=(block_stride, v_shape[2] * v_shape[3], v_shape[3], 1),
+                               storage_offset=conv_span + k_block_bytes // dtype_size)
+    return k_cache, v_cache
+
+
 class ExecuteModelState(NamedTuple):
     """Ephemeral cached state transferred between execute_model() and
     sample_tokens(), after execute_model() returns None."""
@@ -4275,6 +4323,30 @@ class NPUModelRunner(GPUModelRunner):
         """
         kv_caches: dict[str, torch.Tensor] = {}
         layer_kv_cache_spec = self._get_layer_kv_cache_specs(kv_cache_config)
+        # For hybrid attn+mamba pools, map every layer sharing a physical pool
+        # tensor to the mamba per-block page sizes (ssm, conv) of that pool.
+        # The full-attention branch below uses them to pick the FA view layout
+        # (cf. _hybrid_pool_layout in patch_mamba_config.py).
+        hybrid_mamba_pages: dict[str, tuple[int, int]] = {}
+        if self.hybrid_with_attn_and_mamba:
+            for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
+                mamba_spec = None
+                for ln in kv_cache_tensor.shared_by:
+                    spec = layer_kv_cache_spec.get(ln)
+                    if isinstance(spec, MambaSpec):
+                        mamba_spec = spec
+                        break
+                if mamba_spec is None:
+                    continue
+                state_pages = [
+                    math.prod(shape) * get_dtype_size(state_dtype)
+                    for shape, state_dtype in zip(mamba_spec.shapes, mamba_spec.dtypes)
+                ]
+                ssm_page_bytes = max(state_pages)
+                # Pure linear-attention models have a single ssm state, no conv.
+                conv_page_bytes = min(state_pages) if len(state_pages) > 1 else 0
+                for ln in kv_cache_tensor.shared_by:
+                    hybrid_mamba_pages[ln] = (ssm_page_bytes, conv_page_bytes)
         for group in self._kv_cache_spec_attn_group_iterator():
             attn_backend = group.backend
             current_kv_cache_spec = group.kv_cache_spec
@@ -4490,6 +4562,29 @@ class NPUModelRunner(GPUModelRunner):
                                 attn_tensor_page_size = int(np.prod(kv_cache_shape[1:])) * get_dtype_size(
                                     current_kv_cache_spec.dtype
                                 )
+                                k_page_bytes = attn_tensor_page_size // num_blocks
+                                ssm_page_bytes, conv_page_bytes = hybrid_mamba_pages.get(
+                                    layer_name, (k_page_bytes, 0))
+                                if (k_page_bytes != ssm_page_bytes
+                                        and 2 * k_page_bytes <= ssm_page_bytes):
+                                    # "strided" in-page split: block i's K and V
+                                    # pages live inside mamba ssm slot i, so
+                                    # same-id containment holds for any block-id
+                                    # assignment and cross-group byte collisions
+                                    # (D8) are structurally impossible. The
+                                    # config-time guard guarantees the geometry
+                                    # below is expressible.
+                                    if enable_fa_quant(self.vllm_config):
+                                        raise RuntimeError(
+                                            "The in-page strided hybrid KV layout "
+                                            "(non-natural block size) does not support "
+                                            "FA KV quantization.")
+                                    k_cache, v_cache = _build_strided_hybrid_kv_views(
+                                        raw_k_tensor, current_kv_cache_spec,
+                                        kv_cache_shape, num_blocks, block_size_chunk,
+                                        ssm_page_bytes, conv_page_bytes)
+                                    kv_caches[layer_name] = (k_cache, v_cache)
+                                    continue
                                 conv_block_padding_size = raw_k_tensor.numel() - attn_tensor_page_size * 2
                                 raw_kv_tensor = raw_k_tensor[conv_block_padding_size:]
                                 raw_k_tensor = raw_kv_tensor[:attn_tensor_page_size]
