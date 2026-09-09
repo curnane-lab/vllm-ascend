@@ -28,6 +28,38 @@ def _using_kv_store(vllm_config) -> bool:
     return False
 
 
+def _classify_hybrid_block_size(
+    block_size: int,
+    attn_single_token_k_page_size: int,
+    ssm_block_page_size: int,
+    conv_block_page_size: int,
+) -> tuple[str, int, int]:
+    """Classify a hybrid-pool block size by byte-level layout safety.
+
+    The unified pool overlays FA [pad|K|V] and mamba [conv|ssm] views on
+    the same physical tensors, so cross-group aliasing is impossible only
+    when a block id maps to identical byte ranges in both views.
+
+    Returns (level, k_page, pad) where level is one of:
+      "perfect": K page == ssm page and pad == conv (per-id interlock);
+      "shifted": pad > conv (FA region shifted past the mamba block ids a
+                 realistic load can reach — empirical, has a concurrency
+                 cliff, not structural);
+      "unsafe":  pad <= conv and K page != ssm page (cross-group byte
+                 collision; GDN in-place ssm writes overwrite other
+                 requests' FA K cache — silent NaN corruption).
+    """
+    k_page = attn_single_token_k_page_size * block_size
+    attn_page = 2 * k_page
+    page = max(attn_page, ssm_block_page_size) + conv_block_page_size
+    pad = page - attn_page
+    if k_page == ssm_block_page_size and pad == conv_block_page_size:
+        return "perfect", k_page, pad
+    if pad > conv_block_page_size:
+        return "shifted", k_page, pad
+    return "unsafe", k_page, pad
+
+
 @classmethod
 def verify_and_update_config(cls, vllm_config) -> None:
     """
@@ -105,13 +137,10 @@ def verify_and_update_config(cls, vllm_config) -> None:
         # 或 ② pad>conv（FA 区被推入高地址段，实际负载的 mamba 活块 id 达不到）。
         # 其余情形（pad≤conv 且 K页≠ssm页，如 512/640/768）会发生跨组字节碰撞：
         # mamba ssm 就地写会覆写其它请求的 FA K → NaN → 输出坍塌（静默！）。
-        _k_page = attn_single_token_k_page_size * _force_bs
-        _attn_page = 2 * _k_page
-        _page = max(_attn_page, ssm_block_page_size) + conv_block_page_size
-        _pad = _page - _attn_page
-        _perfect_interlock = (_k_page == ssm_block_page_size and _pad == conv_block_page_size)
-        _shifted_safe = _pad > conv_block_page_size
-        if not (_perfect_interlock or _shifted_safe):
+        _safety, _k_page, _pad = _classify_hybrid_block_size(
+            _force_bs, attn_single_token_k_page_size, ssm_block_page_size,
+            conv_block_page_size)
+        if _safety == "unsafe":
             raise ValueError(
                 f"VLLM_ASCEND_HYBRID_BLOCK_SIZE={_force_bs} is UNSAFE for hybrid "
                 f"pool layout: per-block K page {_k_page} B != ssm page "
@@ -122,7 +151,7 @@ def verify_and_update_config(cls, vllm_config) -> None:
                 f"({attn_block_size}) or a size with pad > conv (e.g. smaller "
                 f"blocks whose FA region is shifted beyond live mamba blocks)."
             )
-        if _shifted_safe and not _perfect_interlock:
+        if _safety == "shifted":
             logger.warning(
                 "VLLM_ASCEND_HYBRID_BLOCK_SIZE=%d: provisionally safe — FA region "
                 "is shifted past the mamba state region by %d B/block; safe only "
