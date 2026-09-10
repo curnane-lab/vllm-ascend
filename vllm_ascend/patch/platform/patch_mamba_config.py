@@ -1,6 +1,5 @@
 # mypy: ignore-errors
 import math
-import os
 
 import vllm.model_executor.models.config
 from vllm.logger import logger
@@ -8,6 +7,8 @@ from vllm.model_executor.models import ModelRegistry
 from vllm.model_executor.models.config import MambaModelConfig
 from vllm.utils.math_utils import cdiv
 from vllm.utils.torch_utils import STR_DTYPE_TO_TORCH_DTYPE, get_dtype_size
+
+from vllm_ascend import envs
 
 
 def _using_kv_store(vllm_config) -> bool:
@@ -207,7 +208,7 @@ def verify_and_update_config(cls, vllm_config) -> None:
     # The default path is byte-identical to upstream behavior; the override
     # deliberately breaks the "K page == ssm page" equality to shrink the
     # EAGLE/MTP drop-one-block recompute tax.
-    _force_bs = int(os.environ.get("VLLM_ASCEND_HYBRID_BLOCK_SIZE", "0"))
+    _force_bs = envs.VLLM_ASCEND_HYBRID_BLOCK_SIZE
     if _force_bs > 0:
         # PR-1 structural fix is in effect: _reshape_kv_cache_tensors now
         # derives the FA view layout from _hybrid_pool_layout (in-page strided

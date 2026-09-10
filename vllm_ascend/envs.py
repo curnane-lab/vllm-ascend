@@ -104,6 +104,13 @@ env_variables: dict[str, Callable[[], Any]] = {
     # Control the aclrtMemcpyBatchAsync compile path for KV cache offloading.
     # "1": force enable, "0": force disable, None: auto-detect from CANN headers.
     "VLLM_ASCEND_ENABLE_BATCH_MEMCPY": lambda: os.getenv("VLLM_ASCEND_ENABLE_BATCH_MEMCPY", None),
+    # Experimental: force a smaller block size (tokens) for the hybrid
+    # attn+mamba KV pool of GDN-style hybrid models, shrinking the EAGLE/MTP
+    # drop-one-block recompute tax. 0 (default) keeps the natural alignment.
+    # Non-natural sizes are routed to structural page layouts
+    # (in-page strided split or disjoint padded spans); geometries the layout
+    # cannot express are rejected loudly at config time.
+    "VLLM_ASCEND_HYBRID_BLOCK_SIZE": lambda: int(os.getenv("VLLM_ASCEND_HYBRID_BLOCK_SIZE", "0")),
 }
 
 # end-env-vars-definition
