@@ -37,14 +37,11 @@ CONV_PAGE = 48 * 1024
 
 
 def classify(block_size):
-    return _classify_hybrid_block_size(
-        block_size, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)[0]
+    return _classify_hybrid_block_size(block_size, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)[0]
 
 
 def plan(block_size, use_mla=False):
-    return _hybrid_pool_layout(block_size, K_PAGE_PER_TOKEN,
-                               KV_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE,
-                               use_mla)
+    return _hybrid_pool_layout(block_size, K_PAGE_PER_TOKEN, KV_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE, use_mla)
 
 
 @pytest.mark.parametrize("block_size", [512, 640, 768, 2048, 4096])
@@ -58,18 +55,15 @@ def test_legacy_geometry_shifted_map(block_size):
 
 
 def test_natural_alignment_is_perfect_interlock():
-    level, k_page, pad = _classify_hybrid_block_size(
-        1024, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)
+    level, k_page, pad = _classify_hybrid_block_size(1024, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)
     assert level == "perfect"
     assert k_page == SSM_PAGE
     assert pad == CONV_PAGE
 
 
 def test_pad_grows_monotonically_as_block_shrinks_below_alignment():
-    _, _, pad_256 = _classify_hybrid_block_size(
-        256, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)
-    _, _, pad_128 = _classify_hybrid_block_size(
-        128, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)
+    _, _, pad_256 = _classify_hybrid_block_size(256, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)
+    _, _, pad_128 = _classify_hybrid_block_size(128, K_PAGE_PER_TOKEN, SSM_PAGE, CONV_PAGE)
     assert pad_128 > pad_256 > CONV_PAGE
 
 
@@ -111,8 +105,7 @@ def test_layout_plan_mla_never_strided():
 
 @pytest.mark.parametrize("block_size", [128, 256, 512])
 def test_strided_layout_feasible_for_small_power_of_two_blocks(block_size):
-    assert _strided_layout_infeasibility(
-        block_size, K_PAGE_PER_TOKEN, SSM_PAGE) is None
+    assert _strided_layout_infeasibility(block_size, K_PAGE_PER_TOKEN, SSM_PAGE) is None
 
 
 def test_strided_layout_rejects_non_kernel_multiple():

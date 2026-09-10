@@ -61,6 +61,7 @@ def _is_paged_pool_view(t: torch.Tensor) -> bool:
         return False
     return all(t.stride(d) == t.stride(d + 1) * t.size(d + 1) for d in range(1, t.dim() - 1))
 
+
 if HAS_TRITON:
     from vllm_ascend.ops.triton.rms_norm import triton_q_rms  # noqa: F811
 else:

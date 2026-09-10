@@ -125,17 +125,14 @@ def _strided_layout_infeasibility(
     512B-aligned (the envelope the FIA/scatter kernels were validated with).
     """
     if block_size % kernel_block_size != 0:
-        return (f"block size {block_size} is not a multiple of the attention "
-                f"kernel block size {kernel_block_size}")
+        return f"block size {block_size} is not a multiple of the attention kernel block size {kernel_block_size}"
     chunk = block_size // kernel_block_size
     if ssm_block_page_size % chunk != 0 or (ssm_block_page_size // chunk) % 512 != 0:
-        return (f"ssm page ({ssm_block_page_size} B) cannot be split into "
-                f"{chunk} 512B-aligned kernel-block sub-slots")
+        return f"ssm page ({ssm_block_page_size} B) cannot be split into {chunk} 512B-aligned kernel-block sub-slots"
     sub_slot = ssm_block_page_size // chunk
     kv_kernel_block_bytes = 2 * kernel_block_size * attn_single_token_k_page_size
     if kv_kernel_block_bytes > sub_slot:
-        return (f"K+V kernel blocks ({kv_kernel_block_bytes} B) exceed the "
-                f"per-sub-slot budget ({sub_slot} B)")
+        return f"K+V kernel blocks ({kv_kernel_block_bytes} B) exceed the per-sub-slot budget ({sub_slot} B)"
     return None
 
 
@@ -218,17 +215,22 @@ def verify_and_update_config(cls, vllm_config) -> None:
         # stays as the static geometry documentation of the *legacy* overlay;
         # here we only reject sizes the strided layout cannot express.
         _layout, _ = _hybrid_pool_layout(
-            _force_bs, attn_single_token_k_page_size, attn_token_page_size,
-            ssm_block_page_size, conv_block_page_size, model_config.use_mla)
+            _force_bs,
+            attn_single_token_k_page_size,
+            attn_token_page_size,
+            ssm_block_page_size,
+            conv_block_page_size,
+            model_config.use_mla,
+        )
         if _layout == "strided":
-            _infeasible = _strided_layout_infeasibility(
-                _force_bs, attn_single_token_k_page_size, ssm_block_page_size)
+            _infeasible = _strided_layout_infeasibility(_force_bs, attn_single_token_k_page_size, ssm_block_page_size)
             if _infeasible is not None:
                 raise ValueError(
                     f"VLLM_ASCEND_HYBRID_BLOCK_SIZE={_force_bs} cannot be "
                     f"expressed with the in-page strided hybrid layout: "
                     f"{_infeasible}. Use the natural aligned block size "
-                    f"({attn_block_size}).")
+                    f"({attn_block_size})."
+                )
         logger.warning(
             "VLLM_ASCEND_HYBRID_BLOCK_SIZE=%d: overriding hybrid page alignment "
             "(natural attn_block_size=%d, ssm_block_page_size=%d B). Hybrid pool "
@@ -239,8 +241,8 @@ def verify_and_update_config(cls, vllm_config) -> None:
             ssm_block_page_size,
             _layout,
             _classify_hybrid_block_size(
-                _force_bs, attn_single_token_k_page_size, ssm_block_page_size,
-                conv_block_page_size)[0],
+                _force_bs, attn_single_token_k_page_size, ssm_block_page_size, conv_block_page_size
+            )[0],
         )
         attn_block_size = _force_bs
     else:
@@ -258,13 +260,10 @@ def verify_and_update_config(cls, vllm_config) -> None:
             attn_block_size,
         )
 
-    # compute new attention page size
-    attn_page_size = cache_config.block_size * attn_token_page_size
-
     # pad mamba page size for conv_blocks. The ssm state must always fit in
-    # the padded page, hence the max() with ssm_block_page_size (only binding
-    # when the B-2 env override shrinks attn_page_size below the ssm page;
-    # the default path is unchanged because attn_page_size >= ssm page there).
+    # the padded page (only binding when the B-2 env override shrinks the
+    # attention page below the ssm page; the default path is unchanged because
+    # the attention page is >= the ssm page there).
     # For geometries without the natural per-id interlock and without enough
     # ssm-page room for the in-page strided split, the padded page is enlarged
     # so the FA [pad|K|V] spans sit fully above the mamba [conv|ssm] spans
@@ -272,19 +271,22 @@ def verify_and_update_config(cls, vllm_config) -> None:
     # 2048 safe (stock previously corrupted it silently, see
     # results/d9_bs2048_verdict.md).
     _layout, _mamba_page_target = _hybrid_pool_layout(
-        cache_config.block_size, attn_single_token_k_page_size,
-        attn_token_page_size, ssm_block_page_size, conv_block_page_size,
-        model_config.use_mla)
+        cache_config.block_size,
+        attn_single_token_k_page_size,
+        attn_token_page_size,
+        ssm_block_page_size,
+        conv_block_page_size,
+        model_config.use_mla,
+    )
     if _layout == "disjoint":
         logger.warning(
             "Hybrid pool block size %d cannot interlock attention and mamba "
             "pages in place; enlarging the padded page to %d B so attention "
             "and mamba spans are disjoint (fewer pool blocks as a result).",
-            cache_config.block_size, _mamba_page_target)
-    if (
-        cache_config.mamba_page_size_padded is None
-        or cache_config.mamba_page_size_padded != _mamba_page_target
-    ):
+            cache_config.block_size,
+            _mamba_page_target,
+        )
+    if cache_config.mamba_page_size_padded is None or cache_config.mamba_page_size_padded != _mamba_page_target:
         cache_config.mamba_page_size_padded = _mamba_page_target
         mamba_padding_pct = 100 * conv_block_page_size / cache_config.mamba_page_size_padded
         logger.info(
