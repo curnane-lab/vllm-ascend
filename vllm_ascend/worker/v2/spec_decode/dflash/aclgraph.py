@@ -109,6 +109,11 @@ class DFlashAclGraphManager(DFlashCudaGraphManager):
 
             forward_context = get_forward_context()
 
+            assert len(self.speculator.attn_backends) == 1, (
+                "DFlashAclGraphManager only updates graph params for the first "
+                "attention backend; hybrid/multi-backend draft configs are "
+                f"unsupported (backends: {list(self.speculator.attn_backends)})"
+            )
             update_full_graph_params(
                 # FIXME(Ronald1995): support hybrid attn backend
                 list(self.speculator.attn_backends.values())[0],
