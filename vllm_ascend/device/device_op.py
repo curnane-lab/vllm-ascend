@@ -31,6 +31,22 @@ from vllm_ascend.ops.triton.fused_gdn_gating import fused_gdn_gating_patch
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.quantization.utils import QUANT_DTYPES, get_dynamic_mx_quant_scale_alg
 
+
+def _is_paged_pool_view(t: torch.Tensor) -> bool:
+    """True if `t` is a paged KV pool view whose blocks are internally
+    contiguous (only dim 0, the block dim, may carry a non-natural stride —
+    e.g. the in-page strided K/V views of the hybrid attn+mamba pool).
+
+    FIA/scatter paged kernels address such views in place via block_table
+    (verified bitwise on CANN 9.1), so materializing .contiguous() would only
+    add a full-pool copy per call. Tensors failing this check keep the
+    historical .contiguous() behavior.
+    """
+    if t.dim() < 3 or t.stride(-1) != 1:
+        return False
+    return all(t.stride(d) == t.stride(d + 1) * t.size(d + 1) for d in range(1, t.dim() - 1))
+
+
 if HAS_TRITON:
     from vllm_ascend.ops.triton.rms_norm import triton_q_rms  # noqa: F811
 else:
@@ -155,10 +171,20 @@ class BaseDeviceAdaptor:
                 is_prefill_no_cache=is_prefill_no_cache,
             )
 
+        # key/value are the paged pool views whenever a block table exists
+        # (any state but PrefillNoCache); skip the full-pool .contiguous()
+        # for in-page strided pool views — FIA reads them in place via
+        # block_table (verified bitwise on CANN 9.1). PrefillNoCache passes
+        # the current tokens (row-strided slices of the fused qkv buffer),
+        # which keep the historical .contiguous() normalization.
+        if is_prefill_no_cache or not _is_paged_pool_view(key):
+            key = key.contiguous()
+        if is_prefill_no_cache or not _is_paged_pool_view(value):
+            value = value.contiguous()
         return torch_npu.npu_fused_infer_attention_score(
             query=query,
-            key=key.contiguous(),
-            value=value.contiguous(),
+            key=key,
+            value=value,
             num_key_value_heads=num_key_value_heads,
             num_heads=num_heads,
             scale=scale,
@@ -885,10 +911,14 @@ class A5DeviceAdaptor(BaseDeviceAdaptor):
         is_prefill_no_cache: bool,
         **kwargs,
     ):
+        if is_prefill_no_cache or not _is_paged_pool_view(key):
+            key = key.contiguous()
+        if is_prefill_no_cache or not _is_paged_pool_view(value):
+            value = value.contiguous()
         return torch_npu.npu_fused_infer_attention_score(
             query=query,
-            key=key.contiguous(),
-            value=value.contiguous(),
+            key=key,
+            value=value,
             num_key_value_heads=num_key_value_heads,
             num_heads=num_heads,
             scale=scale,
