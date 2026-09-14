@@ -131,3 +131,72 @@ def test_strided_layout_rejects_oversized_kv_pair():
     # one K plus one V kernel block (512 KiB).
     reason = _strided_layout_infeasibility(512, K_PAGE_PER_TOKEN, 1048576)
     assert reason is not None and "budget" in reason
+
+
+# --- bf16 ssm state (--mamba-ssm-cache-dtype bfloat16): geometry shifts ---
+#
+# With bf16 ssm storage the ssm page halves to 1 MiB, so the per-id
+# K-page == ssm-page interlock moves from 1024 to 512 tokens. The engine
+# default block under bf16 (kernel_block_size 128 * cdiv(1 MiB, 128 * 2048 B)
+# = 512) therefore lands on the byte-identical legacy path at full FIA
+# speed, and the fp32 danger map does NOT transfer: sizes that were unsafe
+# under fp32 are resolved by the layout plan (disjoint spans) under bf16,
+# and 256 is rescued into the structurally safe strided split.
+
+
+SSM_PAGE_BF16 = 1024 * 1024
+
+
+def classify_bf16(block_size):
+    return _classify_hybrid_block_size(
+        block_size, K_PAGE_PER_TOKEN, SSM_PAGE_BF16, CONV_PAGE)[0]
+
+
+def plan_bf16(block_size, use_mla=False):
+    return _hybrid_pool_layout(
+        block_size, K_PAGE_PER_TOKEN, KV_PAGE_PER_TOKEN, SSM_PAGE_BF16,
+        CONV_PAGE, use_mla)
+
+
+def test_bf16_ssm_natural_interlock_moves_to_512():
+    level, k_page, pad = _classify_hybrid_block_size(
+        512, K_PAGE_PER_TOKEN, SSM_PAGE_BF16, CONV_PAGE)
+    assert level == "perfect"
+    assert k_page == SSM_PAGE_BF16
+    assert pad == CONV_PAGE
+
+
+def test_bf16_ssm_default_block_uses_legacy_layout():
+    layout, page = plan_bf16(512)
+    assert layout == "legacy"
+
+
+def test_bf16_ssm_block_1024_is_no_longer_perfect():
+    # under bf16 the K page (2 MiB) overshoots the ssm page (1 MiB), so
+    # the fp32 natural interlock size degrades to the plain attn-dominant
+    # geometry (resolved to disjoint by the layout plan).
+    assert classify_bf16(1024) == "unsafe"
+    layout, _ = plan_bf16(1024)
+    assert layout == "disjoint"
+
+
+@pytest.mark.parametrize("block_size", [640, 768, 2048])
+def test_bf16_ssm_fp32_danger_sizes_resolved_by_disjoint(block_size):
+    assert classify_bf16(block_size) == "unsafe"
+    layout, _ = plan_bf16(block_size)
+    assert layout == "disjoint"
+
+
+def test_bf16_ssm_block_256_rescued_by_strided_plan():
+    # legacy classifier calls it unsafe (pad == conv, K page != ssm page),
+    # but 2 * k_page == ssm page exactly, so the post-fix plan picks the
+    # structurally safe zero-cost strided split.
+    assert classify_bf16(256) == "unsafe"
+    layout, _ = plan_bf16(256)
+    assert layout == "strided"
+
+
+def test_bf16_ssm_block_128_shifted_disjoint():
+    assert classify_bf16(128) == "shifted"
+    layout, _ = plan_bf16(128)
+    assert layout == "disjoint"
