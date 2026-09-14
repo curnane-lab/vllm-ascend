@@ -87,6 +87,13 @@ env_variables: dict[str, Callable[[], Any]] = {
     # (safe for Ascend 910B/A3). Set to a positive value to override when
     # auto-detection is unavailable or for debugging UB overflow issues.
     "VLLM_ASCEND_ROPE_UB_SIZE_KB": lambda: int(os.getenv("VLLM_ASCEND_ROPE_UB_SIZE_KB") or 0),
+    # Experimental: force a smaller block size (tokens) for the hybrid
+    # attn+mamba KV pool of GDN-style hybrid models, shrinking the EAGLE/MTP
+    # drop-one-block recompute tax. 0 (default) keeps the natural alignment.
+    # Non-natural sizes are routed to structural page layouts
+    # (in-page strided split or disjoint padded spans); geometries the layout
+    # cannot express are rejected loudly at config time.
+    "VLLM_ASCEND_HYBRID_BLOCK_SIZE": lambda: int(os.getenv("VLLM_ASCEND_HYBRID_BLOCK_SIZE", "0")),
 }
 
 # end-env-vars-definition
