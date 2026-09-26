@@ -1,25 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Correctness tests for the GDN PCP rerun-elimination path.
+"""Correctness regression tests for the GDN PCP affine-scan prefill path.
 
-The PCP prefill previously re-ran a full fwd_h with the corrected entering
-state on non-first ranks. chunk.py now applies an affine correction of the
-already-computed h/v_new instead:
-
-    h_c   += M_c @ delta_s            (M_c = per-chunk cumulative map,
-                                       row = chunk_offsets[s] + s + c)
-    v_new -= W_c @ (M_c @ delta_s)    (v_new = v - W @ h_chunk_start is
-                                       linear in the chunk-start state)
-    delta_s = updated_h_state - initial_state   (zero for decode rows)
-
-The initial state enters the chunk-0 h/v_new through a kernel-specific
-path that this affine correction does not cover, so chunk 0 of each rank is
-recomputed by a minimal (<= 64-token) fwd_h rerun with the corrected
-entering state.
+On non-first PCP ranks the outputs are produced by a fwd_h rerun with the
+corrected entering state (updated_h_state), after the cross-rank affine
+recursion updated_i = final_i + Phi_i (updated_{i-1} - s0).
 
 These tests drive the real ``chunk_gated_delta_rule_fwd`` with a mocked PCP
 group (single NPU, two or more logical ranks) and compare the reassembled
 output against the CP=1 run of the same function plus the CPU FP64
-per-token recurrence.
+per-token recurrence, covering aligned/ragged splits, packed
+multi-sequence batches, non-zero initial states and extreme gates.
 
 Requires one NPU; skipped otherwise.
 """
