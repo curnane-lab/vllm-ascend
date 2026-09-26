@@ -23,7 +23,12 @@ from .chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
 from .cumsum import chunk_local_cumsum
 from .l2norm import l2norm_fwd
 from .solve_tril import solve_tril
-from .utils import input_guard, prepare_final_chunk_indices
+from .utils import (
+    input_guard,
+    prepare_chunk_indices,
+    prepare_chunk_offsets,
+    prepare_final_chunk_indices,
+)
 from .wy_fast import recompute_w_u_fwd
 
 
@@ -176,23 +181,116 @@ def chunk_gated_delta_rule_fwd(
             updated_h_state = updated_state[get_pcp_group().rank_in_group - 1, ...]
 
         if get_pcp_group().rank_in_group > 0:
-            rerun_initial_state = initial_state.clone()
+            # Rerun elimination: fwd_h outputs are affine in the initial
+            # state, so the corrected entering state is applied as an affine
+            # correction of the already-computed h/v_new instead of a full
+            # fwd_h rerun:
+            #   h_c   += M_c @ delta_s            (per prefill chunk)
+            #   v_new -= W_c @ (M_c @ delta_s)
+            # where M_c are the per-chunk cumulative transition maps of
+            # h_update (row index = chunk_offsets[s] + s + c) and W_c is the
+            # chunk's WY factor block. Decode rows keep the original initial
+            # state, so their delta is zero (their h_update rows are zeroed
+            # as well).
+            state_delta = torch.zeros_like(final_state, dtype=torch.float32)
             prefill_seq_offset = actual_num_decodes
             prefill_slice = slice(prefill_seq_offset, final_state.shape[0])
-            rerun_initial_state[prefill_slice] = updated_h_state[prefill_slice]
-            h, v_new, _ = chunk_gated_delta_rule_fwd_h(
-                k=k,
-                w=w,
-                u=u,
-                g=g,
-                initial_state=rerun_initial_state,
-                output_final_state=True,
-                cu_seqlens=cu_seqlens,
-                chunk_indices=chunk_indices_chunk64,
-                chunk_offsets=chunk_offsets_chunk64,
+            state_delta[prefill_slice] = updated_h_state[prefill_slice].to(torch.float32) - initial_state[
+                prefill_slice
+            ].to(torch.float32)
+            if keep_meta is not None:
+                keep_list = keep_meta.tolist() if torch.is_tensor(keep_meta) else list(keep_meta)
+                state_delta = state_delta[keep_meta]
+                keep_t = torch.as_tensor(keep_meta, device=chunk_indices_chunk64.device)
+                seq_of_chunk = chunk_indices_chunk64[:, 0]
+                seq_of_chunk = keep_t[seq_of_chunk]
+            else:
+                keep_list = None
+                seq_of_chunk = chunk_indices_chunk64[:, 0]
+            if chunk_offsets_chunk64 is None:
+                chunk_offsets_chunk64 = prepare_chunk_offsets(cu_seqlens, chunk_size)
+            seq_of_chunk = chunk_indices_chunk64[:, 0]
+            if keep_meta is not None:
+                seq_of_chunk = keep_meta[seq_of_chunk]
+            chunk_rows = chunk_offsets_chunk64[seq_of_chunk] + seq_of_chunk + chunk_indices_chunk64[:, 1]
+            h_update_rows = h_update[0] if h_update.dim() == 5 else h_update
+            delta_h = torch.matmul(h_update_rows[chunk_rows], state_delta[seq_of_chunk])
+            h = (h.to(torch.float32) + delta_h.permute(1, 0, 2, 3).unsqueeze(0)).to(h.dtype)
+            # v_new = v - W @ h_chunk_start is linear in the chunk-start
+            # state, so delta_v = -W_c @ delta_h_c. Full 64-token chunks of
+            # each sequence contract as one batched GEMM; only each
+            # sequence's tail chunk needs a small einsum.
+            v_corr = v_new[0].to(torch.float32)
+            w32 = w[0].to(torch.float32)
+            v_dim = v_corr.shape[-1]
+            head_num = v_corr.shape[0]
+            cu_kern_host = cu_seqlens_kern if isinstance(cu_seqlens_kern, tuple) else tuple(cu_seqlens_kern)
+            if keep_meta is not None:
+                s_orig_of = keep_list
+            else:
+                s_orig_of = list(range(len(cu_seqlens_host) - 1))
+            lens = [cu_seqlens_host[i + 1] - cu_seqlens_host[i] for i in range(len(cu_seqlens_host) - 1)]
+            chunk_off_host = [0]
+            for length in lens:
+                chunk_off_host.append(chunk_off_host[-1] + (length + chunk_size - 1) // chunk_size)
+            delta_by_row = torch.zeros(
+                h_update_rows.shape[0], head_num, delta_h.shape[-2], v_dim, device=delta_h.device, dtype=delta_h.dtype
             )
-            h = h.transpose(1, 2).contiguous()
-            v_new = v_new.transpose(1, 2).contiguous()
+            delta_by_row.index_copy_(0, chunk_rows, delta_h)
+            for s_compact in range(prefill_seq_offset, len(lens)):
+                s_orig = s_orig_of[s_compact]
+                t0 = cu_kern_host[s_compact]
+                t1 = cu_kern_host[s_compact + 1]
+                row_base = chunk_off_host[s_orig] + s_orig
+                n_full = (t1 - t0) // chunk_size
+                if n_full:
+                    w_s = w32[t0 : t0 + n_full * chunk_size].view(n_full, chunk_size, head_num, -1)
+                    dv = -torch.einsum("nthk,nhkv->nthv", w_s, delta_by_row[row_base : row_base + n_full])
+                    v_corr[:, t0 : t0 + n_full * chunk_size, :] += dv.permute(2, 0, 1, 3).reshape(head_num, -1, v_dim)
+                tail0 = t0 + n_full * chunk_size
+                if tail0 < t1:
+                    v_corr[:, tail0:t1, :] -= torch.einsum(
+                        "thk,hkv->thv", w32[tail0:t1], delta_by_row[row_base + n_full]
+                    ).permute(1, 0, 2)
+                # Chunk 0 special case: the initial state enters fwd_h's
+                # chunk-0 h/v_new through a kernel-specific path that the
+                # affine correction does not cover, so chunk 0 is recomputed
+                # by a minimal (<= 64-token) fwd_h rerun with the corrected
+                # entering state. Chunks >= 1 stay on the affine correction.
+                s_orig = s_orig_of[s_compact]
+                coff_compact = [0]
+                for i in range(len(cu_kern_host) - 1):
+                    ln = cu_kern_host[i + 1] - cu_kern_host[i]
+                    coff_compact.append(coff_compact[-1] + (ln + chunk_size - 1) // chunk_size)
+                n0 = min(chunk_size, t1 - t0)
+                entering = updated_h_state[s_orig : s_orig + 1]
+                cu0 = torch.tensor([0, n0], device=k.device, dtype=torch.int64)
+                h0, vn0, _ = chunk_gated_delta_rule_fwd_h(
+                    k=k[:, t0 : t0 + n0],
+                    w=w[:, t0 : t0 + n0],
+                    u=u[:, t0 : t0 + n0],
+                    g=g[:, t0 : t0 + n0],
+                    initial_state=entering,
+                    output_final_state=True,
+                    cu_seqlens=cu0,
+                    chunk_indices=prepare_chunk_indices(cu0, chunk_size),
+                    chunk_offsets=prepare_chunk_offsets(cu0, chunk_size),
+                )
+                # normalize layouts: h0 -> chunk-start state [H, K, V];
+                # vn0 -> [n0, H, V]
+                if h0.dim() == 5:
+                    h0s = h0[0, 0] if h0.shape[1] == 1 else h0[0, :, 0]
+                else:
+                    h0s = h0[0]
+                h[0, :, coff_compact[s_compact], :, :] = h0s.to(h.dtype)
+                if vn0.dim() == 4 and vn0.shape[1] == n0:
+                    vn = vn0[0]  # [n0, H, V]
+                elif vn0.dim() == 4:
+                    vn = vn0[0].transpose(0, 1)  # [H, n0, V] -> [n0, H, V]
+                else:
+                    vn = vn0
+                v_corr[:, t0 : t0 + n0, :] = vn.permute(1, 0, 2).to(v_corr.dtype)
+            v_new = v_corr.unsqueeze(0).to(v_new.dtype)
 
     o_ascendc = torch.ops._C_ascend.chunk_fwd_o(
         q_ascendc,
