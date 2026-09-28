@@ -29,6 +29,7 @@ from vllm.config.compilation import CompilationMode, CUDAGraphMode
 from vllm.distributed.kv_transfer import get_kv_transfer_group, has_kv_transfer_group
 from vllm.logger import logger
 from vllm.sequence import IntermediateTensors
+from vllm.utils.platform_utils import is_pin_memory_available
 from vllm.utils.torch_utils import async_tensor_h2d as async_copy_to_gpu
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig
@@ -68,7 +69,11 @@ from vllm_ascend.utils import (
     lmhead_tp_enable,
     set_potential_max_tokens,
 )
-from vllm_ascend.worker.utils import copy_kv_cache_blocks_inplace, disable_compilation
+from vllm_ascend.worker.utils import (
+    AscendKVBlockZeroer,
+    copy_kv_cache_blocks_inplace,
+    disable_compilation,
+)
 from vllm_ascend.worker.v2.aclgraph_utils import ModelAclGraphManager
 from vllm_ascend.worker.v2.attn_utils import build_attn_state
 from vllm_ascend.worker.v2.eplb import AscendEPLBController
@@ -336,6 +341,24 @@ class NPUModelRunner(GPUModelRunner):
                 if kv_cache is not None:
                     segments.append(kv_cache)
         return segments
+
+    def _init_kv_zero_meta(self) -> None:
+        """Build the KV-block zeroing metadata; invoked from the worker.
+
+        The upstream zeroer walks ``layer.kv_cache`` expecting one tensor per
+        layer and skips anything else, so on Ascend it silently produces no
+        segments and never zeroes a block. Use the Ascend zeroer, which reads
+        the per-layer tuple, as MRV1 and the 310P MRV2 runner already do.
+        """
+        self.kv_block_zeroer = AscendKVBlockZeroer(self.device, is_pin_memory_available())
+        self.kv_block_zeroer.init_meta(
+            attn_groups_iter=(group for groups in self.attn_groups for group in groups),
+            # MRV2 tracks one kernel block size per group, MRV1 a list per group.
+            kernel_block_sizes=[[block_size] for block_size in self.kernel_block_sizes],
+            cache_dtype=self.cache_config.cache_dtype,
+            runner_only_attn_layers=getattr(self, "runner_only_attn_layers", set()),
+            static_forward_context=self.compilation_config.static_forward_context,
+        )
 
     def update_requests(self, scheduler_output: SchedulerOutput) -> None:
         block_copies = scheduler_output.kv_cache_block_copies

@@ -22,6 +22,7 @@ from vllm.v1.worker.gpu.model_states.mamba_hybrid import MambaHybridModelState
 from vllm_ascend.core.kv_cache_interface import AscendMLAAttentionSpec
 from vllm_ascend.device.hardware import AscendDeviceType
 from vllm_ascend.device.hardware_profile import get_hardware_profile
+from vllm_ascend.worker.utils import AscendKVBlockZeroer
 from vllm_ascend.worker.v2.attn_utils import (
     _allocate_kv_cache,
     _reshape_kv_cache_v2,
@@ -209,6 +210,63 @@ def test_mrv2_collects_every_bound_cache_segment():
     )
 
     assert runner._collect_kv_cache_segments() == [(k_cache, v_cache), [conv_state, ssm_state]]
+
+
+@patch("vllm_ascend.worker.v2.model_runner.is_pin_memory_available", return_value=True)
+@patch("vllm_ascend.worker.v2.model_runner.AscendKVBlockZeroer")
+def test_mrv2_initializes_ascend_block_zeroer(mock_zeroer_cls, _mock_pin_memory):
+    runner = object.__new__(NPUModelRunner)
+    runner.device = torch.device("cpu")
+    runner.attn_groups = [[SimpleNamespace(name="attn")]]
+    runner.kernel_block_sizes = [4]
+    runner.cache_config = SimpleNamespace(cache_dtype="auto")
+    runner.compilation_config = SimpleNamespace(static_forward_context={"attn": MagicMock()})
+
+    runner._init_kv_zero_meta()
+
+    mock_zeroer_cls.assert_called_once_with(runner.device, True)
+    mock_zeroer_cls.return_value.init_meta.assert_called_once_with(
+        attn_groups_iter=mock_zeroer_cls.return_value.init_meta.call_args.kwargs["attn_groups_iter"],
+        kernel_block_sizes=[[4]],
+        cache_dtype="auto",
+        runner_only_attn_layers=set(),
+        static_forward_context=runner.compilation_config.static_forward_context,
+    )
+    assert list(mock_zeroer_cls.return_value.init_meta.call_args.kwargs["attn_groups_iter"]) == runner.attn_groups[0]
+    assert runner.kv_block_zeroer is mock_zeroer_cls.return_value
+
+
+@pytest.mark.parametrize(
+    "bound_cache, expected_segments",
+    [
+        (lambda: torch.zeros(4, 2), 1),
+        (lambda: (torch.zeros(4, 2), torch.zeros(4, 2)), 2),
+    ],
+)
+def test_ascend_block_zeroer_accepts_packed_and_split_attention_cache(bound_cache, expected_segments):
+    spec = FullAttentionSpec(
+        block_size=4,
+        num_kv_heads=1,
+        head_size=2,
+        dtype=torch.float32,
+    )
+    zeroer = AscendKVBlockZeroer(torch.device("cpu"), pin_memory=False)
+    zeroer.init_meta(
+        attn_groups_iter=[
+            SimpleNamespace(
+                kv_cache_spec=spec,
+                kv_cache_group_id=0,
+                layer_names=["attn"],
+            )
+        ],
+        kernel_block_sizes=[[4]],
+        cache_dtype="auto",
+        runner_only_attn_layers=set(),
+        static_forward_context={"attn": SimpleNamespace(kv_cache=bound_cache())},
+    )
+
+    assert zeroer._meta is not None
+    assert zeroer._meta[-1] == expected_segments
 
 
 @patch("vllm_ascend.worker.v2.model_runner.GPUModelRunner.update_requests")

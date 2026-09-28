@@ -173,9 +173,12 @@ class AscendKVBlockZeroer(KVBlockZeroer):
             for layer_name in group.layer_names:
                 if layer_name in runner_only_attn_layers:
                     continue
-                kv_tuple = static_forward_context[layer_name].kv_cache
-                assert len(kv_tuple) == 2, "K and V are not stored separately"
-                for kv in kv_tuple:
+                kv_cache = static_forward_context[layer_name].kv_cache
+                # MHA layers bind (k, v); MLA and indexer layers bind a single
+                # packed page. Zero every segment the layer actually holds.
+                kv_segments = (kv_cache,) if isinstance(kv_cache, torch.Tensor) else kv_cache
+                assert kv_segments, f"{layer_name} has no allocated cache segment"
+                for kv in kv_segments:
                     block_dim = 0
                     dp = kv.data_ptr()
                     if dp in seen_ptrs:
