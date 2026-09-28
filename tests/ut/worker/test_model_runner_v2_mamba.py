@@ -1,4 +1,5 @@
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -21,6 +22,7 @@ from vllm.v1.worker.gpu.model_states.mamba_hybrid import MambaHybridModelState
 from vllm_ascend.core.kv_cache_interface import AscendMLAAttentionSpec
 from vllm_ascend.device.hardware import AscendDeviceType
 from vllm_ascend.device.hardware_profile import get_hardware_profile
+from vllm_ascend.worker.utils import AscendKVBlockZeroer
 from vllm_ascend.worker.v2.attn_utils import (
     _allocate_kv_cache,
     _reshape_kv_cache_v2,
@@ -164,6 +166,134 @@ def test_mamba_model_state_inherits_upstream_state_management():
 
 def test_mrv2_advertises_standardized_shared_kv_backing():
     assert NPUModelRunner.supports_standardized_shared_kv_backing is True
+
+
+@dataclass
+class _BlockCopySchedulerOutput:
+    """Minimal stand-in for the fields update_requests touches."""
+
+    kv_cache_block_copies: list | None
+
+
+def _make_block_copy_runner(segments):
+    runner = object.__new__(NPUModelRunner)
+    runner.kv_cache_segments = segments
+    runner.kv_cache_config = SimpleNamespace(num_blocks=4)
+    return runner
+
+
+def test_mrv2_collects_every_bound_cache_segment():
+    """Block copies must reach the whole page, not just the first segment.
+
+    Regression: ``self.kv_caches`` is narrowed to the first tensor per layer
+    (``patch_attn_utils``), which would copy K without V and the Mamba conv
+    states without the SSM states.
+    """
+    k_cache, v_cache = torch.zeros(4, 2), torch.zeros(4, 2)
+    conv_state, ssm_state = torch.zeros(4, 3), torch.zeros(4, 5)
+    runner = object.__new__(NPUModelRunner)
+    runner.kv_cache_config = KVCacheConfig(
+        num_blocks=4,
+        kv_cache_tensors=[],
+        kv_cache_groups=[
+            KVCacheGroupSpec(layer_names=["attn"], kv_cache_spec=MagicMock()),
+            KVCacheGroupSpec(layer_names=["linear_attn"], kv_cache_spec=MagicMock()),
+        ],
+    )
+    runner.compilation_config = SimpleNamespace(
+        static_forward_context={
+            "attn": SimpleNamespace(kv_cache=(k_cache, v_cache)),
+            "linear_attn": SimpleNamespace(kv_cache=[conv_state, ssm_state]),
+            # Not part of any KV cache group.
+            "other": SimpleNamespace(kv_cache=(torch.zeros(4, 1),)),
+        }
+    )
+
+    assert runner._collect_kv_cache_segments() == [(k_cache, v_cache), [conv_state, ssm_state]]
+
+
+@patch("vllm_ascend.worker.v2.model_runner.is_pin_memory_available", return_value=True)
+@patch("vllm_ascend.worker.v2.model_runner.AscendKVBlockZeroer")
+def test_mrv2_initializes_ascend_block_zeroer(mock_zeroer_cls, _mock_pin_memory):
+    runner = object.__new__(NPUModelRunner)
+    runner.device = torch.device("cpu")
+    runner.attn_groups = [[SimpleNamespace(name="attn")]]
+    runner.kernel_block_sizes = [4]
+    runner.cache_config = SimpleNamespace(cache_dtype="auto")
+    runner.compilation_config = SimpleNamespace(static_forward_context={"attn": MagicMock()})
+
+    runner._init_kv_zero_meta()
+
+    mock_zeroer_cls.assert_called_once_with(runner.device, True)
+    mock_zeroer_cls.return_value.init_meta.assert_called_once_with(
+        attn_groups_iter=mock_zeroer_cls.return_value.init_meta.call_args.kwargs["attn_groups_iter"],
+        kernel_block_sizes=[[4]],
+        cache_dtype="auto",
+        runner_only_attn_layers=set(),
+        static_forward_context=runner.compilation_config.static_forward_context,
+    )
+    assert list(mock_zeroer_cls.return_value.init_meta.call_args.kwargs["attn_groups_iter"]) == runner.attn_groups[0]
+    assert runner.kv_block_zeroer is mock_zeroer_cls.return_value
+
+
+@pytest.mark.parametrize(
+    "bound_cache, expected_segments",
+    [
+        (lambda: torch.zeros(4, 2), 1),
+        (lambda: (torch.zeros(4, 2), torch.zeros(4, 2)), 2),
+    ],
+)
+def test_ascend_block_zeroer_accepts_packed_and_split_attention_cache(bound_cache, expected_segments):
+    spec = FullAttentionSpec(
+        block_size=4,
+        num_kv_heads=1,
+        head_size=2,
+        dtype=torch.float32,
+    )
+    zeroer = AscendKVBlockZeroer(torch.device("cpu"), pin_memory=False)
+    zeroer.init_meta(
+        attn_groups_iter=[
+            SimpleNamespace(
+                kv_cache_spec=spec,
+                kv_cache_group_id=0,
+                layer_names=["attn"],
+            )
+        ],
+        kernel_block_sizes=[[4]],
+        cache_dtype="auto",
+        runner_only_attn_layers=set(),
+        static_forward_context={"attn": SimpleNamespace(kv_cache=bound_cache())},
+    )
+
+    assert zeroer._meta is not None
+    assert zeroer._meta[-1] == expected_segments
+
+
+@patch("vllm_ascend.worker.v2.model_runner.GPUModelRunner.update_requests")
+@patch("vllm_ascend.worker.v2.model_runner.copy_kv_cache_blocks_inplace")
+def test_mrv2_update_requests_copies_blocks_over_all_segments(mock_copy, mock_super):
+    segments = [(torch.zeros(4, 2), torch.zeros(4, 2))]
+    runner = _make_block_copy_runner(segments)
+    copies = [SimpleNamespace(src_block_id=0, dst_block_id=1)]
+    scheduler_output = _BlockCopySchedulerOutput(kv_cache_block_copies=copies)
+
+    NPUModelRunner.update_requests(runner, scheduler_output)
+
+    # The parent must not repeat the copy with the upstream helper.
+    assert mock_super.call_args[0][0].kv_cache_block_copies == []
+    mock_copy.assert_called_once_with(segments, 4, copies)
+
+
+@patch("vllm_ascend.worker.v2.model_runner.GPUModelRunner.update_requests")
+@patch("vllm_ascend.worker.v2.model_runner.copy_kv_cache_blocks_inplace")
+def test_mrv2_update_requests_passes_through_without_block_copies(mock_copy, mock_super):
+    runner = _make_block_copy_runner([])
+    scheduler_output = _BlockCopySchedulerOutput(kv_cache_block_copies=None)
+
+    NPUModelRunner.update_requests(runner, scheduler_output)
+
+    mock_super.assert_called_once_with(scheduler_output)
+    mock_copy.assert_not_called()
 
 
 def _make_defer_state(kv_cache_config):
