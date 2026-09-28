@@ -18,6 +18,7 @@
 #
 
 from contextlib import AbstractContextManager, contextmanager, nullcontext
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -67,7 +68,7 @@ from vllm_ascend.utils import (
     lmhead_tp_enable,
     set_potential_max_tokens,
 )
-from vllm_ascend.worker.utils import disable_compilation
+from vllm_ascend.worker.utils import copy_kv_cache_blocks_inplace, disable_compilation
 from vllm_ascend.worker.v2.aclgraph_utils import ModelAclGraphManager
 from vllm_ascend.worker.v2.attn_utils import build_attn_state
 from vllm_ascend.worker.v2.eplb import AscendEPLBController
@@ -103,6 +104,8 @@ class NPUModelRunner(GPUModelRunner):
         # Adaptive verification uses this flag to apply FIA-specific query
         # boundary and sequence length padding during FULL graph execution.
         self.use_fia = False
+        # Every block-indexed cache segment, filled by initialize_kv_cache.
+        self.kv_cache_segments: list[Any] = []
         # FusedMoE can be constructed by the parent initializer and reads this
         # capacity while setting up MC2 communication.
         set_potential_max_tokens(vllm_config)
@@ -309,6 +312,48 @@ class NPUModelRunner(GPUModelRunner):
             static_forward_context=self.compilation_config.static_forward_context,
         )
         self.model_state.kvpp_runtime = self.kvpp
+
+        self.kv_cache_segments = self._collect_kv_cache_segments()
+
+    def _collect_kv_cache_segments(self) -> list[Any]:
+        """Collect every block-indexed cache segment of the KV cache groups.
+
+        ``self.kv_caches`` holds only the first tensor of each layer's
+        allocation: ``patch_attn_utils`` narrows it so the upstream
+        ``cache.device`` filter accepts Ascend's per-layer tuples. That is
+        enough for the checks upstream does with it, but not for the
+        prefix-cache block copies, which must reach the whole page: Ascend
+        packs several block-indexed segments into one storage (K then V for
+        attention, conv states then SSM states for Mamba). The layer binding
+        keeps the complete allocation, so read the segments from there.
+        """
+        static_forward_context = self.compilation_config.static_forward_context
+        segments: list[Any] = []
+        for kv_cache_group in self.kv_cache_config.kv_cache_groups:
+            for layer_name in kv_cache_group.layer_names:
+                layer = static_forward_context.get(layer_name)
+                kv_cache = getattr(layer, "kv_cache", None)
+                if kv_cache is not None:
+                    segments.append(kv_cache)
+        return segments
+
+    def update_requests(self, scheduler_output: SchedulerOutput) -> None:
+        block_copies = scheduler_output.kv_cache_block_copies
+        if block_copies:
+            # The upstream helper assumes one block-major storage per layer
+            # and only sees the narrowed self.kv_caches, so it would copy the
+            # K page without the V page and the Mamba conv states without the
+            # SSM states. Copy every segment instead, after the parent has
+            # zeroed the freshly allocated blocks and before the forward pass
+            # reads them.
+            scheduler_output = replace(scheduler_output, kv_cache_block_copies=[])
+        super().update_requests(scheduler_output)
+        if block_copies:
+            copy_kv_cache_blocks_inplace(
+                self.kv_cache_segments,
+                self.kv_cache_config.num_blocks,
+                block_copies,
+            )
 
     @torch.inference_mode()
     def execute_model(
