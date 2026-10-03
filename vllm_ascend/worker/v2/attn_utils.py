@@ -423,6 +423,10 @@ def build_attn_metadata(
             dcp_local_seq_lens_cpu=dcp_local_seq_lens_cpu,
             **common_attn_metadata_extra_kwargs,
         )
+        import os as _os
+        if _os.environ.get("ACL_DBG"):
+            print(f"DBG-CM2 db={getattr(common_attn_metadata, 'replayssm_decode_base_cpu', 'MISS') is not None} "
+                  f"reqs={num_reqs} id={id(common_attn_metadata):x}", flush=True)
 
         for attn_group in attn_groups[i]:
             attn_metadata_builder = attn_group.get_metadata_builder(0)

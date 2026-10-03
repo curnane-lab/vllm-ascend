@@ -15,6 +15,7 @@
 
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 from vllm.config import VllmConfig
 from vllm.distributed import get_pcp_group
@@ -953,7 +954,123 @@ class AscendGDNAttentionMetadataBuilder(GDNAttentionMetadataBuilder):
         )
         self._attach_spec_decode_metadata(attn_metadata)
         self._attach_non_spec_decode_metadata(attn_metadata, non_spec_conv1d_cache_indices)
+        self._attach_sketchssm_metadata(attn_metadata, m)
         return attn_metadata
+
+    def _attach_sketchssm_metadata(
+        self,
+        attn_metadata: GDNAttentionMetadata,
+        m: CommonAttentionMetadata,
+    ) -> None:
+        """Compute SketchSSM ring/row metadata the upstream GDN builder sets.
+
+        Only meaningful in eager mode; AclGraph capture needs the padded
+        persistent-buffer treatment from the upstream builder.
+        """
+        if not getattr(self, "use_sketchssm", False):
+            return
+        if not hasattr(attn_metadata, "sketchssm_window_pos_d"):
+            return
+        from vllm.v1.attention.backends.mamba_attn import (
+            sketch_decode_rows,
+            sketch_prefill_build_rows,
+            sketch_prefill_rows,
+        )
+        from vllm.v1.attention.backends.utils import replayssm_decode_rows
+
+        device = m.query_start_loc.device
+        spec_sequence_masks = getattr(attn_metadata, "spec_sequence_masks", None)
+        num_prefills = attn_metadata.num_prefills
+        num_decodes = attn_metadata.num_decodes
+        graph_decode = (
+            self.use_full_cuda_graph
+            and spec_sequence_masks is None
+            and num_decodes > 0
+            and num_prefills == 0
+            and num_decodes <= self.decode_cudagraph_max_bs
+        )
+        if spec_sequence_masks is None and num_decodes > 0 and graph_decode:
+            # Graph-stable path: refresh the padded persistent buffers in
+            # place. The captured graph reads these exact pointers, so fresh
+            # per-step tensors must never replace them on replay steps.
+            decode_base_cpu = m.replayssm_decode_base_cpu
+            seq_lens_cpu = m.seq_lens_cpu_upper_bound
+            if decode_base_cpu is None or seq_lens_cpu is None:
+                # Capture-time placeholder with dummy content; every replay
+                # step re-runs this attach with exact ring positions.
+                window_pos_cpu = torch.zeros(num_decodes, dtype=torch.int64)
+                is_flush_cpu = torch.zeros(num_decodes, dtype=torch.bool)
+                req_idx = getattr(m, "req_idx", None)
+                if req_idx is None:
+                    req_idx = np.zeros(num_decodes, dtype=np.int32)
+                meta_np = np.zeros(num_decodes, dtype=np.int32)
+                n = min(num_decodes, len(req_idx))
+                meta_np[:n] = np.asarray(req_idx[:n], dtype=np.int32)
+            else:
+                num_computed, decode_base, _ = replayssm_decode_rows(
+                    m, num_decodes
+                )
+                decode_steps = (num_computed - decode_base).clamp_min(0)
+                window_pos_cpu = torch.remainder(
+                    decode_steps, self.sketchssm_window
+                )
+                is_flush_cpu = window_pos_cpu == self.sketchssm_window - 1
+                req_idx = m.req_idx
+                if req_idx is None:
+                    raise ValueError(
+                        "SketchSSM requires persistent request indices"
+                    )
+                meta_np = np.zeros(num_decodes, dtype=np.int32)
+                n = min(num_decodes, len(req_idx))
+                meta_np[:n] = np.asarray(req_idx[:n], dtype=np.int32)
+            flush_list = (
+                torch.nonzero(is_flush_cpu).flatten().tolist()
+            )
+            batch_size = m.num_reqs
+            wp = self.decode_sketchssm_window_pos_d
+            wp[:num_decodes].copy_(
+                window_pos_cpu.to(torch.int32), non_blocking=True
+            )
+            if batch_size > num_decodes:
+                wp[num_decodes:batch_size] = 0
+            md = self.decode_sketch_meta_d
+            md[:num_decodes] = torch.from_numpy(meta_np).to(md.device)
+            if batch_size > num_decodes:
+                md[num_decodes:batch_size] = 0
+            fr = self.decode_sketch_flush_rows_d
+            fr[:num_decodes] = torch.tensor(
+                flush_list + [-1] * (num_decodes - len(flush_list)),
+                dtype=torch.int32,
+                device=fr.device,
+            )
+            if batch_size > num_decodes:
+                fr[num_decodes:batch_size] = -1
+            # Padding rows always look like non-flushing decodes reading
+            # sketch row 0, so the captured flush/build launches are a no-op
+            # for them: the flag stays True under full graphs.
+            attn_metadata.sketchssm_window_pos_d = wp[:batch_size]
+            attn_metadata.sketch_meta_d = md[:batch_size]
+            attn_metadata.sketch_flush_rows_d = fr[:batch_size]
+            attn_metadata.sketch_has_flush_rows = True
+            return
+        if spec_sequence_masks is None and num_decodes > 0:
+            num_computed, decode_base, _ = replayssm_decode_rows(m, num_decodes)
+            decode_steps = (num_computed - decode_base).clamp_min(0)
+            window_pos_cpu = torch.remainder(decode_steps, self.sketchssm_window)
+            attn_metadata.sketchssm_window_pos_d = window_pos_cpu.to(
+                torch.int32).to(device)
+            is_flush_cpu = window_pos_cpu == self.sketchssm_window - 1
+            attn_metadata.sketch_has_flush_rows = bool(is_flush_cpu.any())
+            attn_metadata.sketch_meta_d, attn_metadata.sketch_flush_rows_d = (
+                sketch_decode_rows(m, num_decodes, is_flush_cpu)
+            )
+        if spec_sequence_masks is None and num_prefills > 0:
+            attn_metadata.sketch_meta_p, attn_metadata.sketch_build_p = (
+                sketch_prefill_rows(m, num_decodes, m.num_reqs)
+            )
+            attn_metadata.sketch_build_rows_p = sketch_prefill_build_rows(
+                m, num_decodes, m.num_reqs
+            )
 
     def _build_prefill_has_initial_state(
         self,

@@ -204,7 +204,18 @@ if Qwen3_5MultiTokenPredictor is not None:
 
 Qwen3NextAttention.forward = AscendQwen3NextAttention.forward
 _GDN_PATCH_TARGET._split_ba_for_tp = AscendGatedDeltaNetAttention._split_ba_for_tp
-_GDN_PATCH_TARGET.get_state_shape = AscendGatedDeltaNetAttention.get_state_shape
+_GDN_ORIGINAL_GET_STATE_SHAPE = _GDN_PATCH_TARGET.get_state_shape
+
+
+def _gdn_get_state_shape_dispatch(self):
+    # SketchSSM extends the mamba page with window-ring tensors; the fused
+    # Ascend layout is only valid without SketchSSM.
+    if getattr(self, "sketchssm", None) is not None:
+        return _GDN_ORIGINAL_GET_STATE_SHAPE(self)
+    return AscendGatedDeltaNetAttention.get_state_shape(self)
+
+
+_GDN_PATCH_TARGET.get_state_shape = _gdn_get_state_shape_dispatch
 _GDN_PATCH_TARGET.get_attn_backend = AscendGatedDeltaNetAttention.get_attn_backend
 
 if get_current_hardware_profile().supports(HardwareCapability.GDN_COMPATIBILITY):
@@ -221,6 +232,21 @@ else:
         initialize_packed_conv_weight(self)
 
     _GDN_PATCH_TARGET.__init__ = _gdn_init_with_packed_weight
-    _GDN_PATCH_TARGET.forward = AscendGatedDeltaNetAttention.forward
-    _GDN_PATCH_TARGET._forward_core = AscendGatedDeltaNetAttention._forward_core
+    _GDN_ORIGINAL_FORWARD = _GDN_PATCH_TARGET.forward
+    _GDN_ORIGINAL_FORWARD_CORE = _GDN_PATCH_TARGET._forward_core
+
+    def _gdn_forward_dispatch(self, *args, **kwargs):
+        # SketchSSM decode is implemented in the upstream (fork) forward; the
+        # Ascend fused path bypasses it, so dispatch per instance.
+        if getattr(self, "sketchssm", None) is not None:
+            return _GDN_ORIGINAL_FORWARD(self, *args, **kwargs)
+        return AscendGatedDeltaNetAttention.forward(self, *args, **kwargs)
+
+    def _gdn_forward_core_dispatch(self, *args, **kwargs):
+        if getattr(self, "sketchssm", None) is not None:
+            return _GDN_ORIGINAL_FORWARD_CORE(self, *args, **kwargs)
+        return AscendGatedDeltaNetAttention._forward_core(self, *args, **kwargs)
+
+    _GDN_PATCH_TARGET.forward = _gdn_forward_dispatch
+    _GDN_PATCH_TARGET._forward_core = _gdn_forward_core_dispatch
     _GDN_PATCH_TARGET._warmup_prefill_kernels = AscendGatedDeltaNetAttention._warmup_prefill_kernels

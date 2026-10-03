@@ -12,7 +12,10 @@ import warnings
 
 import torch
 from einops import rearrange
-from fla_npu.ops.ascendc import chunk_gated_delta_rule_fwd_h as fla_chunk_gated_delta_rule_fwd_h
+try:
+    from fla_npu.ops.ascendc import chunk_gated_delta_rule_fwd_h as fla_chunk_gated_delta_rule_fwd_h
+except ImportError:
+    fla_chunk_gated_delta_rule_fwd_h = None
 from vllm.distributed import get_pcp_group
 from vllm.forward_context import get_forward_context
 from vllm.third_party.flash_linear_attention.ops.utils import SUPPRESS_LEVEL
@@ -27,6 +30,14 @@ from .solve_tril import solve_tril
 from .utils import input_guard, prepare_final_chunk_indices
 from .wy_fast import recompute_w_u_fwd
 
+
+
+def _dbg_sync(tag):
+    import os
+    if os.environ.get("SKETCHSSM_NPU_DEBUG_SYNC"):
+        import torch
+        torch.npu.synchronize()
+        print(f"[CHUNK_SYNC] {tag} OK", flush=True)
 
 def chunk_gated_delta_rule_fwd(
     q: torch.Tensor,
@@ -62,6 +73,7 @@ def chunk_gated_delta_rule_fwd(
         cu_seqlens=cu_seqlens,
         block_indices=block_indices_cumsum,
     )
+    _dbg_sync("cumsum")
     # obtain WY representation. u is actually the new v.
     A = chunk_scaled_dot_kkt_fwd(
         k=k,
@@ -78,6 +90,7 @@ def chunk_gated_delta_rule_fwd(
         chunk_indices_bt=chunk_indices_chunk64,
         output_dtype=k.dtype,
     )
+    _dbg_sync("kkt+solve_tril")
     g_transpose = g.transpose(1, 2).contiguous()
     w, u = recompute_w_u_fwd(
         k=k,
@@ -89,6 +102,7 @@ def chunk_gated_delta_rule_fwd(
         chunk_indices=chunk_indices_chunk64,
     )
 
+    _dbg_sync("wy_fast")
     k_ascendc = k.to(torch.bfloat16).transpose(1, 2).contiguous()
     w_ascendc = w.to(torch.bfloat16).transpose(1, 2).contiguous()
     u_ascendc = u.to(torch.bfloat16).transpose(1, 2).contiguous()
@@ -113,19 +127,35 @@ def chunk_gated_delta_rule_fwd(
     else:
         cu_seqlens_kern, initial_state_kern = cu_seqlens_host, initial_state
         keep_meta = None
-    h, v_new, final_state = fla_chunk_gated_delta_rule_fwd_h(
-        k_ascendc,
-        w_ascendc,
-        u_ascendc,
+    _dbg_sync("pre-fwd_h")
+    import os as _os
+    if _os.environ.get("SKETCHSSM_NPU_TRITON_FWDH"):
+        fwd_h_impl = chunk_gated_delta_rule_fwd_h
+    else:
+        fwd_h_impl = fla_chunk_gated_delta_rule_fwd_h or chunk_gated_delta_rule_fwd_h
+    _fwd_h_kwargs = dict(
         g=g_transpose,
-        gk=None,
         initial_state=initial_state_kern,
         output_final_state=True,
         chunk_size=64,
         cu_seqlens=cu_seqlens_kern,
         chunk_indices=chunk_indices_chunk64_host,
-        state_v_first=False,
     )
+    if _os.environ.get("SKETCHSSM_NPU_TRITON_FWDH"):
+        _fwd_h_kwargs["cu_seqlens"] = cu_seqlens
+        _fwd_h_kwargs["chunk_indices"] = chunk_indices
+        h, v_new, final_state = fwd_h_impl(
+            k_ascendc, w_ascendc, u_ascendc, **_fwd_h_kwargs
+        )
+    else:
+        h, v_new, final_state = fwd_h_impl(
+            k_ascendc,
+            w_ascendc,
+            u_ascendc,
+            gk=None,
+            state_v_first=False,
+            **_fwd_h_kwargs,
+        )
     if keep_meta is not None:
         # Scatter the compacted final_state back to the original [N, H, K, V]
         # layout the PCP state recursion expects; empty segments keep their

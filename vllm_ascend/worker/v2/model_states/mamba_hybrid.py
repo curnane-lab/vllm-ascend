@@ -297,11 +297,24 @@ class AscendMambaHybridModelState(MambaHybridModelState, AscendModelState):
                         num_decode_draft_tokens_np[input_batch.num_reqs :] = padded_query_lens - 1
             num_decode_draft_tokens_cpu = torch.from_numpy(num_decode_draft_tokens_np)
 
+        replayssm_decode_base_cpu = None
+        if self.cache_config.sketchssm is not None:
+            # Padding rows get a zero origin: prefill_len includes output
+            # tokens replayed on resumption (upstream MambaHybrid contract).
+            replayssm_decode_base_cpu = torch.zeros(num_reqs, dtype=torch.int32)
+            replayssm_decode_base_cpu[: input_batch.num_reqs] = torch.from_numpy(
+                input_batch.prefill_len_np[: input_batch.num_reqs]
+            )
         model_specific_metadata = MambaHybridAttnMetadata(
             is_prefilling=is_prefilling,
             num_accepted_tokens=num_accepted_tokens,
             num_decode_draft_tokens_cpu=num_decode_draft_tokens_cpu,
+            replayssm_decode_base_cpu=replayssm_decode_base_cpu,
         )
+        if replayssm_decode_base_cpu is not None:
+            # Consumed by MambaHybridAttnMetadata.get_extra_common_attn_kwargs
+            # to feed the SketchSSM row-metadata helpers.
+            model_specific_metadata._sketchssm_req_idx = input_batch.idx_mapping_np
         self.attn_metadata = build_attn_metadata(
             attn_groups=attn_groups,
             num_reqs=num_reqs,
