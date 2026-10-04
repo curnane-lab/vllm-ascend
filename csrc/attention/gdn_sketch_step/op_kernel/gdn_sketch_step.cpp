@@ -163,7 +163,7 @@ public:
 
         pipe->InitBuffer(inQRingK, 1, STEP_W * STEP_K * sizeof(bfloat16_t));
         pipe->InitBuffer(inQRingD, 1, STEP_W * STEP_V * sizeof(bfloat16_t));
-        pipe->InitBuffer(inQU, 1, 64 * STEP_V * sizeof(bfloat16_t));
+        pipe->InitBuffer(inQU, 1, 44 * STEP_V * sizeof(bfloat16_t));
         pipe->InitBuffer(inQPhi, 1,
                          (STEP_P * STEP_K + 5 * 64) * sizeof(bfloat16_t));
         pipe->InitBuffer(inQFs, 1, STEP_W * 64 * sizeof(bfloat16_t));
@@ -561,19 +561,25 @@ private:
         }
 
         // ---- ring projections: kq_s / kk_s per w ----
+        // per-w dot results are staged to vector windows (O_QN/O_KN, both
+        // unused) via V-side copies; a single V->S sync precedes the reads
         float kqs[STEP_W];
         float kks[STEP_W];
         for (uint32_t w = 0; w < STEP_W; ++w) {
             Mul(tmp, ringKF[w * STEP_K], qF, STEP_K);
             PipeBarrier<PIPE_V>();
             ReduceSumHalfInterval(redDst, tmp, STEP_K);
-            SyncV2S();
-            kqs[w] = redDst.GetValue(0);
+            Muls(calc[O_QN + w * 8], redDst, 1.0f, 8);
             Mul(tmp, ringKF[w * STEP_K], kF, STEP_K);
             PipeBarrier<PIPE_V>();
             ReduceSumHalfInterval(redDst, tmp, STEP_K);
-            SyncV2S();
-            kks[w] = redDst.GetValue(0);
+            Muls(calc[O_KN + w * 8], redDst, 1.0f, 8);
+        }
+        PipeBarrier<PIPE_V>();
+        SyncV2S();
+        for (uint32_t w = 0; w < STEP_W; ++w) {
+            kqs[w] = calc[O_QN + w * 8].GetValue(0);
+            kks[w] = calc[O_KN + w * 8].GetValue(0);
         }
 
         // ---- rep[w] = exp(gtot - pre[w]) for w < wp, else ~0 ----
@@ -655,13 +661,17 @@ private:
                 Mul(tmp, pivF, qF, STEP_K);
                 PipeBarrier<PIPE_V>();
                 ReduceSumHalfInterval(redDst, tmp, STEP_K);
-                SyncV2S();
-                tq[p] = redDst.GetValue(0);
+                Muls(calc[O_RED + 8 + p * 8], redDst, 1.0f, 8);
                 Mul(tmp, pivF, kF, STEP_K);
                 PipeBarrier<PIPE_V>();
                 ReduceSumHalfInterval(redDst, tmp, STEP_K);
-                SyncV2S();
-                tk[p] = redDst.GetValue(0);
+                Muls(calc[O_RED + 16 + p * 8], redDst, 1.0f, 8);
+            }
+            PipeBarrier<PIPE_V>();
+            SyncV2S();
+            for (uint32_t p = 0; p < STEP_P; ++p) {
+                tq[p] = calc[O_RED + 8 + p * 8].GetValue(0);
+                tk[p] = calc[O_RED + 16 + p * 8].GetValue(0);
             }
             if (mode == 27) {  // checkpoint: after pivots
                 inQPhi.FreeTensor(phiUb);
@@ -1012,7 +1022,7 @@ private:
     GlobalTensor<int32_t> gmSlots, gmMeta, gmRanks, gmLayout;
     GlobalTensor<int32_t> gmWritePos;
     GlobalTensor<float> gmBetaRing, gmCurrentD, gmCurrentK;
-    TQue<QuePosition::VECIN, 1> inQRingK, inQRingD, inQPhi, inQFs,
+    TQue<QuePosition::VECIN, 2> inQRingK, inQRingD, inQPhi, inQFs,
         inQGate, inQQ, inQK, inQV;
     TQue<QuePosition::VECIN, 1> inQU;
     TBuf<QuePosition::VECCALC> calcBuf, outBuf;
