@@ -135,7 +135,11 @@ public:
         pipe->InitBuffer(metaA, align32(nRows * hvNum * sizeof(float)));
         pipe->InitBuffer(metaB, align32(nRows * hvNum * sizeof(float)));
         pipe->InitBuffer(metaALog, align32(hvNum * sizeof(float)));
-        pipe->InitBuffer(metaQ, 1, align32(rowsTot * 8));
+        // inQQkv doubles as the Init meta staging buffer: sized for the
+        // largest of (q+k+v) and the int64 write_pos preload
+        uint32_t qkvBuf = 3 * STEP_K * sizeof(bfloat16_t);
+        if (align32(rowsTot * 8) > qkvBuf) qkvBuf = align32(rowsTot * 8);
+        pipe->InitBuffer(inQQkv, 1, qkvBuf);
         pipe->InitBuffer(metaDt, align32(hvNum * sizeof(float)));
         pipe->InitBuffer(metaRanks, align32(hvNum * sizeof(int32_t)));
         pipe->InitBuffer(metaLayout, align32(hvNum * 4 * sizeof(int32_t)));
@@ -149,34 +153,34 @@ public:
         dtUb = metaDt.Get<float>();
         ranksUb = metaRanks.Get<int32_t>();
         layoutUb = metaLayout.Get<int32_t>();
-        // exact-length GM reads (any batch) via pad into a scratch queue,
+        // exact-length GM reads (any batch) via pad into the staging queue,
         // then 32B-multiple UB->UB copies into the working TBufs
         DataCopyPadParams metaPad{false, 0, 0, 0};
-        LocalTensor<int32_t> mq = metaQ.AllocTensor<int32_t>();
+        LocalTensor<int32_t> mq = inQQkv.AllocTensor<int32_t>();
         DataCopyPad(mq, gmSlots[0],
                     DataCopyParams{1, static_cast<uint16_t>(rowsTot * 4), 0, 0},
                     metaPad);
-        metaQ.EnQue(mq);
-        LocalTensor<int32_t> mqIn = metaQ.DeQue<int32_t>();
+        inQQkv.EnQue(mq);
+        LocalTensor<int32_t> mqIn = inQQkv.DeQue<int32_t>();
         DataCopy(slotsUb, mqIn, rowsPad);
-        metaQ.FreeTensor(mqIn);
-        mq = metaQ.AllocTensor<int32_t>();
+        inQQkv.FreeTensor(mqIn);
+        mq = inQQkv.AllocTensor<int32_t>();
         DataCopyPad(mq, gmMeta[0],
                     DataCopyParams{1, static_cast<uint16_t>(rowsTot * 4), 0, 0},
                     metaPad);
-        metaQ.EnQue(mq);
-        mqIn = metaQ.DeQue<int32_t>();
+        inQQkv.EnQue(mq);
+        mqIn = inQQkv.DeQue<int32_t>();
         DataCopy(cidxUb, mqIn, rowsPad);
-        metaQ.FreeTensor(mqIn);
+        inQQkv.FreeTensor(mqIn);
         // write_pos is int64; the low 32-bit word of row n lives at word 2n
-        mq = metaQ.AllocTensor<int32_t>();
+        mq = inQQkv.AllocTensor<int32_t>();
         DataCopyPad(mq, gmWritePos[0],
                     DataCopyParams{1, static_cast<uint16_t>(rowsTot * 8), 0, 0},
                     metaPad);
-        metaQ.EnQue(mq);
-        mqIn = metaQ.DeQue<int32_t>();
+        inQQkv.EnQue(mq);
+        mqIn = inQQkv.DeQue<int32_t>();
         DataCopy(wpUb, mqIn, rowsPad * 2);
-        metaQ.FreeTensor(mqIn);
+        inQQkv.FreeTensor(mqIn);
         DataCopy(aUb, gmA[(uint64_t)rowsLo * hvNum], nRows * hvNum);
         DataCopy(bUb, gmB[(uint64_t)rowsLo * hvNum], nRows * hvNum);
         DataCopy(alogUb, gmALog[0], hvNum);
@@ -188,14 +192,14 @@ public:
         pipe->InitBuffer(inQRingK, 1, STEP_W * STEP_K * sizeof(bfloat16_t));
         pipe->InitBuffer(inQRingD, 1, STEP_W * STEP_V * sizeof(bfloat16_t));
         pipe->InitBuffer(inQU, 1, 44 * STEP_V * sizeof(bfloat16_t));
-        pipe->InitBuffer(inQPhi, 1,
-                         (STEP_P * STEP_K + 5 * 64) * sizeof(bfloat16_t));
-        pipe->InitBuffer(inQFs, 1, STEP_W * 64 * sizeof(bfloat16_t));
+        // phi and fs share one queue slot: phiLen (32B-aligned) + W*fg
+        pipe->InitBuffer(inQPhiFs, 1,
+                         (STEP_P * STEP_K + 5 * 64 + STEP_W * 64)
+                             * sizeof(bfloat16_t));
         pipe->InitBuffer(inQGate, 1, STEP_W * sizeof(float));
-        pipe->InitBuffer(inQQ, 1, STEP_K * sizeof(bfloat16_t));
-        pipe->InitBuffer(inQK, 1, STEP_K * sizeof(bfloat16_t));
-        pipe->InitBuffer(inQV, 1, STEP_V * sizeof(bfloat16_t));
         pipe->InitBuffer(outBuf, STEP_V * sizeof(bfloat16_t));
+        // 512B: largest staged payload is 128 floats (dc / currentD store)
+        pipe->InitBuffer(outQStage, 1, STEP_V * sizeof(float));
         pipe->InitBuffer(calcBuf, TOTAL_CALC * sizeof(float));
     }
 
@@ -208,21 +212,17 @@ public:
                 uint32_t n = (myStart + i) / hvNum;
                 uint32_t hv = (myStart + i) % hvNum;
                 if (mode >= 101) {
-                    LocalTensor<bfloat16_t> qUb = inQQ.AllocTensor<bfloat16_t>();
+                    LocalTensor<bfloat16_t> qUb = inQQkv.AllocTensor<bfloat16_t>();
                     DataCopy(qUb, gmQkv[(uint64_t)n * sQkv + iHof(hv)], STEP_K);
-                    inQQ.EnQue(qUb);
-                    LocalTensor<bfloat16_t> qDiag = inQQ.DeQue<bfloat16_t>();
-                    inQQ.FreeTensor(qDiag);
+                    inQQkv.EnQue(qUb);
+                    LocalTensor<bfloat16_t> qDiag = inQQkv.DeQue<bfloat16_t>();
+                    inQQkv.FreeTensor(qDiag);
                 }
                 if (mode >= 102) {
                     LocalTensor<float> acc = calcBuf.Get<float>()[O_ACC];
                     Duplicate(acc, 0.0f, STEP_V);
                     PipeBarrier<PIPE_V>();
-                    LocalTensor<bfloat16_t> ob = outBuf.Get<bfloat16_t>();
-                    Cast(ob, acc, RoundMode::CAST_RINT, STEP_V);
-                    PipeBarrier<PIPE_V>();
-                    DataCopy(gmOut[(uint64_t)(n * hvNum + hv) * STEP_V], ob,
-                             STEP_V);
+                    EmitOut(n, hv, acc);
                 }
             }
             return;
@@ -232,22 +232,25 @@ public:
         }
     }
 
-    // V->MTE3: make all prior V results visible to the MTE3 engine
-    __aicore__ inline void SyncV2Mte3()
+
+    // Stage a 128-float payload through the out queue and store to gmOut.
+    // The framework EnQue/DeQue pair supplies the V->MTE3 (and MTE3->V)
+    // ordering that --cce-auto-sync does not create for TBuf scratch views.
+    __aicore__ inline void EmitOut(uint64_t n, uint32_t hv,
+                                   const LocalTensor<float>& payload)
     {
-        PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE3>(STEP_V_MTE3_EVT);
-        WaitFlag<HardEvent::V_MTE3>(STEP_V_MTE3_EVT);
+        LocalTensor<bfloat16_t> ob = outQStage.AllocTensor<bfloat16_t>();
+        Cast(ob, payload, RoundMode::CAST_RINT, STEP_V);
+        outQStage.EnQue(ob);
+        LocalTensor<bfloat16_t> obDq = outQStage.DeQue<bfloat16_t>();
+        DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], obDq,
+                 STEP_V);
+        outQStage.FreeTensor(obDq);
     }
 
-    // MTE3->V: MTE3 has finished reading scratch that V is about to reuse
-    __aicore__ inline void SyncMte32V()
-    {
-        SetFlag<HardEvent::MTE3_V>(STEP_MTE3_V_EVT);
-        WaitFlag<HardEvent::MTE3_V>(STEP_MTE3_V_EVT);
-    }
-
-    // V->S: make V-pipe results visible to scalar (S-pipe) UB reads
+    // V->S: scalar (S-pipe) GetValue reads of V-computed scalars are NOT
+    // ordered by --cce-auto-sync (observed: early lanes stale, last lane
+    // fresh); a manual V_S event is required at each scalar-read site.
     __aicore__ inline void SyncV2S()
     {
         SetFlag<HardEvent::V_S>(STEP_V_S_EVT);
@@ -269,17 +272,12 @@ public:
         LocalTensor<float> calc = calcBuf.Get<float>();
         LocalTensor<float> acc = calc[O_ACC];
         LocalTensor<float> qFs = calc[O_QF];
-        LocalTensor<bfloat16_t> ob = outBuf.Get<bfloat16_t>();
         Duplicate(acc, 0.0f, STEP_V);
         PipeBarrier<PIPE_V>();
         DataCopy(acc[96], qFs, 8);
         PipeBarrier<PIPE_ALL>();
-        Cast(ob, acc, RoundMode::CAST_RINT, STEP_V);
-        PipeBarrier<PIPE_V>();
-        DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], ob, STEP_V);
-        inQQ.FreeTensor(qIn);
-        inQK.FreeTensor(kIn);
-        inQV.FreeTensor(vIn);
+        EmitOut(n, hv, acc);
+        inQQkv.FreeTensor(qIn);
         inQGate.FreeTensor(gateIn);
         inQRingK.FreeTensor(ringKIn);
         inQRingD.FreeTensor(ringDIn);
@@ -336,19 +334,17 @@ private:
         LocalTensor<float> obF = calc[O_HK2];
         LocalTensor<float> hkV = calc[O_HK];
 
-        // ---- qkv load + gates (M0-probe pattern: alloc all, copy all,
-        // enque all, deque all) ----
-        LocalTensor<bfloat16_t> qUb = inQQ.AllocTensor<bfloat16_t>();
-        LocalTensor<bfloat16_t> kUb = inQK.AllocTensor<bfloat16_t>();
-        LocalTensor<bfloat16_t> vUb = inQV.AllocTensor<bfloat16_t>();
+        // ---- qkv load + gates: q/k/v share one queue slot (queue-count
+        // reduction: the event pool mis-synchronizes excess queues) ----
+        LocalTensor<bfloat16_t> qkvUb = inQQkv.AllocTensor<bfloat16_t>();
         LocalTensor<float> gateUb0 = inQGate.AllocTensor<float>();
         LocalTensor<bfloat16_t> ringKUb0 = inQRingK.AllocTensor<bfloat16_t>();
         LocalTensor<bfloat16_t> ringDUb0 = inQRingD.AllocTensor<bfloat16_t>();
-        DataCopy(qUb, gmQkv[(uint64_t)n * sQkv + iH * STEP_K], STEP_K);
-        DataCopy(kUb,
+        DataCopy(qkvUb, gmQkv[(uint64_t)n * sQkv + iH * STEP_K], STEP_K);
+        DataCopy(qkvUb[STEP_K],
                  gmQkv[(uint64_t)n * sQkv + hNum * STEP_K + iH * STEP_K],
                  STEP_K);
-        DataCopy(vUb,
+        DataCopy(qkvUb[2 * STEP_K],
                  gmQkv[(uint64_t)n * sQkv + 2 * hNum * STEP_K + hv * STEP_V],
                  STEP_V);
         DataCopy(gateUb0,
@@ -359,21 +355,19 @@ private:
         DataCopy(ringDUb0,
                  gmDCache[(uint64_t)slot * sDcSlot + hv * sDcHead],
                  STEP_W * STEP_V);
-        inQQ.EnQue(qUb);
-        inQK.EnQue(kUb);
-        inQV.EnQue(vUb);
+        inQQkv.EnQue(qkvUb);
         inQGate.EnQue(gateUb0);
         inQRingK.EnQue(ringKUb0);
         inQRingD.EnQue(ringDUb0);
-        LocalTensor<bfloat16_t> qIn = inQQ.DeQue<bfloat16_t>();
-        LocalTensor<bfloat16_t> kIn = inQK.DeQue<bfloat16_t>();
-        LocalTensor<bfloat16_t> vIn = inQV.DeQue<bfloat16_t>();
+        LocalTensor<bfloat16_t> qIn = inQQkv.DeQue<bfloat16_t>();
+        LocalTensor<bfloat16_t> kIn = qIn[STEP_K];
+        LocalTensor<bfloat16_t> vIn = qIn[2 * STEP_K];
         LocalTensor<float> gateIn = inQGate.DeQue<float>();
         LocalTensor<bfloat16_t> ringKIn = inQRingK.DeQue<bfloat16_t>();
         LocalTensor<bfloat16_t> ringDIn = inQRingD.DeQue<bfloat16_t>();
 
-        // phi / fs / u are loaded in the same early batch: DeQues issued
-        // this early are reliably ordered (mid-instance ones are not)
+        // phi / fs share one queue slot (phi at 0, fs at phiLen);
+        // u keeps its own queue
         LocalTensor<bfloat16_t> phiUb;
         LocalTensor<bfloat16_t> fsUb;
         LocalTensor<bfloat16_t> uUb;
@@ -384,8 +378,7 @@ private:
             uint32_t phiLen = (m <= STEP_P)
                 ? m * STEP_K
                 : (STEP_P * STEP_K + (STEP_P + 1) * fg);
-            phiUb = inQPhi.AllocTensor<bfloat16_t>();
-            fsUb = inQFs.AllocTensor<bfloat16_t>();
+            phiUb = inQPhiFs.AllocTensor<bfloat16_t>();
             uUb = inQU.AllocTensor<bfloat16_t>();
             DataCopyParams phiParams{1, static_cast<uint16_t>(phiLen * 2),
                                      0, 0};
@@ -393,42 +386,30 @@ private:
             DataCopyPad(phiUb,
                         gmPhi[(uint64_t)cidx * sSm + layPhi],
                         phiParams, phiPad);
-            DataCopy(fsUb, gmFs[(uint64_t)cidx * sSf + layFs], STEP_W * fg);
+            DataCopy(phiUb[phiLen], gmFs[(uint64_t)cidx * sSf + layFs],
+                     STEP_W * fg);
             DataCopy(uUb, gmU[(uint64_t)cidx * sSu + layU], m * STEP_V);
-            inQPhi.EnQue(phiUb);
-            inQFs.EnQue(fsUb);
+            inQPhiFs.EnQue(phiUb);
             inQU.EnQue(uUb);
-            phiUb = inQPhi.DeQue<bfloat16_t>();
-            fsUb = inQFs.DeQue<bfloat16_t>();
+            phiUb = inQPhiFs.DeQue<bfloat16_t>();
+            fsUb = phiUb[phiLen];
             uUb = inQU.DeQue<bfloat16_t>();
         }
         PipeBarrier<PIPE_ALL>();  // DIAG: hard sync after dequeues
 
         if (slot <= 0) {
-            LocalTensor<bfloat16_t> ob = outBuf.Get<bfloat16_t>();
             Duplicate(acc, 0.0f, STEP_V);
             PipeBarrier<PIPE_V>();
-            Cast(ob, acc, RoundMode::CAST_RINT, STEP_V);
-            PipeBarrier<PIPE_V>();
-            DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], ob,
-                     STEP_V);
-            inQQ.FreeTensor(qIn);
-            inQK.FreeTensor(kIn);
-            inQV.FreeTensor(vIn);
+            EmitOut(n, hv, acc);
+            inQQkv.FreeTensor(qIn);
             return;
         }
 
         if (mode == 0) {  // diag: meta reads + zero out only
             Duplicate(acc, 0.0f, STEP_V);
             PipeBarrier<PIPE_V>();
-            LocalTensor<bfloat16_t> ob0 = outBuf.Get<bfloat16_t>();
-            Cast(ob0, acc, RoundMode::CAST_RINT, STEP_V);
-            PipeBarrier<PIPE_V>();
-            DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], ob0,
-                     STEP_V);
-            inQQ.FreeTensor(qIn);
-            inQK.FreeTensor(kIn);
-            inQV.FreeTensor(vIn);
+            EmitOut(n, hv, acc);
+            inQQkv.FreeTensor(qIn);
             return;
         }
 
@@ -448,16 +429,10 @@ private:
             PipeBarrier<PIPE_V>();
         }
         if (mode == 20) {  // checkpoint: after loads + casts
-            LocalTensor<bfloat16_t> odb = outBuf.Get<bfloat16_t>();
             Duplicate(acc, 0.0f, STEP_V);
             PipeBarrier<PIPE_V>();
-            Cast(odb, acc, RoundMode::CAST_RINT, STEP_V);
-            PipeBarrier<PIPE_V>();
-            DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], odb,
-                     STEP_V);
-            inQQ.FreeTensor(qIn);
-            inQK.FreeTensor(kIn);
-            inQV.FreeTensor(vIn);
+            EmitOut(n, hv, acc);
+            inQQkv.FreeTensor(qIn);
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
@@ -478,24 +453,20 @@ private:
             DataCopy(acc[8], qF, 8);
             DataCopy(acc[16], tmp2, 8);
             PipeBarrier<PIPE_ALL>();
-            LocalTensor<bfloat16_t> ob = outBuf.Get<bfloat16_t>();
-            Cast(ob, acc, RoundMode::CAST_RINT, STEP_V);
-            PipeBarrier<PIPE_V>();
-            DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], ob,
-                     STEP_V);
-            inQQ.FreeTensor(qIn);
-            inQK.FreeTensor(kIn);
-            inQV.FreeTensor(vIn);
+            EmitOut(n, hv, acc);
+            inQQkv.FreeTensor(qIn);
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
             return;
         }
+        PipeBarrier<PIPE_V>();
         SyncV2S();
         float qSc = scale / sqrt(redDst.GetValue(0) + 1e-6f);
         Mul(tmp, kF, kF, STEP_K);
         PipeBarrier<PIPE_V>();
         ReduceSumHalfInterval(redDst, tmp, STEP_K);
+        PipeBarrier<PIPE_V>();
         SyncV2S();
         float kRn = 1.0f / sqrt(redDst.GetValue(0) + 1e-6f);
         Muls(qF, qF, qSc, STEP_K);
@@ -505,6 +476,7 @@ private:
         Mul(tmp, qF, kF, STEP_K);
         PipeBarrier<PIPE_V>();
         ReduceSumHalfInterval(redDst, tmp, STEP_K);
+        PipeBarrier<PIPE_V>();
         SyncV2S();
         float curKq = redDst.GetValue(0);
 
@@ -526,6 +498,7 @@ private:
         expArgs.SetValue(3, gtot);
         PipeBarrier<PIPE_V>();
         AscendC::Exp(expArgs, expArgs, 8);
+        PipeBarrier<PIPE_V>();
         SyncV2S();
         float exg = expArgs.GetValue(0);
         float eb = expArgs.GetValue(1);
@@ -536,6 +509,7 @@ private:
         expArgs.SetValue(0, 1.0f + exg);
         PipeBarrier<PIPE_V>();
         AscendC::Log(expArgs, expArgs, 8);
+        PipeBarrier<PIPE_V>();
         SyncV2S();
         sp = (xgv <= 20.0f) ? expArgs.GetValue(0) : xgv;
         float gVal = -eAl * sp;
@@ -543,6 +517,7 @@ private:
         expArgs.SetValue(0, gVal);
         PipeBarrier<PIPE_V>();
         AscendC::Exp(expArgs, expArgs, 8);
+        PipeBarrier<PIPE_V>();
         SyncV2S();
         float alpha = expArgs.GetValue(0);
         float beta = 1.0f / (1.0f + eb);
@@ -554,6 +529,7 @@ private:
             Cast(betaBf, redDst, RoundMode::CAST_RINT, 8);
             PipeBarrier<PIPE_V>();
             Cast(redDst, betaBf, RoundMode::CAST_NONE, 8);
+            PipeBarrier<PIPE_V>();
             SyncV2S();
             beta = redDst.GetValue(0);
         }
@@ -562,17 +538,19 @@ private:
         cbParams.blockLen = 4;
         cbParams.srcStride = 0;
         cbParams.dstStride = 0;
-        // lanes 24/32: untouched by Exp(8) and by the rep loop (0..15);
-        // written once per instance so MTE3 reads a stable source
-        expArgs.SetValue(40, beta);
-        expArgs.SetValue(48, gVal);
-        PipeBarrier<PIPE_V>();
-        SyncV2Mte3();
+        // beta/gVal live in registers; Duplicate them into the out queue so
+        // the framework supplies the V->MTE3 ordering for the GM writes
+        LocalTensor<float> scOut = outQStage.AllocTensor<float>();
+        Duplicate(scOut, beta, 8);
+        Duplicate(scOut[8], gVal, 8);
+        outQStage.EnQue(scOut);
+        LocalTensor<float> scOutDq = outQStage.DeQue<float>();
         DataCopyPad(gmBetaRing[(uint64_t)cidx * hvNum * STEP_W
                                + hv * STEP_W + wp],
-                    expArgs[40], cbParams);
+                    scOutDq, cbParams);
         DataCopyPad(gmGCache[(uint64_t)slot * sGcSlot + hv * sGcHead + wp],
-                    expArgs[48], cbParams);
+                    scOutDq[8], cbParams);
+        outQStage.FreeTensor(scOutDq);
 
         if (mode == 21) {  // checkpoint: after gates + ring pad writes
             CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
@@ -581,21 +559,24 @@ private:
 
         // ---- k write: one v-head per key-head ----
         if (hv % hvPerH == 0) {
+            LocalTensor<float> kSt = outQStage.AllocTensor<float>();
             if (wp == STEP_W - 1) {
-                SyncV2Mte3();
+                Muls(kSt, kF, 1.0f, STEP_K);
+                outQStage.EnQue(kSt);
+                LocalTensor<float> kDq = outQStage.DeQue<float>();
                 DataCopy(gmCurrentK[(uint64_t)cidx * hNum * STEP_K
                                     + iH * STEP_K],
-                         kF, STEP_K);
-                SyncMte32V();
+                         kDq, STEP_K);
+                outQStage.FreeTensor(kDq);
             } else {
-                LocalTensor<bfloat16_t> kBf =
-                    calc[O_HK2].ReinterpretCast<bfloat16_t>();
+                LocalTensor<bfloat16_t> kBf = kSt.ReinterpretCast<bfloat16_t>();
                 Cast(kBf, kF, RoundMode::CAST_RINT, STEP_K);
-                SyncV2Mte3();
+                outQStage.EnQue(kSt);
+                LocalTensor<float> kDq = outQStage.DeQue<float>();
                 DataCopy(gmKCache[(uint64_t)slot * sKcSlot + iH * sKcHead
                                   + wp * STEP_K],
-                         kBf, STEP_K);
-                SyncMte32V();
+                         kDq.ReinterpretCast<bfloat16_t>(), STEP_K);
+                outQStage.FreeTensor(kDq);
             }
         }
         if (mode == 22) {  // checkpoint: after k write
@@ -604,14 +585,8 @@ private:
         }
 
         if (mode == 1) {  // diag: emit v
-            LocalTensor<bfloat16_t> odb = outBuf.Get<bfloat16_t>();
-            Cast(odb, obF, RoundMode::CAST_RINT, STEP_V);
-            PipeBarrier<PIPE_V>();
-            DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V],
-                     odb, STEP_V);
-            inQQ.FreeTensor(qIn);
-            inQK.FreeTensor(kIn);
-            inQV.FreeTensor(vIn);
+            EmitOut(n, hv, obF);
+            inQQkv.FreeTensor(qIn);
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
@@ -620,7 +595,7 @@ private:
 
         // ---- ring projections: kq_s / kk_s per w ----
         // per-w dot results are staged to vector windows (O_QN/O_KN, both
-        // unused) via V-side copies; a single V->S sync precedes the reads
+        // unused) via V-side copies; a pipe barrier precedes the reads
         float kqs[STEP_W];
         float kks[STEP_W];
         for (uint32_t w = 0; w < STEP_W; ++w) {
@@ -634,6 +609,7 @@ private:
             Muls(calc[O_KN + w * 8], redDst, 1.0f, 8);
         }
         PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
         SyncV2S();
         for (uint32_t w = 0; w < STEP_W; ++w) {
             kqs[w] = calc[O_QN + w * 8].GetValue(0);
@@ -646,12 +622,13 @@ private:
         }
         PipeBarrier<PIPE_V>();
         AscendC::Exp(expArgs, expArgs, 32);
-        SyncV2S();
+        PipeBarrier<PIPE_V>();
 
         // ---- s_q / s_k: sum_w d[w] * (kq/kk)[w] * rep[w] ----
         Duplicate(sQ, 0.0f, STEP_V);
         Duplicate(sK, 0.0f, STEP_V);
         PipeBarrier<PIPE_V>();
+        SyncV2S();
         for (uint32_t w = 0; w < STEP_W; ++w) {
             float wq = kqs[w] * expArgs.GetValue(w);
             float wk = kks[w] * expArgs.GetValue(w);
@@ -678,9 +655,32 @@ private:
             // ---- phi / fs / u: dequeued up top with the other inputs ----
             Cast(fsF, fsUb, RoundMode::CAST_NONE, STEP_W * fg);
             PipeBarrier<PIPE_V>();
+            if (mode == 47) {  // diag: raw loaded fs payload (first 128)
+                DataCopy(acc, fsF, STEP_V);
+                PipeBarrier<PIPE_V>();
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+                EmitOut(n, hv, acc);
+                inQQkv.FreeTensor(qIn);
+                inQGate.FreeTensor(gateIn);
+                inQRingK.FreeTensor(ringKIn);
+                inQRingD.FreeTensor(ringDIn);
+                return;
+            }
+            if (mode == 48) {  // diag: merged phi row 0 as float
+                Cast(tmp, phiUb, RoundMode::CAST_NONE, STEP_K);
+                PipeBarrier<PIPE_V>();
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+                EmitOut(n, hv, tmp);
+                inQQkv.FreeTensor(qIn);
+                inQGate.FreeTensor(gateIn);
+                inQRingK.FreeTensor(ringKIn);
+                inQRingD.FreeTensor(ringDIn);
+                return;
+            }
             if (mode == 26) {  // checkpoint: after phi/fs/u loads
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
@@ -696,21 +696,21 @@ private:
                 Mul(tmp, pivF, qF, STEP_K);
                 PipeBarrier<PIPE_V>();
                 ReduceSumHalfInterval(redDst, tmp, STEP_K);
-                Muls(calc[O_RED + 8 + p * 8], redDst, 1.0f, 8);
+                Muls(gtqV[p * 8], redDst, 1.0f, 8);
                 Mul(tmp, pivF, kF, STEP_K);
                 PipeBarrier<PIPE_V>();
                 ReduceSumHalfInterval(redDst, tmp, STEP_K);
-                Muls(calc[O_RED + 16 + p * 8], redDst, 1.0f, 8);
+                Muls(gtkV[p * 8], redDst, 1.0f, 8);
             }
+            PipeBarrier<PIPE_V>();
             PipeBarrier<PIPE_V>();
             SyncV2S();
             for (uint32_t p = 0; p < STEP_P; ++p) {
-                tq[p] = calc[O_RED + 8 + p * 8].GetValue(0);
-                tk[p] = calc[O_RED + 16 + p * 8].GetValue(0);
+                tq[p] = gtqV[p * 8].GetValue(0);
+                tk[p] = gtkV[p * 8].GetValue(0);
             }
             if (mode == 27) {  // checkpoint: after pivots
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
@@ -720,8 +720,7 @@ private:
             Cast(adF, phiUb[STEP_P * STEP_K], RoundMode::CAST_NONE, m);
             PipeBarrier<PIPE_V>();
             if (mode == 32) {
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
@@ -730,8 +729,7 @@ private:
             Duplicate(xk, 0.0f, m);
             PipeBarrier<PIPE_V>();
             if (mode == 33) {
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
@@ -741,8 +739,7 @@ private:
                      RoundMode::CAST_NONE, m);
                 PipeBarrier<PIPE_V>();
                 if (mode == 35 && p == 0) {
-                    inQPhi.FreeTensor(phiUb);
-                    inQFs.FreeTensor(fsUb);
+                    inQPhiFs.FreeTensor(phiUb);
                     inQU.FreeTensor(uUb);
                     CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                     return;
@@ -750,8 +747,7 @@ private:
                 Muls(tmp, tmp2, tq[p], m);
                 PipeBarrier<PIPE_V>();
                 if (mode == 36 && p == 0) {
-                    inQPhi.FreeTensor(phiUb);
-                    inQFs.FreeTensor(fsUb);
+                    inQPhiFs.FreeTensor(phiUb);
                     inQU.FreeTensor(uUb);
                     CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                     return;
@@ -759,8 +755,7 @@ private:
                 Add(xq, xq, tmp, m);
                 PipeBarrier<PIPE_V>();
                 if (mode == 37 && p == 0) {
-                    inQPhi.FreeTensor(phiUb);
-                    inQFs.FreeTensor(fsUb);
+                    inQPhiFs.FreeTensor(phiUb);
                     inQU.FreeTensor(uUb);
                     CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                     return;
@@ -770,16 +765,14 @@ private:
                 Add(xk, xk, tmp, m);
                 PipeBarrier<PIPE_V>();
                 if (mode == 34 && p == 0) {
-                    inQPhi.FreeTensor(phiUb);
-                    inQFs.FreeTensor(fsUb);
+                    inQPhiFs.FreeTensor(phiUb);
                     inQU.FreeTensor(uUb);
                     CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                     return;
                 }
             }
             if (mode == 29) {  // checkpoint: after gains p-loop
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
@@ -802,8 +795,7 @@ private:
                 PipeBarrier<PIPE_V>();
             }
             if (mode == 30) {  // checkpoint: after qn/kn adds + override
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
@@ -824,10 +816,22 @@ private:
                 PipeBarrier<PIPE_V>();
             }
             if (mode == 31) {  // checkpoint: after eq/ek
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
+                return;
+            }
+            if (mode == 49) {  // diag: ek[0:64] + xk[0:64] pre-fcur
+                DataCopy(acc, ek, 64);
+                DataCopy(acc[64], xk, 64);
+                PipeBarrier<PIPE_V>();
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+                EmitOut(n, hv, acc);
+                inQQkv.FreeTensor(qIn);
+                inQGate.FreeTensor(gateIn);
+                inQRingK.FreeTensor(ringKIn);
+                inQRingD.FreeTensor(ringDIn);
                 return;
             }
 
@@ -843,25 +847,25 @@ private:
             Sub(xg, xg, tmp, m);
             PipeBarrier<PIPE_V>();
             if (mode == 28) {  // checkpoint: after eq/ek/fcur/x
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
             }
 
-            // fs[wp] = fcur (bf16, m elems)
-            LocalTensor<bfloat16_t> fcurBf =
-                calc[O_KN].ReinterpretCast<bfloat16_t>();
-            Cast(fcurBf, fcur, RoundMode::CAST_RINT, m);
-            SyncV2Mte3();
+            // fs[wp] = fcur (bf16, m elems).  Stage through the out queue:
+            // the framework inserts a real V->MTE3 event that auto-sync fails
+            // to create for reinterpret-cast scratch views.
+            LocalTensor<bfloat16_t> fcurBf = outQStage.AllocTensor<bfloat16_t>();
+            Cast(fcurBf, fcur, RoundMode::CAST_RINT, 64);
+            outQStage.EnQue(fcurBf);
+            LocalTensor<bfloat16_t> fcurOut = outQStage.DeQue<bfloat16_t>();
             DataCopyParams fsParams{1, static_cast<uint16_t>(m * 2), 0, 0};
             DataCopyPad(gmFs[(uint64_t)cidx * sSf + layFs + wp * fg],
-                        fcurBf, fsParams);
-            SyncMte32V();
+                        fcurOut, fsParams);
+            outQStage.FreeTensor(fcurOut);
             if (mode == 24) {  // checkpoint: after phi/fs/u math
-                inQPhi.FreeTensor(phiUb);
-                inQFs.FreeTensor(fsUb);
+                inQPhiFs.FreeTensor(phiUb);
                 inQU.FreeTensor(uUb);
                 CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
                 return;
@@ -880,8 +884,7 @@ private:
                 Add(acc, acc, tmp, STEP_V);
                 PipeBarrier<PIPE_V>();
             }
-            inQPhi.FreeTensor(phiUb);
-            inQFs.FreeTensor(fsUb);
+            inQPhiFs.FreeTensor(phiUb);
             inQU.FreeTensor(uUb);
 
             // dc = beta * (v - alpha * s_k)
@@ -980,14 +983,8 @@ private:
                 tmp.SetValue(108 + z, kF.GetValue(z));
             }
             PipeBarrier<PIPE_V>();
-            LocalTensor<bfloat16_t> ob = outBuf.Get<bfloat16_t>();
-            Cast(ob, tmp, RoundMode::CAST_RINT, STEP_V);
-            PipeBarrier<PIPE_V>();
-            DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], ob,
-                     STEP_V);
-            inQQ.FreeTensor(qIn);
-            inQK.FreeTensor(kIn);
-            inQV.FreeTensor(vIn);
+            EmitOut(n, hv, tmp);
+            inQQkv.FreeTensor(qIn);
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
@@ -995,21 +992,25 @@ private:
         }
 
         // ---- d store + out store ----
-        LocalTensor<bfloat16_t> ob = outBuf.Get<bfloat16_t>();
         if (wp == STEP_W - 1) {
-            SyncV2Mte3();
-            DataCopy(gmCurrentD[(uint64_t)cidx * hvNum * STEP_V + hv * STEP_V],
-                     dc, STEP_V);
-            SyncMte32V();
+            LocalTensor<float> dSt = outQStage.AllocTensor<float>();
+            Muls(dSt, dc, 1.0f, STEP_V);
+            outQStage.EnQue(dSt);
+            LocalTensor<float> dDq = outQStage.DeQue<float>();
+            DataCopy(gmCurrentD[(uint64_t)cidx * hvNum * STEP_V
+                                + hv * STEP_V],
+                     dDq, STEP_V);
+            outQStage.FreeTensor(dDq);
         } else {
-            LocalTensor<bfloat16_t> dcBf =
-                calc[O_HK2].ReinterpretCast<bfloat16_t>();
+            LocalTensor<float> dSt = outQStage.AllocTensor<float>();
+            LocalTensor<bfloat16_t> dcBf = dSt.ReinterpretCast<bfloat16_t>();
             Cast(dcBf, dc, RoundMode::CAST_RINT, STEP_V);
-            SyncV2Mte3();
+            outQStage.EnQue(dSt);
+            LocalTensor<float> dDq = outQStage.DeQue<float>();
             DataCopy(gmDCache[(uint64_t)slot * sDcSlot + hv * sDcHead
                               + wp * STEP_V],
-                     dcBf, STEP_V);
-            SyncMte32V();
+                     dDq.ReinterpretCast<bfloat16_t>(), STEP_V);
+            outQStage.FreeTensor(dDq);
         }
         if (mode == 44) {  // diag: full flow, pack diagnostics into out
             // [0:8]=s_q[0:8] [8:16]=s_k[0:8] [16:24]=dc[0:8]
@@ -1033,17 +1034,12 @@ private:
             DataCopy(tmp2[40], dc[96], 32);
             DataCopy(tmp2[72], sQ[96], 32);
             PipeBarrier<PIPE_V>();
-            Cast(ob, tmp2, RoundMode::CAST_RINT, STEP_V);
+            EmitOut(n, hv, tmp2);
         } else {
-            Cast(ob, tmp, RoundMode::CAST_RINT, STEP_V);
+            EmitOut(n, hv, tmp);
         }
-        SyncV2Mte3();
-        DataCopy(gmOut[(uint64_t)n * hvNum * STEP_V + hv * STEP_V], ob, STEP_V);
-        SyncMte32V();
 
-        inQQ.FreeTensor(qIn);
-        inQK.FreeTensor(kIn);
-        inQV.FreeTensor(vIn);
+        inQQkv.FreeTensor(qIn);
         inQGate.FreeTensor(gateIn);
         inQRingK.FreeTensor(ringKIn);
         inQRingD.FreeTensor(ringDIn);
@@ -1055,17 +1051,15 @@ private:
     GlobalTensor<int32_t> gmSlots, gmMeta, gmRanks, gmLayout;
     GlobalTensor<int32_t> gmWritePos;
     GlobalTensor<float> gmBetaRing, gmCurrentD, gmCurrentK;
-    TQue<QuePosition::VECIN, 2> inQRingK, inQRingD, inQPhi, inQFs,
-        inQGate, inQQ, inQK, inQV, metaQ;
+    TQue<QuePosition::VECIN, 1> inQRingK, inQRingD, inQPhiFs, inQGate, inQQkv;
     TQue<QuePosition::VECIN, 1> inQU;
+    TQue<QuePosition::VECOUT, 1> outQStage;
     TBuf<QuePosition::VECCALC> calcBuf, outBuf;
     TBuf<QuePosition::VECCALC> metaSlots, metaWp, metaCidx, metaA, metaB;
     TBuf<QuePosition::VECCALC> metaALog, metaDt, metaRanks, metaLayout;
     LocalTensor<int32_t> slotsUb, cidxUb, ranksUb, layoutUb;
     LocalTensor<int32_t> wpUb;
     LocalTensor<float> aUb, bUb, alogUb, dtUb;
-    static constexpr uint32_t STEP_V_MTE3_EVT = 0;
-    static constexpr uint32_t STEP_MTE3_V_EVT = 1;
     static constexpr uint32_t STEP_V_S_EVT = 2;
     uint32_t myStart = 0, myCount = 0, hvNum = 0, hNum = 0, hvPerH = 2;
     uint32_t mode = 99;
