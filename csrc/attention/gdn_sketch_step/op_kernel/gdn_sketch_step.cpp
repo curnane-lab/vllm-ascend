@@ -372,6 +372,25 @@ private:
         LocalTensor<bfloat16_t> fsUb;
         LocalTensor<bfloat16_t> uUb;
         const bool sketchHead = (m > 0);
+
+        if (slot <= 0) {
+            Duplicate(acc, 0.0f, STEP_V);
+            PipeBarrier<PIPE_V>();
+            EmitOut(n, hv, acc);
+            inQQkv.FreeTensor(qIn);
+            return;
+        }
+
+        if (mode == 0) {  // diag: meta reads + zero out only
+            Duplicate(acc, 0.0f, STEP_V);
+            PipeBarrier<PIPE_V>();
+            EmitOut(n, hv, acc);
+            inQQkv.FreeTensor(qIn);
+            return;
+        }
+
+        // sketch state loads come after the padding early-exit so padding
+        // rows leak no queue slots (e2e padding rows are common)
         if (sketchHead) {
             // m <= P heads keep only the merged map (m*K); phi gains section
             // is skipped entirely (xq/xk are overridden by tq/tk)
@@ -396,22 +415,6 @@ private:
             uUb = inQU.DeQue<bfloat16_t>();
         }
         PipeBarrier<PIPE_ALL>();  // DIAG: hard sync after dequeues
-
-        if (slot <= 0) {
-            Duplicate(acc, 0.0f, STEP_V);
-            PipeBarrier<PIPE_V>();
-            EmitOut(n, hv, acc);
-            inQQkv.FreeTensor(qIn);
-            return;
-        }
-
-        if (mode == 0) {  // diag: meta reads + zero out only
-            Duplicate(acc, 0.0f, STEP_V);
-            PipeBarrier<PIPE_V>();
-            EmitOut(n, hv, acc);
-            inQQkv.FreeTensor(qIn);
-            return;
-        }
 
         Cast(kF, kIn, RoundMode::CAST_NONE, STEP_K);
         Cast(qF, qIn, RoundMode::CAST_NONE, STEP_K);
