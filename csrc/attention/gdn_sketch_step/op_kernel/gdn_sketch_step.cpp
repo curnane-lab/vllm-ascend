@@ -135,6 +135,7 @@ public:
         pipe->InitBuffer(metaA, align32(nRows * hvNum * sizeof(float)));
         pipe->InitBuffer(metaB, align32(nRows * hvNum * sizeof(float)));
         pipe->InitBuffer(metaALog, align32(hvNum * sizeof(float)));
+        pipe->InitBuffer(metaQ, 1, align32(rowsTot * 8));
         pipe->InitBuffer(metaDt, align32(hvNum * sizeof(float)));
         pipe->InitBuffer(metaRanks, align32(hvNum * sizeof(int32_t)));
         pipe->InitBuffer(metaLayout, align32(hvNum * 4 * sizeof(int32_t)));
@@ -148,11 +149,34 @@ public:
         dtUb = metaDt.Get<float>();
         ranksUb = metaRanks.Get<int32_t>();
         layoutUb = metaLayout.Get<int32_t>();
-        // load from the aligned tensor base with a 32B-multiple length
-        DataCopy(slotsUb, gmSlots[0], rowsPad);
-        DataCopy(cidxUb, gmMeta[0], rowsPad);
-        // write_pos is int64; read the low 32-bit word of each row
-        DataCopy(wpUb, gmWritePos[0], rowsPad * 2);
+        // exact-length GM reads (any batch) via pad into a scratch queue,
+        // then 32B-multiple UB->UB copies into the working TBufs
+        DataCopyPadParams metaPad{false, 0, 0, 0};
+        LocalTensor<int32_t> mq = metaQ.AllocTensor<int32_t>();
+        DataCopyPad(mq, gmSlots[0],
+                    DataCopyParams{1, static_cast<uint16_t>(rowsTot * 4), 0, 0},
+                    metaPad);
+        metaQ.EnQue(mq);
+        LocalTensor<int32_t> mqIn = metaQ.DeQue<int32_t>();
+        DataCopy(slotsUb, mqIn, rowsPad);
+        metaQ.FreeTensor(mqIn);
+        mq = metaQ.AllocTensor<int32_t>();
+        DataCopyPad(mq, gmMeta[0],
+                    DataCopyParams{1, static_cast<uint16_t>(rowsTot * 4), 0, 0},
+                    metaPad);
+        metaQ.EnQue(mq);
+        mqIn = metaQ.DeQue<int32_t>();
+        DataCopy(cidxUb, mqIn, rowsPad);
+        metaQ.FreeTensor(mqIn);
+        // write_pos is int64; the low 32-bit word of row n lives at word 2n
+        mq = metaQ.AllocTensor<int32_t>();
+        DataCopyPad(mq, gmWritePos[0],
+                    DataCopyParams{1, static_cast<uint16_t>(rowsTot * 8), 0, 0},
+                    metaPad);
+        metaQ.EnQue(mq);
+        mqIn = metaQ.DeQue<int32_t>();
+        DataCopy(wpUb, mqIn, rowsPad * 2);
+        metaQ.FreeTensor(mqIn);
         DataCopy(aUb, gmA[(uint64_t)rowsLo * hvNum], nRows * hvNum);
         DataCopy(bUb, gmB[(uint64_t)rowsLo * hvNum], nRows * hvNum);
         DataCopy(alogUb, gmALog[0], hvNum);
@@ -211,13 +235,16 @@ public:
     // V->MTE3: make all prior V results visible to the MTE3 engine
     __aicore__ inline void SyncV2Mte3()
     {
-        // DIAG: disabled
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(STEP_V_MTE3_EVT);
+        WaitFlag<HardEvent::V_MTE3>(STEP_V_MTE3_EVT);
     }
 
     // MTE3->V: MTE3 has finished reading scratch that V is about to reuse
     __aicore__ inline void SyncMte32V()
     {
-        // DIAG: disabled
+        SetFlag<HardEvent::MTE3_V>(STEP_MTE3_V_EVT);
+        WaitFlag<HardEvent::MTE3_V>(STEP_MTE3_V_EVT);
     }
 
     // V->S: make V-pipe results visible to scalar (S-pipe) UB reads
@@ -344,6 +371,37 @@ private:
         LocalTensor<float> gateIn = inQGate.DeQue<float>();
         LocalTensor<bfloat16_t> ringKIn = inQRingK.DeQue<bfloat16_t>();
         LocalTensor<bfloat16_t> ringDIn = inQRingD.DeQue<bfloat16_t>();
+
+        // phi / fs / u are loaded in the same early batch: DeQues issued
+        // this early are reliably ordered (mid-instance ones are not)
+        LocalTensor<bfloat16_t> phiUb;
+        LocalTensor<bfloat16_t> fsUb;
+        LocalTensor<bfloat16_t> uUb;
+        const bool sketchHead = (m > 0);
+        if (sketchHead) {
+            // m <= P heads keep only the merged map (m*K); phi gains section
+            // is skipped entirely (xq/xk are overridden by tq/tk)
+            uint32_t phiLen = (m <= STEP_P)
+                ? m * STEP_K
+                : (STEP_P * STEP_K + (STEP_P + 1) * fg);
+            phiUb = inQPhi.AllocTensor<bfloat16_t>();
+            fsUb = inQFs.AllocTensor<bfloat16_t>();
+            uUb = inQU.AllocTensor<bfloat16_t>();
+            DataCopyParams phiParams{1, static_cast<uint16_t>(phiLen * 2),
+                                     0, 0};
+            DataCopyPadParams phiPad{false, 0, 0, 0};
+            DataCopyPad(phiUb,
+                        gmPhi[(uint64_t)cidx * sSm + layPhi],
+                        phiParams, phiPad);
+            DataCopy(fsUb, gmFs[(uint64_t)cidx * sSf + layFs], STEP_W * fg);
+            DataCopy(uUb, gmU[(uint64_t)cidx * sSu + layU], m * STEP_V);
+            inQPhi.EnQue(phiUb);
+            inQFs.EnQue(fsUb);
+            inQU.EnQue(uUb);
+            phiUb = inQPhi.DeQue<bfloat16_t>();
+            fsUb = inQFs.DeQue<bfloat16_t>();
+            uUb = inQU.DeQue<bfloat16_t>();
+        }
         PipeBarrier<PIPE_ALL>();  // DIAG: hard sync after dequeues
 
         if (slot <= 0) {
@@ -506,15 +564,15 @@ private:
         cbParams.dstStride = 0;
         // lanes 24/32: untouched by Exp(8) and by the rep loop (0..15);
         // written once per instance so MTE3 reads a stable source
-        expArgs.SetValue(24, beta);
-        expArgs.SetValue(32, gVal);
+        expArgs.SetValue(40, beta);
+        expArgs.SetValue(48, gVal);
         PipeBarrier<PIPE_V>();
         SyncV2Mte3();
         DataCopyPad(gmBetaRing[(uint64_t)cidx * hvNum * STEP_W
                                + hv * STEP_W + wp],
-                    expArgs[24], cbParams);
+                    expArgs[40], cbParams);
         DataCopyPad(gmGCache[(uint64_t)slot * sGcSlot + hv * sGcHead + wp],
-                    expArgs[32], cbParams);
+                    expArgs[48], cbParams);
 
         if (mode == 21) {  // checkpoint: after gates + ring pad writes
             CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
@@ -617,30 +675,7 @@ private:
         }
 
         if (m > 0) {
-            // ---- phi / fs / u block loads ----
-            LocalTensor<bfloat16_t> phiUb = inQPhi.AllocTensor<bfloat16_t>();
-            LocalTensor<bfloat16_t> fsUb = inQFs.AllocTensor<bfloat16_t>();
-            LocalTensor<bfloat16_t> uUb = inQU.AllocTensor<bfloat16_t>();
-            // m <= P heads keep only the merged map (m*K); phi gains section
-            // is skipped entirely (xq/xk are overridden by tq/tk)
-            uint32_t phiLen = (m <= STEP_P)
-                ? m * STEP_K
-                : (STEP_P * STEP_K + (STEP_P + 1) * fg);
-            DataCopyParams phiParams{1, static_cast<uint16_t>(phiLen * 2),
-                                     0, 0};
-            DataCopyPadParams phiPad{false, 0, 0, 0};
-            DataCopyPad(phiUb,
-                        gmPhi[(uint64_t)cidx * sSm + layPhi],
-                        phiParams, phiPad);
-            DataCopy(fsUb, gmFs[(uint64_t)cidx * sSf + layFs], STEP_W * fg);
-            DataCopy(uUb, gmU[(uint64_t)cidx * sSu + layU], m * STEP_V);
-            inQPhi.EnQue(phiUb);
-            inQFs.EnQue(fsUb);
-            inQU.EnQue(uUb);
-            phiUb = inQPhi.DeQue<bfloat16_t>();
-            fsUb = inQFs.DeQue<bfloat16_t>();
-            uUb = inQU.DeQue<bfloat16_t>();
-            PipeBarrier<PIPE_ALL>();
+            // ---- phi / fs / u: dequeued up top with the other inputs ----
             Cast(fsF, fsUb, RoundMode::CAST_NONE, STEP_W * fg);
             PipeBarrier<PIPE_V>();
             if (mode == 26) {  // checkpoint: after phi/fs/u loads
@@ -797,9 +832,7 @@ private:
             }
 
             // fcur = beta*(xk - ek); x = xq - eq - fcur*curKq
-            Muls(tmp, ek, beta, m);
-            PipeBarrier<PIPE_V>();
-            Sub(xk, xk, tmp, m);
+            Sub(xk, xk, ek, m);
             PipeBarrier<PIPE_V>();
             Muls(fcur, xk, beta, m);
             PipeBarrier<PIPE_V>();
@@ -1023,7 +1056,7 @@ private:
     GlobalTensor<int32_t> gmWritePos;
     GlobalTensor<float> gmBetaRing, gmCurrentD, gmCurrentK;
     TQue<QuePosition::VECIN, 2> inQRingK, inQRingD, inQPhi, inQFs,
-        inQGate, inQQ, inQK, inQV;
+        inQGate, inQQ, inQK, inQV, metaQ;
     TQue<QuePosition::VECIN, 1> inQU;
     TBuf<QuePosition::VECCALC> calcBuf, outBuf;
     TBuf<QuePosition::VECCALC> metaSlots, metaWp, metaCidx, metaA, metaB;
