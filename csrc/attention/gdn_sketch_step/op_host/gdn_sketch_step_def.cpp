@@ -88,6 +88,7 @@ public:
         this->Attr("s_su").Int();
         this->Attr("s_sm").Int();
         this->Attr("s_sf").Int();
+        this->Attr("mode").Int();
 
         this->AICore().AddConfig("ascend910_93");
     }

@@ -31,6 +31,7 @@ BEGIN_TILING_DATA_DEF(GdnSketchStepTilingData)
     TILING_DATA_FIELD_DEF(int64_t, sSu);
     TILING_DATA_FIELD_DEF(int64_t, sSm);
     TILING_DATA_FIELD_DEF(int64_t, sSf);
+    TILING_DATA_FIELD_DEF(uint32_t, mode);
 END_TILING_DATA_DEF;
 
 struct GdnSketchStepCompileInfo {
