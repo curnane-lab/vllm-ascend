@@ -439,6 +439,10 @@ private:
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
+            if (sketchHead) {
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+            }
             return;
         }
 
@@ -461,6 +465,10 @@ private:
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
+            if (sketchHead) {
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+            }
             return;
         }
         PipeBarrier<PIPE_V>();
@@ -556,6 +564,10 @@ private:
         outQStage.FreeTensor(scOutDq);
 
         if (mode == 21) {  // checkpoint: after gates + ring pad writes
+            if (sketchHead) {
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+            }
             CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
             return;
         }
@@ -583,6 +595,10 @@ private:
             }
         }
         if (mode == 22) {  // checkpoint: after k write
+            if (sketchHead) {
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+            }
             CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
             return;
         }
@@ -593,6 +609,10 @@ private:
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
+            if (sketchHead) {
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+            }
             return;
         }
 
@@ -650,6 +670,10 @@ private:
             }
         }
         if (mode == 23) {  // checkpoint: after s_q/s_k
+            if (sketchHead) {
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+            }
             CheckpointEmit(n, hv, qIn, kIn, vIn, gateIn, ringKIn, ringDIn);
             return;
         }
@@ -910,24 +934,31 @@ private:
             PipeBarrier<PIPE_V>();
         } else {
             // ---- dense head: hq/hk from the full state (V rows of K) ----
-        LocalTensor<float> hkV = calc[O_HK];
+            // state rows are staged 8 at a time into the (unused here) fsF
+            // window; dot results land in acc/hkV via V-pipe scalar copies
+            // (no per-row S-pipe round trips)
+            LocalTensor<float> hkV = calc[O_HK];
             Duplicate(acc, 0.0f, STEP_V);
             Duplicate(hkV, 0.0f, STEP_V);
             PipeBarrier<PIPE_V>();
-            for (uint32_t v = 0; v < STEP_V; ++v) {
-                DataCopy(tmp,
-                         gmState[(uint64_t)slot * sStSlot + hv * sStHead
-                                 + v * STEP_K],
-                         STEP_K);
+            for (uint32_t v0 = 0; v0 < STEP_V; v0 += 8) {
+                for (uint32_t j = 0; j < 8; ++j) {
+                    DataCopy(fsF[j * STEP_K],
+                             gmState[(uint64_t)slot * sStSlot + hv * sStHead
+                                     + (v0 + j) * STEP_K],
+                             STEP_K);
+                }
                 PipeBarrier<PIPE_ALL>();
-                Mul(tmp2, tmp, qF, STEP_K);
-                PipeBarrier<PIPE_V>();
-                ReduceSumHalfInterval(redDst, tmp2, STEP_K);
-                acc.SetValue(v, redDst.GetValue(0));
-                Mul(tmp2, tmp, kF, STEP_K);
-                PipeBarrier<PIPE_V>();
-                ReduceSumHalfInterval(redDst, tmp2, STEP_K);
-                hkV.SetValue(v, redDst.GetValue(0));
+                for (uint32_t j = 0; j < 8; ++j) {
+                    Mul(tmp, fsF[j * STEP_K], qF, STEP_K);
+                    PipeBarrier<PIPE_V>();
+                    ReduceSumHalfInterval(redDst, tmp, STEP_K);
+                    Muls(acc[v0 + j], redDst, 1.0f, 1);
+                    Mul(tmp, fsF[j * STEP_K], kF, STEP_K);
+                    PipeBarrier<PIPE_V>();
+                    ReduceSumHalfInterval(redDst, tmp, STEP_K);
+                    Muls(hkV[v0 + j], redDst, 1.0f, 1);
+                }
             }
             // dc = beta * (v - alpha * (hk * tot + s_k))
             Muls(tmp, hkV, alpha * tot, STEP_V);
@@ -991,6 +1022,10 @@ private:
             inQGate.FreeTensor(gateIn);
             inQRingK.FreeTensor(ringKIn);
             inQRingD.FreeTensor(ringDIn);
+            if (sketchHead) {
+                inQPhiFs.FreeTensor(phiUb);
+                inQU.FreeTensor(uUb);
+            }
             return;
         }
 

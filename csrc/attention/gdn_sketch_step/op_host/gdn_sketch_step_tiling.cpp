@@ -12,7 +12,9 @@ static ge::graphStatus TilingFunc4GdnSketchStep(gert::TilingContext* context)
     if (ptrCompileInfo == nullptr) {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(
             context->GetPlatformInfo());
-        coreNum = ascendcPlatform.GetCoreNum();
+        // AIV-only kernel (KERNEL_TYPE_AIV_ONLY): schedule on all vector
+        // cores, not the (possibly smaller) AI-core count
+        coreNum = ascendcPlatform.GetCoreNumAiv();
     } else {
         coreNum = ptrCompileInfo->totalCoreNum;
     }
