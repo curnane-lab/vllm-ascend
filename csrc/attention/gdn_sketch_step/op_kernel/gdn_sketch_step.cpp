@@ -953,11 +953,15 @@ private:
                     Mul(tmp, fsF[j * STEP_K], qF, STEP_K);
                     PipeBarrier<PIPE_V>();
                     ReduceSumHalfInterval(redDst, tmp, STEP_K);
-                    Muls(acc[v0 + j], redDst, 1.0f, 1);
+                    PipeBarrier<PIPE_V>();
+                    SyncV2S();
+                    acc.SetValue(v0 + j, redDst.GetValue(0));
                     Mul(tmp, fsF[j * STEP_K], kF, STEP_K);
                     PipeBarrier<PIPE_V>();
                     ReduceSumHalfInterval(redDst, tmp, STEP_K);
-                    Muls(hkV[v0 + j], redDst, 1.0f, 1);
+                    PipeBarrier<PIPE_V>();
+                    SyncV2S();
+                    hkV.SetValue(v0 + j, redDst.GetValue(0));
                 }
             }
             // dc = beta * (v - alpha * (hk * tot + s_k))
