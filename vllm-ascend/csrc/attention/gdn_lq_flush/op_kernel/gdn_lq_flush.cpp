@@ -70,12 +70,10 @@ __aicore__ inline void ReduceSumHalfInterval(
         int32_t tailCount = count - bodyCount;
         if (tailCount > 0) {
             Add(src_local, src_local, src_local[bodyCount], tailCount);
-            PipeBarrier<PIPE_V>();
         }
         while (bodyCount > ELEM_PER_REP_FP32) {
             bodyCount = bodyCount / 2;
             Add(src_local, src_local, src_local[bodyCount], bodyCount);
-            PipeBarrier<PIPE_V>();
         }
         AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32);
     } else {
@@ -88,7 +86,6 @@ __aicore__ inline void ReduceSumHalfInterval(
     WholeReduceSum<float, false>(dst_local, src_local, ELEM_PER_REP_FP32, 1, 1,
                                  1, 8);
 #endif
-    PipeBarrier<PIPE_V>();
 }
 
 // halving max-reduce: leaves the max of src[0..count) in src[0..8); src is
@@ -101,7 +98,6 @@ __aicore__ inline void ReduceMaxToEight(const LocalTensor<float>& src_local,
     while (bodyCount > 8) {
         bodyCount = bodyCount / 2;
         Max(src_local, src_local, src_local[bodyCount], bodyCount);
-        PipeBarrier<PIPE_V>();
     }
 }
 
@@ -145,7 +141,7 @@ public:
         pipe->InitBuffer(redBuf, 16 * 8 * sizeof(float));
         pipe->InitBuffer(metaBuf, 2 * align32(h * sizeof(int32_t)));
         pipe->InitBuffer(idxBuf, align32(t * sizeof(int64_t)));
-        pipe->InitBuffer(outQ, 1, F_V * F_K * sizeof(int8_t));
+        pipe->InitBuffer(outQ, 1, F_V * F_K * sizeof(int8_t) + 2560);
 
         sUb = sBuf.Get<float>();
         codesUb = codesBuf.Get<int8_t>();
@@ -202,7 +198,6 @@ private:
                                  const LocalTensor<float>& b)
     {
         Mul(tmpUb, a, b, F_K);
-        PipeBarrier<PIPE_V>();
         ReduceSumHalfInterval(redUb, tmpUb, F_K);
         SyncV2S();
         return redUb.GetValue(0);
@@ -223,9 +218,7 @@ private:
                 for (uint32_t c = 0; c < r; ++c) {
                     float coef = DotV(vec[c * F_K], vr);
                     Muls(tmpUb, vec[c * F_K], coef, F_K);
-                    PipeBarrier<PIPE_V>();
                     Sub(vr, vr, tmpUb, F_K);
-                    PipeBarrier<PIPE_V>();
                 }
             }
             float dr = DotV(vr, vr);
@@ -292,21 +285,15 @@ private:
 
         // bf16/fp16 -> fp32
         Cast(kbufFUb, kbufRawUb, RoundMode::CAST_NONE, F_L * F_K);
-        PipeBarrier<PIPE_V>();
         Cast(ubufFUb, ubufRawUb, RoundMode::CAST_NONE, F_L * F_K);
-        PipeBarrier<PIPE_V>();
         Cast(uFUb, uqRawUb, RoundMode::CAST_NONE, F_R * F_V);
-        PipeBarrier<PIPE_V>();
         Cast(qFUb, uqRawUb[F_R * F_V], RoundMode::CAST_NONE, F_R * F_V);
-        PipeBarrier<PIPE_V>();
         // kw[j] = w[j] * kbuf[j]
         for (uint32_t j = 0; j < F_L; ++j) {
             float wj = wFUb.GetValue(j);
             Muls(kbufFUb[j * F_K], kbufFUb[j * F_K], wj, F_K);
         }
-        PipeBarrier<PIPE_V>();
         Duplicate(qkFUb, 0.0f, F_R * F_V);
-        PipeBarrier<PIPE_V>();
         // one V_S pair covers every scalar read below (all source tensors
         // were last written by the casts/reduces above)
         SyncV2S();
@@ -340,11 +327,9 @@ private:
                 Add(qkFUb[r * F_K], qkFUb[r * F_K], tmpUb, F_K);
             }
         }
-        PipeBarrier<PIPE_V>();
 
         // ---- subspace iteration: qk = mgs(S^T q0) ----
         Mgs4(qkFUb);
-        PipeBarrier<PIPE_V>();
 
         // ---- pass 2: qv_r[v] = sum_k S[v,k] qk_r[k], then mgs ----
         // WholeReduceSum dst must be 32B-aligned: reduce into red slots
@@ -356,7 +341,6 @@ private:
                 LocalTensor<float> srow = sUb[(v0 + i) * F_K];
                 for (uint32_t r = 0; r < F_R; ++r) {
                     Mul(tmpUb, srow, qkFUb[r * F_K], F_K);
-                    PipeBarrier<PIPE_V>();
                     ReduceSumHalfInterval(redUb[idx * 8], tmpUb, F_K);
                     ++idx;
                 }
@@ -369,14 +353,11 @@ private:
                     ++idx;
                 }
             }
-            PipeBarrier<PIPE_V>();
         }
         Mgs4(qvFUb);
-        PipeBarrier<PIPE_V>();
 
         // ---- pass 3: uk_r[k] = sum_v S[v,k] qv_r[v] ----
         Duplicate(ukFUb, 0.0f, F_R * F_V);
-        PipeBarrier<PIPE_V>();
         SyncV2S();  // qv reduce results -> scalar reads
         for (uint32_t v = 0; v < F_V; ++v) {
             LocalTensor<float> srow = sUb[v * F_K];
@@ -393,11 +374,9 @@ private:
             Muls(tmpUb, srow, c3, F_K);
             Add(ukFUb[3 * F_K], ukFUb[3 * F_K], tmpUb, F_K);
         }
-        PipeBarrier<PIPE_V>();
 
         // ---- pass 4a: E = S - qv uk^T (in place), sk = sqrt(mean_v |E|) ----
         Duplicate(sumAbsUb, 0.0f, F_K);
-        PipeBarrier<PIPE_V>();
         for (uint32_t v = 0; v < F_V; ++v) {
             LocalTensor<float> srow = sUb[v * F_K];
             float c0 = qvFUb.GetValue(v);
@@ -415,12 +394,10 @@ private:
             Abs(tmpUb, srow, F_K);
             Add(sumAbsUb, sumAbsUb, tmpUb, F_K);
         }
-        PipeBarrier<PIPE_V>();
         // sk into skFUb (old s_k dead after the rebuild)
         Muls(skFUb, sumAbsUb, 0.0078125f, F_K);  // 1/V
         Sqrt(skFUb, skFUb, F_K);
         Maxs(skFUb, skFUb, QEPS, F_K);
-        PipeBarrier<PIPE_V>();
 
         // ---- pass 4b+5 fused: sv[v] = max_k |E|/sk, codes = rint(127 E/sk/sv) ----
         // four rows per V_S round trip: the |E|/sk rows are reduced to one
@@ -430,7 +407,6 @@ private:
             for (uint32_t i = 0; i < 4; ++i) {
                 LocalTensor<float> acc = scrUb[i * F_K];
                 Div(acc, sUb[(v0 + i) * F_K], skFUb, F_K);
-                PipeBarrier<PIPE_V>();
                 Abs(acc, acc, F_K);
                 ReduceMaxToEight(acc, F_K);
             }
@@ -455,71 +431,45 @@ private:
                 Cast(halfUb, tmpUb, RoundMode::CAST_RINT, F_K);
                 Cast(codesUb[v * F_K], halfUb, RoundMode::CAST_RINT, F_K);
             }
-            PipeBarrier<PIPE_V>();
         }
 
-        // ---- write back through the out queue (framework V->MTE3 order) ----
+        // ---- write back: stage all payloads into ONE queue buffer (the
+        // framework V->MTE3 ordering is paid once), then fan out.
+        // Payload layout (20KB buffer, int8 view):
+        //   [0:16384]       codes int8
+        //   [16384:16896]   s_k fp32 (f32 offset 4096)
+        //   [16896:17408]   s_v fp32 (f32 offset 4224)
+        //   [17408:17920]   u fp16 = f32 4352..4608 as half (bf16 offset 8704)
+        //   [17920:18432]   q fp16 (bf16 offset 8960)
+        //   [18432:18496]   w zeros (f32 offset 4608)
+        //   [18496:18500]   p = 1.0 (f32 offset 4624)
+        //   [18500:18504]   fill = 0 (i32 view offset 4626)
         LocalTensor<int8_t> oq = outQ.AllocTensor<int8_t>();
         DataCopy(oq, codesUb, F_V * F_K);
+        LocalTensor<float> sf = oq.ReinterpretCast<float>();
+        DataCopy(sf[F_V * F_K / 4], skFUb, F_K);
+        DataCopy(sf[F_V * F_K / 4 + F_K], svFUb, F_V);
+        LocalTensor<half> uh = oq.ReinterpretCast<half>();
+        Cast(uh[F_R * F_V * 17], ukFUb, RoundMode::CAST_RINT, F_R * F_V);
+        Cast(uh[F_R * F_V * 18], qvFUb, RoundMode::CAST_RINT, F_R * F_V);
+        Duplicate(sf[F_V * F_K / 4 + 2 * F_K], 0.0f, F_L);
+        Duplicate(sf[F_V * F_K / 4 + 2 * F_K + 16], 1.0f, 8);
         outQ.EnQue(oq);
         LocalTensor<int8_t> dq = outQ.DeQue<int8_t>();
         DataCopy(gmCodes[0], dq, F_V * F_K);
-        outQ.FreeTensor(dq);
-
-        StoreVec(gmSk, skFUb, F_K);
-        StoreVec(gmSv, svFUb, F_V);
-
-        LocalTensor<float> fq = outQ.AllocTensor<float>();
-        LocalTensor<half> hq = fq.ReinterpretCast<half>();
-        Cast(hq, ukFUb, RoundMode::CAST_RINT, F_R * F_V);
-        outQ.EnQue(fq);
-        LocalTensor<float> fqd = outQ.DeQue<float>();
-        DataCopy(gmU[0], fqd.ReinterpretCast<half>(), F_R * F_V);
-        outQ.FreeTensor(fqd);
-
-        LocalTensor<float> gq = outQ.AllocTensor<float>();
-        LocalTensor<half> hq2 = gq.ReinterpretCast<half>();
-        Cast(hq2, qvFUb, RoundMode::CAST_RINT, F_R * F_V);
-        outQ.EnQue(gq);
-        LocalTensor<float> gqd = outQ.DeQue<float>();
-        DataCopy(gmQ[0], gqd.ReinterpretCast<half>(), F_R * F_V);
-        outQ.FreeTensor(gqd);
-
-        // w[:] = 0
-        LocalTensor<float> wq = outQ.AllocTensor<float>();
-        Duplicate(wq, 0.0f, F_L);
-        outQ.EnQue(wq);
-        LocalTensor<float> wqd = outQ.DeQue<float>();
-        DataCopy(gmW[0], wqd, F_L);
-        outQ.FreeTensor(wqd);
-
-        // p = 1.0, fill = 0 (4-byte pad stores)
-        LocalTensor<float> pq = outQ.AllocTensor<float>();
-        Duplicate(pq, 1.0f, 8);
-        outQ.EnQue(pq);
-        LocalTensor<float> pqd = outQ.DeQue<float>();
-        DataCopyPad(gmP[h], pqd, DataCopyParams{1, 4, 0, 0});
-        outQ.FreeTensor(pqd);
-
-        LocalTensor<float> zq = outQ.AllocTensor<float>();
-        Duplicate(zq, 0.0f, 8);
-        outQ.EnQue(zq);
-        LocalTensor<float> zqd = outQ.DeQue<float>();
-        // float 0.0f bit pattern is int32 0
-        DataCopyPad(gmFill[h], zqd.ReinterpretCast<int32_t>(),
+        LocalTensor<float> df = dq.ReinterpretCast<float>();
+        DataCopy(gmSk[0], df[F_V * F_K / 4], F_K);
+        DataCopy(gmSv[0], df[F_V * F_K / 4 + F_K], F_V);
+        LocalTensor<half> dh = dq.ReinterpretCast<half>();
+        DataCopy(gmU[0], dh[F_R * F_V * 17], F_R * F_V);
+        DataCopy(gmQ[0], dh[F_R * F_V * 18], F_R * F_V);
+        DataCopy(gmW[0], df[F_V * F_K / 4 + 2 * F_K], F_L);
+        DataCopyPad(gmP[h], df[F_V * F_K / 4 + 2 * F_K + 16],
                     DataCopyParams{1, 4, 0, 0});
-        outQ.FreeTensor(zqd);
-    }
-
-    __aicore__ inline void StoreVec(const GlobalTensor<float>& gm,
-                                    const LocalTensor<float>& src,
-                                    uint32_t len)
-    {
-        LocalTensor<float> oq = outQ.AllocTensor<float>();
-        DataCopy(oq, src, len);
-        outQ.EnQue(oq);
-        LocalTensor<float> dq = outQ.DeQue<float>();
-        DataCopy(gm[0], dq, len);
+        // float 0.0f bit pattern is int32 0: read the w-zero region low word
+        DataCopyPad(gmFill[h],
+                    df.ReinterpretCast<int32_t>()[F_V * F_K / 4 + 2 * F_K],
+                    DataCopyParams{1, 4, 0, 0});
         outQ.FreeTensor(dq);
     }
 

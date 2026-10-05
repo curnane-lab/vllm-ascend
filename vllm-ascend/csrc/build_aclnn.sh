@@ -183,6 +183,7 @@ elif [[ "$SOC_VERSION" =~ ^ascend910_93 ]]; then
         "chunk_kda_fwd"
                 "kda_layout_swap12"
         "gdn_lq_flush"
+        "gdn_lq_step"
         "store_kv_block"
         "store_kv_block_metadata"
         "sparse_attention_score"
