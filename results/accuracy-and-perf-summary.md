@@ -86,3 +86,26 @@ step 移植 AscendC（目标 ≤2ms/层 @B=256）、flush 行块 ILP、due-list 
 
 ### e2e 最终矩阵（修复后，与回归前一致）
 B=16/64/256：mode 3 = 168.4/470.6/921.5 tok/s vs 基线 204.5/703.9/1900.0。
+
+## 更新 2026-10-05 夜（M1 布局重排 + TurboQuant 双源调研）
+
+### M1：per-(slot,head) 连续 32KB 块布局（已合入）
+checkpoint 前 19KB（codes 16K + scales 1K + fp16 补偿 token 2K）+ bf16 窗口缓冲 +
+计数器，对齐 PR #10 pool 几何。五项对拍全绿（pools/triton step/AscendC flush/
+strided/AscendC step）。triton kernel 计时持平（0.444/4.238 ms @B=16/256）——
+布局收益要等 M2/M3 的融合式 per-head 读取器才兑现；之前 bench 显示的 5× 回退
+是 harness 的 reset 散写开销（strided 标量 scatter），非 kernel 回归。
+
+### TurboQuant 两源调研结论（定位修正依据）
+1. **vllm-ascend PR #14715**（厂商 CANN 算子，MLA KV 4-bit）：单请求 decode
+   反而慢 25%，收益全在高并发容量场景（2.68× KV 容量 → 并发 2 起 +23%）。
+   明确定位"不改善单请求延迟"。→ LeapQuant 卖点同样应是容量/并发。
+2. **Ascend-SACT/turboquant-vllm-npu**（社区 triton-ascend 移植）：实证
+   **Ascend 910 上 triton-ascend 的 tl.dot INT8 matmul 编译不过**——
+   M2 的 cube GEMV 必须走 AscendC MIX，triton 路线放弃（与我们的 AscendC
+   reduce 结论互证）。单请求 decode -44%。可借鉴：编译器避坑清单
+   （tl.join/reshape 寄存器映射错误→分拆点积；不 autotune；BLOCK 尺寸约束；
+   centroid 表保 fp32）、decode kernel 骨架（一 program per (seq,head)、
+   block-table 两级查址、SRAM 解压不回写）、per-token 连续字节行布局、
+   逐层 cosine≥0.998 验证法。负面教训：norm 绝不存 uint8 截断；
+   192KB UB 预算下别贪多字段合一 kernel。

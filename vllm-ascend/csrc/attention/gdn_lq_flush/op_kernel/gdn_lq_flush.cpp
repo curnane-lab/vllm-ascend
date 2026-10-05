@@ -30,24 +30,20 @@ constexpr float QMAX = 127.0f;
 constexpr float QEPS = 1e-12f;
 constexpr float NORM_EPS = 1e-30f;
 
+// per-(slot, head) contiguous 32 KB block layout; head base = h*HEAD_BYTES
+constexpr uint32_t HEAD_BYTES = 32768;
 constexpr uint32_t OFF_CODES = 0;
-constexpr uint32_t OFF_KBUF = 524288;
-constexpr uint32_t OFF_UBUF = 655360;
-constexpr uint32_t OFF_U = 786432;
-constexpr uint32_t OFF_Q = 819200;
-constexpr uint32_t OFF_SK = 852992;
-constexpr uint32_t OFF_SV = 869376;
-constexpr uint32_t OFF_W = 885760;
-constexpr uint32_t OFF_P = 887808;
-constexpr uint32_t OFF_FILL = 887936;
+constexpr uint32_t OFF_SK = 16384;
+constexpr uint32_t OFF_SV = 16896;
+constexpr uint32_t OFF_U = 17408;
+constexpr uint32_t OFF_Q = 18432;
+constexpr uint32_t OFF_KBUF = 19456;
+constexpr uint32_t OFF_UBUF = 23552;
+constexpr uint32_t OFF_W = 27648;
+constexpr uint32_t OFF_P = 27712;
+constexpr uint32_t OFF_FILL = 27716;
 
 // per-head byte strides inside one slot
-constexpr uint32_t HS_CODES = 16384;
-constexpr uint32_t HS_KBUF = 4096;
-constexpr uint32_t HS_UBUF = 4096;
-constexpr uint32_t HS_UQ = 1024;
-constexpr uint32_t HS_SKV = 512;
-constexpr uint32_t HS_W = 64;
 
 __aicore__ inline int32_t findPowerTwo(int32_t n)
 {
@@ -238,39 +234,41 @@ private:
             + static_cast<uint64_t>(slot) * static_cast<uint64_t>(sSlot);
 
         GlobalTensor<int32_t> gmFill;
-        gmFill.SetGlobalBuffer((__gm__ int32_t*)(base + OFF_FILL));
+        gmFill.SetGlobalBuffer((__gm__ int32_t*)(base + OFF_FILL + h * HEAD_BYTES));
         GlobalTensor<float> gmP;
-        gmP.SetGlobalBuffer((__gm__ float*)(base + OFF_P));
+        gmP.SetGlobalBuffer((__gm__ float*)(base + OFF_P + h * HEAD_BYTES));
         // per-head window bookkeeping first: non-due heads exit before any
-        // heavy load (fill/p region is 128-byte aligned, H*4 = 128B)
-        DataCopy(fillUb, gmFill[0], hNum);
-        DataCopy(pUb, gmP[0], hNum);
+        // heavy load. In the head-block layout fill/p of head h sit at
+        // base + h*HEAD_BYTES + OFF_{FILL,P} (not a contiguous [H] array),
+        // so each is a 4-byte load.
+        DataCopyPad(fillUb, gmFill[0], DataCopyParams{1, 4, 0, 0}, DataCopyPadParams{false, 0, 0, 0});
+        DataCopyPad(pUb, gmP[0], DataCopyParams{1, 4, 0, 0}, DataCopyPadParams{false, 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
-        int32_t fill = fillUb.GetValue(h);
+        int32_t fill = fillUb.GetValue(0);
         if (fill < static_cast<int32_t>(F_L)) {
             return;
         }
-        float pval = pUb.GetValue(h);
+        float pval = pUb.GetValue(0);
 
         GlobalTensor<int8_t> gmCodes;
         gmCodes.SetGlobalBuffer((__gm__ int8_t*)(base + OFF_CODES
-                                                 + h * HS_CODES));
+                                                 + h * HEAD_BYTES));
         GlobalTensor<bfloat16_t> gmKbuf;
         gmKbuf.SetGlobalBuffer((__gm__ bfloat16_t*)(base + OFF_KBUF
-                                                     + h * HS_KBUF));
+                                                     + h * HEAD_BYTES));
         GlobalTensor<bfloat16_t> gmUbuf;
         gmUbuf.SetGlobalBuffer((__gm__ bfloat16_t*)(base + OFF_UBUF
-                                                     + h * HS_UBUF));
+                                                     + h * HEAD_BYTES));
         GlobalTensor<half> gmU;
-        gmU.SetGlobalBuffer((__gm__ half*)(base + OFF_U + h * HS_UQ));
+        gmU.SetGlobalBuffer((__gm__ half*)(base + OFF_U + h * HEAD_BYTES));
         GlobalTensor<half> gmQ;
-        gmQ.SetGlobalBuffer((__gm__ half*)(base + OFF_Q + h * HS_UQ));
+        gmQ.SetGlobalBuffer((__gm__ half*)(base + OFF_Q + h * HEAD_BYTES));
         GlobalTensor<float> gmSk;
-        gmSk.SetGlobalBuffer((__gm__ float*)(base + OFF_SK + h * HS_SKV));
+        gmSk.SetGlobalBuffer((__gm__ float*)(base + OFF_SK + h * HEAD_BYTES));
         GlobalTensor<float> gmSv;
-        gmSv.SetGlobalBuffer((__gm__ float*)(base + OFF_SV + h * HS_SKV));
+        gmSv.SetGlobalBuffer((__gm__ float*)(base + OFF_SV + h * HEAD_BYTES));
         GlobalTensor<float> gmW;
-        gmW.SetGlobalBuffer((__gm__ float*)(base + OFF_W + h * HS_W));
+        gmW.SetGlobalBuffer((__gm__ float*)(base + OFF_W + h * HEAD_BYTES));
 
         DataCopy(codesUb, gmCodes[0], F_V * F_K);
         DataCopy(kbufRawUb, gmKbuf[0], F_L * F_K);
@@ -466,10 +464,10 @@ private:
         DataCopy(gmU[0], dh[F_R * F_V * 17], F_R * F_V);
         DataCopy(gmQ[0], dh[F_R * F_V * 18], F_R * F_V);
         DataCopy(gmW[0], df[F_V * F_K / 4 + 6 * F_K], F_L);
-        DataCopyPad(gmP[h], df[F_V * F_K / 4 + 6 * F_K + 16],
+        DataCopyPad(gmP[0], df[F_V * F_K / 4 + 6 * F_K + 16],
                     DataCopyParams{1, 4, 0, 0});
         // float 0.0f bit pattern is int32 0: read the w-zero region low word
-        DataCopyPad(gmFill[h],
+        DataCopyPad(gmFill[0],
                     df.ReinterpretCast<int32_t>()[F_V * F_K / 4 + 6 * F_K],
                     DataCopyParams{1, 4, 0, 0});
         outQ.FreeTensor(dq);

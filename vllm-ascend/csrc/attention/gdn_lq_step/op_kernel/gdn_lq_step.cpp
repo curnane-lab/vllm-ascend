@@ -31,23 +31,19 @@ constexpr uint32_t F_L = 16;
 constexpr uint32_t ELEM_PER_REP_FP32 = 64;
 constexpr float QMAX = 127.0f;
 
+// per-(slot, head) contiguous 32 KB block layout; head base = h*HEAD_BYTES
+constexpr uint32_t HEAD_BYTES = 32768;
 constexpr uint32_t OFF_CODES = 0;
-constexpr uint32_t OFF_KBUF = 524288;
-constexpr uint32_t OFF_UBUF = 655360;
-constexpr uint32_t OFF_U = 786432;
-constexpr uint32_t OFF_Q = 819200;
-constexpr uint32_t OFF_SK = 852992;
-constexpr uint32_t OFF_SV = 869376;
-constexpr uint32_t OFF_W = 885760;
-constexpr uint32_t OFF_P = 887808;
-constexpr uint32_t OFF_FILL = 887936;
+constexpr uint32_t OFF_SK = 16384;
+constexpr uint32_t OFF_SV = 16896;
+constexpr uint32_t OFF_U = 17408;
+constexpr uint32_t OFF_Q = 18432;
+constexpr uint32_t OFF_KBUF = 19456;
+constexpr uint32_t OFF_UBUF = 23552;
+constexpr uint32_t OFF_W = 27648;
+constexpr uint32_t OFF_P = 27712;
+constexpr uint32_t OFF_FILL = 27716;
 
-constexpr uint32_t HS_CODES = 16384;
-constexpr uint32_t HS_KBUF = 4096;
-constexpr uint32_t HS_UBUF = 4096;
-constexpr uint32_t HS_UQ = 1024;
-constexpr uint32_t HS_SKV = 512;
-constexpr uint32_t HS_W = 64;
 
 __aicore__ inline int32_t findPowerTwo(int32_t n)
 {
@@ -216,11 +212,14 @@ private:
     {
         LocalTensor<float> packed = scrUb[26 * F_K];  // 16 x 64
         uint32_t base = (v0 / 16) * 128;
-        AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32);
         for (uint32_t i = 0; i < 16; ++i) {
             LocalTensor<float> row = scrUb[i * F_K];
             Mul(row, codesFUb[(v0 + i) * F_K], vec, F_K);
             Add(packed[i * 64], row, row[64], 64);
+            // the Mul/Add above clobber the compute mask; the reduce with
+            // isSetMask=false would silently eat whatever they left. Reset
+            // per row (ReduceSumHalfInterval does the same).
+            AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32);
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003
             WholeReduceSum(redUb[base + i * 8], packed[i * 64],
                            ELEM_PER_REP_FP32, 1, 1, 1, 8);
@@ -229,6 +228,12 @@ private:
                                          ELEM_PER_REP_FP32, 1, 1, 1, 8);
 #endif
         }
+        // NOTE(cce hazard): ckj/cqk below are local arrays indexed by a
+        // runtime j; this build's compiler happens to fully unroll the
+        // fixed-bound loop. If the loop is ever re-shaped so j is not a
+        // compile-time constant, scalar reads can return garbage
+        // (observed class of bug on this toolchain) — prefer indexed UB
+        // slots or forced unroll then.
     }
 
 #ifdef GDN_LQ_STEP_DEBUG
@@ -256,28 +261,28 @@ private:
         uint64_t bh = static_cast<uint64_t>(b) * hNum + h;
 
         GlobalTensor<int32_t> gmFill;
-        gmFill.SetGlobalBuffer((__gm__ int32_t*)(base + OFF_FILL));
+        gmFill.SetGlobalBuffer((__gm__ int32_t*)(base + OFF_FILL + h * HEAD_BYTES));
         GlobalTensor<float> gmP;
-        gmP.SetGlobalBuffer((__gm__ float*)(base + OFF_P));
+        gmP.SetGlobalBuffer((__gm__ float*)(base + OFF_P + h * HEAD_BYTES));
         GlobalTensor<int8_t> gmCodes;
         gmCodes.SetGlobalBuffer((__gm__ int8_t*)(base + OFF_CODES
-                                                 + h * HS_CODES));
+                                                 + h * HEAD_BYTES));
         GlobalTensor<bfloat16_t> gmKbuf;
         gmKbuf.SetGlobalBuffer((__gm__ bfloat16_t*)(base + OFF_KBUF
-                                                     + h * HS_KBUF));
+                                                     + h * HEAD_BYTES));
         GlobalTensor<bfloat16_t> gmUbuf;
         gmUbuf.SetGlobalBuffer((__gm__ bfloat16_t*)(base + OFF_UBUF
-                                                     + h * HS_UBUF));
+                                                     + h * HEAD_BYTES));
         GlobalTensor<half> gmU;
-        gmU.SetGlobalBuffer((__gm__ half*)(base + OFF_U + h * HS_UQ));
+        gmU.SetGlobalBuffer((__gm__ half*)(base + OFF_U + h * HEAD_BYTES));
         GlobalTensor<half> gmQ;
-        gmQ.SetGlobalBuffer((__gm__ half*)(base + OFF_Q + h * HS_UQ));
+        gmQ.SetGlobalBuffer((__gm__ half*)(base + OFF_Q + h * HEAD_BYTES));
         GlobalTensor<float> gmSk;
-        gmSk.SetGlobalBuffer((__gm__ float*)(base + OFF_SK + h * HS_SKV));
+        gmSk.SetGlobalBuffer((__gm__ float*)(base + OFF_SK + h * HEAD_BYTES));
         GlobalTensor<float> gmSv;
-        gmSv.SetGlobalBuffer((__gm__ float*)(base + OFF_SV + h * HS_SKV));
+        gmSv.SetGlobalBuffer((__gm__ float*)(base + OFF_SV + h * HEAD_BYTES));
         GlobalTensor<float> gmW;
-        gmW.SetGlobalBuffer((__gm__ float*)(base + OFF_W + h * HS_W));
+        gmW.SetGlobalBuffer((__gm__ float*)(base + OFF_W + h * HEAD_BYTES));
 
         // per-(b,h) step inputs and scalars
         DataCopy(codesUb, gmCodes[0], F_V * F_K);
@@ -294,8 +299,8 @@ private:
         DataCopyPad(gUb, gmG[bh], DataCopyParams{1, 4, 0, 0}, padParams);
         DataCopyPad(betaRawUb, gmBeta[bh], DataCopyParams{1, 2, 0, 0},
                     padParams);
-        DataCopyPad(pUb, gmP[h], DataCopyParams{1, 4, 0, 0}, padParams);
-        DataCopyPad(fillUb, gmFill[h], DataCopyParams{1, 4, 0, 0}, padParams);
+        DataCopyPad(pUb, gmP[0], DataCopyParams{1, 4, 0, 0}, padParams);
+        DataCopyPad(fillUb, gmFill[0], DataCopyParams{1, 4, 0, 0}, padParams);
         PipeBarrier<PIPE_ALL>();
 
         // ---- scalar prep: at = exp(g); beta/p/fill reads ----
@@ -511,8 +516,8 @@ private:
         DataCopy(gmUbuf[(uint64_t)f * F_V], oqD[2 * F_V], F_V);
         LocalTensor<float> wqD = oqD.ReinterpretCast<float>()[192];
         DataCopy(gmW[0], wqD, F_L);
-        DataCopyPad(gmP[h], wqD[16], DataCopyParams{1, 4, 0, 0});
-        DataCopyPad(gmFill[h], oqD.ReinterpretCast<int32_t>()[232],
+        DataCopyPad(gmP[0], wqD[16], DataCopyParams{1, 4, 0, 0});
+        DataCopyPad(gmFill[0], oqD.ReinterpretCast<int32_t>()[232],
                     DataCopyParams{1, 4, 0, 0});
         outQ.FreeTensor(oqD);
     }

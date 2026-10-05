@@ -25,18 +25,24 @@ NUM_COMP_TOKENS = 4
 _MGS_PASSES = 2
 _Q0_SEED = 20260930
 
-# byte offsets within one slot buffer (all 128-byte aligned)
-_OFF_CODES = 0
-_OFF_KBUF = 524288  # 32*128*128 int8
-_OFF_UBUF = 655360  # + 32*16*128*2
-_OFF_U = 786432  # + 32*16*128*2
-_OFF_Q = 819200  # + 32*4*128*2
-_OFF_SK = 852992  # + 32*4*128*2
-_OFF_SV = 869376  # + 32*128*4
-_OFF_W = 885760  # + 32*128*4
-_OFF_P = 887808  # + 32*16*4
-_OFF_FILL = 887936  # + 32*4
-_LAYOUT_END = 888068  # + 32*4
+# Per-(slot, head) contiguous block layout. Each head owns one HEAD_BYTES
+# block inside its slot's storage: the ~19 KB checkpoint first (codes, scales,
+# compensator tokens), then the bf16 window buffer, counters last. One DMA
+# fetches a whole head — aligned with the NVlabs/kda PR #10 pool geometry.
+HEAD_BYTES = 32768
+
+# byte offsets within one head block
+_OFF_CODES = 0  # int8 [V, K] = 16384
+_OFF_SK = 16384  # fp32 [K] = 512
+_OFF_SV = 16896  # fp32 [V] = 512
+_OFF_U = 17408  # fp16 [R, K] = 1024
+_OFF_Q = 18432  # fp16 [R, V] = 1024
+_OFF_KBUF = 19456  # bf16 [L, K] = 4096
+_OFF_UBUF = 23552  # bf16 [L, V] = 4096
+_OFF_W = 27648  # fp32 [L] = 64
+_OFF_P = 27712  # fp32 = 4
+_OFF_FILL = 27716  # int32 = 4
+_LAYOUT_END = 27720
 
 
 def _mgs(m: torch.Tensor) -> torch.Tensor:
@@ -80,30 +86,33 @@ class GDNLeapQuantPools:
         self.num_slots, self.num_heads, self.head_v, self.head_k = ssm_state.shape
         H, V, K = self.num_heads, self.head_v, self.head_k
         self.slot_stride_bytes = ssm_state.stride(0) * 4
-        assert self.slot_stride_bytes >= _LAYOUT_END, "slot buffer too small for LeapQuant layout"
+        slot_bytes = H * V * K * 4
+        assert self.slot_stride_bytes >= slot_bytes, "unexpected ssm_state slot stride"
+        assert slot_bytes % HEAD_BYTES == 0, "slot storage must split into head blocks"
+        assert H * HEAD_BYTES <= slot_bytes, "slot buffer too small for the head-block layout"
         i8 = ssm_state.view(torch.int8)  # [num_slots, H, V, K*4]; last-dim fp32->int8 view
-        slot_bytes = self.num_heads * self.head_v * self.head_k * 4
-        flat = torch.as_strided(i8, (self.num_slots, slot_bytes), (i8.stride(0), 1))
-        self._flat = flat
+        self._state = ssm_state
+        nblocks = slot_bytes // HEAD_BYTES
+        fv = i8.view(self.num_slots, nblocks, HEAD_BYTES)[:, :H, :]
 
         def typed(offset: int, dtype: torch.dtype, *tail: int) -> torch.Tensor:
+            esize = torch.tensor([], dtype=dtype).element_size()
             n = 1
             for d in tail:
                 n *= d
-            esize = torch.tensor([], dtype=dtype).element_size()
-            cols = flat[:, offset : offset + n * esize]
-            return cols.view(dtype).view(self.num_slots, *tail)
+            cols = fv[:, :, offset : offset + n * esize]
+            return cols.view(dtype).view(self.num_slots, H, *tail)
 
-        self.codes = typed(_OFF_CODES, torch.int8, H, V, K)
-        self.kbuf = typed(_OFF_KBUF, torch.bfloat16, H, WINDOW, K)
-        self.ubuf = typed(_OFF_UBUF, torch.bfloat16, H, WINDOW, V)
-        self.u = typed(_OFF_U, torch.float16, H, NUM_COMP_TOKENS, K)
-        self.q = typed(_OFF_Q, torch.float16, H, NUM_COMP_TOKENS, V)
-        self.s_k = typed(_OFF_SK, torch.float32, H, K)
-        self.s_v = typed(_OFF_SV, torch.float32, H, V)
-        self.w = typed(_OFF_W, torch.float32, H, WINDOW)
-        self.p = typed(_OFF_P, torch.float32, H)
-        self.fill = typed(_OFF_FILL, torch.int32, H)
+        self.codes = typed(_OFF_CODES, torch.int8, V, K)
+        self.kbuf = typed(_OFF_KBUF, torch.bfloat16, WINDOW, K)
+        self.ubuf = typed(_OFF_UBUF, torch.bfloat16, WINDOW, V)
+        self.u = typed(_OFF_U, torch.float16, NUM_COMP_TOKENS, K)
+        self.q = typed(_OFF_Q, torch.float16, NUM_COMP_TOKENS, V)
+        self.s_k = typed(_OFF_SK, torch.float32, K)
+        self.s_v = typed(_OFF_SV, torch.float32, V)
+        self.w = typed(_OFF_W, torch.float32, WINDOW)
+        self.p = fv[:, :, _OFF_P : _OFF_P + 4].view(torch.float32).squeeze(-1)
+        self.fill = fv[:, :, _OFF_FILL : _OFF_FILL + 4].view(torch.int32).squeeze(-1)
         gen = torch.Generator(device="cpu").manual_seed(_Q0_SEED)
         self.q0 = torch.randn(V, NUM_COMP_TOKENS, dtype=torch.float32, generator=gen).to(ssm_state.device)
 

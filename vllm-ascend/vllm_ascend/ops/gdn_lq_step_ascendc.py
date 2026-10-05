@@ -159,7 +159,6 @@ def step_pools_ascendc(pools, idx, kn, qn, v, g_log, beta, scale, o=None):
 
 
 def _state_tensor(pools):
-    # pools keeps the strided int8 view over the layer ssm_state; recover the
-    # fp32 view with the same slot stride so the kernel sees identical layout
-    flat = pools._flat  # [num_slots, slot_bytes] int8
-    return flat.view(torch.float32)
+    # the fp32 ssm_state view the pools were built on; the kernel addresses
+    # slots through the s_slot byte-stride attribute, heads through HEAD_BYTES
+    return pools._state
