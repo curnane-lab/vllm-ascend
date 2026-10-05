@@ -35,3 +35,18 @@ torch flush（未 kernel 化）：B=16 时约 13–21 ms/层/step，为当前主
 三轮迭代：全 tile 版（UB 需 486KB > 192KB 上限）→ V-chunk 六遍扫描版（UB 收敛）
 → 动态循环 + 谓词化存储（排除早退死锁）。最终卡在 **BiSheng 编译器挂起**
 （>10 min 无响应）。结论：flush 转 AscendC 实现（与 sketchssm-npu ASCENDC_PLAN 一致）。
+
+## 更新 2026-10-05（mode 3 = triton step + AscendC flush）
+
+- e2e 冒烟 4 prompts x 48 token：**4.8s vs fp32 基线 3.8s**（torch 路径 77s，mode 2 16.9s）；
+  3/4 prompt 与基线逐 token 一致，1 条在第 36 token 近tie翻点。
+- 端到端 AscendC flush 集成中修掉的两个关键问题：
+  1. autogen aclnn wrapper 的隐藏 contiguous 暂存（任何输入带 AutoContiguous 即触发）——
+     strided KV-pool slot 布局下地址错位 + in-place 别名失效 → op def 全部改 IgnoreContiguous；
+     注意只改 def 不会触发 autogen 再生，须删 build/autogen/aclnn_gdn_lq_flush.* 与对应 .o 再构建。
+  2. autogen 按 state 大小派生 workspace（~2.3GB/executor，24 层 OOM）→ 全 executor 共享一个 ws。
+- 长上下文状态误差曲线（真实权重 replay，1080 token / 67 窗口，论文图 3 的 NPU 复现）：
+  checkpoint 重建 rel err 首 8 窗口均值 → 末 8 窗口均值：layer 0: 0.14%→0.32%（2.3x），
+  layer 8: 0.44%→1.52%（3.5x），layer 16: 0.48%→1.35%，layer 22: 0.35%→1.02%。
+  误差增长 ~3x 后饱和（per-window 量化的收缩映射特性），非 per-step 量化的线性发散。
+  数据：results/long_rollout_curve.json（gdn.py dump 设施 + scripts/replay_long.py 回放）。

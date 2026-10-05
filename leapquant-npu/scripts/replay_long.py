@@ -23,7 +23,7 @@ sys.path.insert(0, "/mnt/workspace/vllm-ascend")
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools, WINDOW  # noqa: E402
 
 D = "/tmp/lq_dump"
-DEVICE = "cpu"  # pure replay; set "npu" to run on device
+DEVICE = "npu"
 
 
 def layer_prefixes():
@@ -36,7 +36,7 @@ def layer_prefixes():
 
 def replay_layer(prefix):
     d0 = torch.load(f"{D}/dense_{prefix}_step0.pt", weights_only=False)
-    idx, dense0 = d0["idx"], d0["dense0"].to(DEVICE).float()
+    idx, dense0 = d0["idx"].to(DEVICE), d0["dense0"].to(DEVICE).float()
     H = dense0.shape[1]
     rep = H // d0["query"].shape[1]
     steps = len(glob.glob(f"{D}/dense_{prefix}_step*.pt"))

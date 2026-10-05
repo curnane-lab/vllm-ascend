@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import time
 
 from vllm import LLM, SamplingParams
@@ -19,7 +20,7 @@ def main():
         model=args.model,
         max_model_len=args.max_model_len,
         enforce_eager=True,
-        gpu_memory_utilization=0.85,
+        gpu_memory_utilization=float(os.getenv("SMOKE_MEM_UTIL", "0.85")),
         limit_mm_per_prompt={"image": 0},
         enable_prefix_caching=not args.no_prefix_caching,
         max_num_seqs=args.max_num_seqs,
@@ -36,6 +37,8 @@ def main():
             "请详细推导线性回归的闭式解（正规方程），并解释每一步的数学原理。",
             "Write a detailed technical explanation of how the RSA algorithm works, including key generation, encryption, and decryption, with a small worked example.",
         ]
+        if os.getenv("SMOKE_SINGLE_PROMPT"):
+            prompts = prompts[:1]
     t0 = time.time()
     outs = llm.generate(prompts, sp)
     dt = time.time() - t0
