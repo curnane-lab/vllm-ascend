@@ -1,0 +1,998 @@
+diff --git a/vllm_ascend/envs.py b/vllm_ascend/envs.py
+index ed5ae96..d29a5b1 100644
+--- a/vllm_ascend/envs.py
++++ b/vllm_ascend/envs.py
+@@ -87,6 +87,11 @@ env_variables: dict[str, Callable[[], Any]] = {
+     # (safe for Ascend 910B/A3). Set to a positive value to override when
+     # auto-detection is unavailable or for debugging UB overflow issues.
+     "VLLM_ASCEND_ROPE_UB_SIZE_KB": lambda: int(os.getenv("VLLM_ASCEND_ROPE_UB_SIZE_KB") or 0),
++    # Enable LeapQuant per-window recurrent-state quantization for GDN decode
++    # (arXiv:2609.38166). 0 (default): dense fp32 state. 1: eager torch path
++    # (accuracy validation, slow). 2: Triton-Ascend step kernel + torch flush.
++    # Valid values: 0, 1, 2. Not sensitive.
++    "VLLM_ASCEND_GDN_LEAPQUANT": lambda: int(os.getenv("VLLM_ASCEND_GDN_LEAPQUANT", "0")),
+ }
+ 
+ # end-env-vars-definition
+diff --git a/vllm_ascend/ops/gdn.py b/vllm_ascend/ops/gdn.py
+index e5ac67e..0d50265 100644
+--- a/vllm_ascend/ops/gdn.py
++++ b/vllm_ascend/ops/gdn.py
+@@ -16,6 +16,7 @@
+ #
+ 
+ from functools import lru_cache, wraps
++import os
+ 
+ import torch
+ import torch_npu
+@@ -37,6 +38,7 @@ from vllm.v1.attention.backend import AttentionBackend, AttentionMetadata  # typ
+ from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
+ from vllm.v1.attention.backends.utils import PAD_SLOT_ID
+ 
++from vllm_ascend import envs
+ from vllm_ascend.attention.utils import (
+     maybe_save_kv_layer_to_connector,
+     wait_for_kv_layer_from_connector,
+@@ -45,15 +47,83 @@ from vllm_ascend.device.device_op import DeviceOperator
+ from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
+ from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.attention_fence import record_attention_compute_start
+ from vllm_ascend.ops.gdn_attn_builder import AscendGDNAttentionBackend
++from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools
+ from vllm_ascend.ops.triton.fla.chunk import chunk_gated_delta_rule
+ from vllm_ascend.ops.triton.fla.fused_qkvzba_split_reshape import fused_qkvzba_split_reshape_cat
+ from vllm_ascend.ops.triton.fla.utils import clear_ssm_states
++from vllm_ascend.ops.triton.gdn_leapquant_step import gdn_leapquant_step
+ from vllm_ascend.ops.triton.mamba.causal_conv1d import extract_last_width
+ from vllm_ascend.ops.triton.mamba.state_index import gather_ssm_states, scatter_ssm_states_
+ 
+ _PACKED_CONV_WEIGHT_NAME = "ascend_conv1d_weight"
+ 
+ 
++def _get_leapquant_pools(layer, ssm_state: torch.Tensor) -> GDNLeapQuantPools:
++    pools = getattr(layer, "_lq_pools", None)
++    if pools is None:
++        pools = GDNLeapQuantPools(ssm_state)
++        layer._lq_pools = pools
++    return pools
++
++
++def _leapquant_resync(layer, ssm_state: torch.Tensor, idx: torch.Tensor) -> None:
++    """Re-quantize dense fp32 states of the given slots into LeapQuant checkpoints.
++
++    Used after any dense-path update (prefill, spec decode, mixed batches) so
++    the composite state always mirrors the dense state at window boundaries.
++    """
++    idx = idx[idx > 0].long()
++    if idx.numel() == 0:
++        return
++    # prefill indices arrive per token; keep one entry per state slot
++    idx = torch.unique(idx)
++    pools = _get_leapquant_pools(layer, ssm_state)
++    if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
++        dense = ssm_state[idx].clone().float()
++        pools.init_from_dense(ssm_state, idx)
++        rec = pools.decode_state(idx)
++        rel = (rec - dense).abs().mean() / dense.abs().mean().clamp_min(1e-6)
++        print(f"[leapquant] resync reconstruction rel err: {rel.item():.6f}", flush=True)
++        step = getattr(layer, "_lq_step", 0)
++        if step == 0:
++            os.makedirs("/tmp/lq_dump", exist_ok=True)
++            torch.save(
++                {"idx": idx.cpu(), "dense0": dense.cpu()},
++                f"/tmp/lq_dump/lq0_{layer.prefix.replace('.', '_')}.pt",
++            )
++        return
++    pools.init_from_dense(ssm_state, idx)
++
++
++def _lq_decode_step(mode, pools, idx, kn, qn, v, g_log, beta, scale):
++    if mode == 2:
++        return gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale)
++    return pools.decode_step(idx=idx, kn=kn, qn=qn, v=v, g_log=g_log, beta=beta, scale=scale)
++
++
++_DUMP_MAX_STEPS = 40
++
++
++def _lq_dump_step(layer, tag, idx, key, query, value, g, beta, out, pre_state=None):
++    step = getattr(layer, "_lq_step", 0)
++    if step >= _DUMP_MAX_STEPS:
++        return
++    layer._lq_step = step + 1
++    os.makedirs("/tmp/lq_dump", exist_ok=True)
++    payload = {
++        "idx": idx.cpu(),
++        "key": key.squeeze(0).cpu(),
++        "query": query.squeeze(0).cpu(),
++        "value": value.squeeze(0).cpu(),
++        "g": g.squeeze(0).cpu(),
++        "beta": beta.squeeze(0).cpu(),
++        "out": out.squeeze(0).cpu(),
++    }
++    if pre_state is not None and step == 0:
++        payload["dense0"] = pre_state
++    torch.save(payload, f"/tmp/lq_dump/{tag}_{layer.prefix.replace('.', '_')}_step{step}.pt")
++
++
+ @lru_cache(maxsize=1)
+ def _get_fla_gdn_prefill_op():
+     try:
+@@ -404,6 +474,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+         self_kv_cache = self.kv_cache
+         ssm_state = self_kv_cache[1]
+         num_actual_tokens = attn_metadata.num_actual_tokens
++        use_leapquant = envs.VLLM_ASCEND_GDN_LEAPQUANT
+ 
+         mixed_qkv = mixed_qkv[:num_actual_tokens]
+         b = b[:num_actual_tokens]
+@@ -550,6 +621,11 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+ 
+         # 2.1: Process the multi-query part
+         if spec_sequence_masks is not None:
++            if use_leapquant:
++                raise RuntimeError(
++                    "VLLM_ASCEND_GDN_LEAPQUANT does not support speculative "
++                    "decoding yet (dense spec path would read composite state)"
++                )
+             actual_seq_lengths = attn_metadata.spec_decode_metadata.actual_seq_lengths
+             query_spec = l2norm_fwd(query_spec)
+             key_spec = l2norm_fwd(key_spec)
+@@ -578,17 +654,40 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+             actual_seq_lengths = attn_metadata.non_spec_decode_metadata.actual_seq_lengths
+             query_decode = l2norm_fwd(query_decode)
+             key_decode = l2norm_fwd(key_decode)
+-            core_attn_out_decode = recurrent_gated_delta_rule(
+-                query_decode.squeeze(0),
+-                key_decode.squeeze(0),
+-                value_decode.squeeze(0),
+-                ssm_state,
+-                g=g_non_spec[:, :num_decode_tokens].squeeze(0),
+-                beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
+-                scale=key_decode.shape[-1] ** -0.5,
+-                actual_seq_lengths=actual_seq_lengths,
+-                ssm_state_indices=non_spec_state_indices_tensor[: attn_metadata.num_decodes],
+-            ).unsqueeze(0)
++            if use_leapquant:
++                pools = _get_leapquant_pools(self, ssm_state)
++                idx = non_spec_state_indices_tensor[: attn_metadata.num_decodes].flatten().long()
++                num_k = max(self.num_k_heads // self.tp_size, 1)
++                rep = self.num_v_heads // num_k
++                kn = key_decode.squeeze(0).repeat_interleave(rep, dim=1)
++                qn = query_decode.squeeze(0).repeat_interleave(rep, dim=1)
++                o = _lq_decode_step(
++                    use_leapquant,
++                    pools,
++                    idx=idx,
++                    kn=kn,
++                    qn=qn,
++                    v=value_decode.squeeze(0),
++                    g_log=g_non_spec[:, :num_decode_tokens].squeeze(0),
++                    beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
++                    scale=key_decode.shape[-1] ** -0.5,
++                )
++                pools.flush(idx)
++                core_attn_out_decode = o.unsqueeze(0)
++            else:
++                core_attn_out_decode = recurrent_gated_delta_rule(
++                    query_decode.squeeze(0),
++                    key_decode.squeeze(0),
++                    value_decode.squeeze(0),
++                    ssm_state,
++                    g=g_non_spec[:, :num_decode_tokens].squeeze(0),
++                    beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
++                    scale=key_decode.shape[-1] ** -0.5,
++                    actual_seq_lengths=actual_seq_lengths,
++                    ssm_state_indices=non_spec_state_indices_tensor[: attn_metadata.num_decodes],
++                ).unsqueeze(0)
++                if use_leapquant:
++                    _leapquant_resync(self, ssm_state, non_spec_state_indices_tensor[: attn_metadata.num_decodes].flatten())
+         else:
+             core_attn_out_decode = None
+ 
+@@ -602,6 +701,15 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+             assert prefill_has_initial_state is not None
+             assert g_non_spec is not None
+             assert beta_non_spec is not None
++            if use_leapquant and bool(prefill_has_initial_state.any().item()):
++                n_init = int(prefill_has_initial_state.sum().item())
++                n_tot = int(prefill_has_initial_state.numel())
++                raise RuntimeError(
++                    "VLLM_ASCEND_GDN_LEAPQUANT does not support chunked prefill "
++                    "with initial state yet (continuation reads composite state "
++                    f"as fp32); has_initial_state={n_init}/{n_tot} chunks, "
++                    "raise max_num_batched_tokens above the prompt length"
++                )
+             if split_non_spec:
+                 query_non_spec = query_non_spec[:, num_decode_tokens:]
+                 key_non_spec = key_non_spec[:, num_decode_tokens:]
+@@ -684,6 +792,8 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+                 ssm_state[prefill_state_indices] = (
+                     last_recurrent_state.transpose(-1, -2).contiguous().to(ssm_state.dtype)
+                 )
++            if use_leapquant:
++                _leapquant_resync(self, ssm_state, prefill_state_indices.flatten())
+             if split_non_spec:
+                 core_attn_out_non_spec = torch.cat(
+                     [core_attn_out_decode, core_attn_out_non_spec],
+@@ -693,17 +803,55 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+             actual_seq_lengths = attn_metadata.non_spec_decode_metadata.actual_seq_lengths
+             query_non_spec = l2norm_fwd(query_non_spec)
+             key_non_spec = l2norm_fwd(key_non_spec)
+-            core_attn_out_non_spec = recurrent_gated_delta_rule(
+-                query_non_spec.squeeze(0),
+-                key_non_spec.squeeze(0),
+-                value_non_spec.squeeze(0),
+-                ssm_state,
+-                g=g_non_spec.squeeze(0) if g_non_spec is not None else g_non_spec,
+-                beta=beta_non_spec.squeeze(0) if beta_non_spec is not None else beta_non_spec,
+-                scale=key_non_spec.shape[-1] ** -0.5,
+-                actual_seq_lengths=actual_seq_lengths,
+-                ssm_state_indices=non_spec_state_indices_tensor,
+-            ).unsqueeze(0)
++            if use_leapquant and spec_sequence_masks is None:
++                pools = _get_leapquant_pools(self, ssm_state)
++                idx = non_spec_state_indices_tensor.flatten().long()
++                num_k = max(self.num_k_heads // self.tp_size, 1)
++                rep = self.num_v_heads // num_k
++                # expand GQA key/query to value heads: value head h uses key head h // rep
++                kn = key_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
++                qn = query_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
++                o = _lq_decode_step(
++                    use_leapquant,
++                    pools,
++                    idx=idx,
++                    kn=kn,
++                    qn=qn,
++                    v=value_non_spec.squeeze(0),
++                    g_log=g_non_spec.squeeze(0),
++                    beta=beta_non_spec.squeeze(0),
++                    scale=key_non_spec.shape[-1] ** -0.5,
++                )
++                pools.flush(idx)
++                core_attn_out_non_spec = o.unsqueeze(0)
++                if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
++                    _lq_dump_step(self, "lq", idx, key_non_spec, query_non_spec, value_non_spec,
++                                  g_non_spec, beta_non_spec, core_attn_out_non_spec)
++            else:
++                dump_on = bool(os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"))
++                pre_state = (
++                    ssm_state[non_spec_state_indices_tensor.flatten().long()].clone().cpu()
++                    if dump_on
++                    else None
++                )
++                core_attn_out_non_spec = recurrent_gated_delta_rule(
++                    query_non_spec.squeeze(0),
++                    key_non_spec.squeeze(0),
++                    value_non_spec.squeeze(0),
++                    ssm_state,
++                    g=g_non_spec.squeeze(0) if g_non_spec is not None else g_non_spec,
++                    beta=beta_non_spec.squeeze(0) if beta_non_spec is not None else beta_non_spec,
++                    scale=key_non_spec.shape[-1] ** -0.5,
++                    actual_seq_lengths=actual_seq_lengths,
++                    ssm_state_indices=non_spec_state_indices_tensor,
++                ).unsqueeze(0)
++                if use_leapquant:
++                    _leapquant_resync(self, ssm_state, non_spec_state_indices_tensor.flatten())
++                if dump_on:
++                    _lq_dump_step(self, "dense", non_spec_state_indices_tensor.flatten().long(),
++                                  key_non_spec, query_non_spec, value_non_spec,
++                                  g_non_spec, beta_non_spec, core_attn_out_non_spec,
++                                  pre_state)
+         else:
+             core_attn_out_non_spec, last_recurrent_state = None, None
+ 
+diff --git a/vllm_ascend/ops/gdn_leapquant.py b/vllm_ascend/ops/gdn_leapquant.py
+new file mode 100644
+index 0000000..d9dc50b
+--- /dev/null
++++ b/vllm_ascend/ops/gdn_leapquant.py
+@@ -0,0 +1,234 @@
++# SPDX-License-Identifier: Apache-2.0
++"""LeapQuant per-window recurrent-state quantization for GDN decode (torch prototype).
++
++Port of the LeapQuant GDN contracts (arXiv:2609.38166, NVlabs/kda PR #10):
++the recurrent state is kept as an int8 smoothed residual plus a few fp16
++Compensator Tokens, the last WINDOW rank-1 updates are buffered in bf16, and
++the state is re-quantized once per window by ``flush``.
++
++Storage is in-place: the composite checkpoint lives inside the layer's own
++fp32 ssm_state slot buffer (a slot is 2 MB, the composite layout needs
++~0.9 MB), so the prototype adds no extra device memory. A slot holds either
++the dense fp32 state (immediately after a dense-path write, before resync)
++or the composite format (every other time in LeapQuant mode).
++
++This module is the eager torch path used to validate end-to-end accuracy on
++real weights before the Triton/AscendC kernels replace the hot spots.
++"""
++
++import torch
++
++QMAX = 127.0
++EPS = 1e-12
++WINDOW = 16
++NUM_COMP_TOKENS = 4
++_MGS_PASSES = 2
++_Q0_SEED = 20260930
++
++# byte offsets within one slot buffer (all 128-byte aligned)
++_OFF_CODES = 0
++_OFF_KBUF = 524288  # 32*128*128 int8
++_OFF_UBUF = 655360  # + 32*16*128*2
++_OFF_U = 786432  # + 32*16*128*2
++_OFF_Q = 819200  # + 32*4*128*2
++_OFF_SK = 852992  # + 32*4*128*2
++_OFF_SV = 869376  # + 32*128*4
++_OFF_W = 885760  # + 32*128*4
++_OFF_P = 887808  # + 32*16*4
++_OFF_FILL = 887936  # + 32*4
++_LAYOUT_END = 888068  # + 32*4
++
++
++def _mgs(m: torch.Tensor) -> torch.Tensor:
++    """Modified Gram-Schmidt on the columns of m, projections applied twice."""
++    cols = []
++    for j in range(m.shape[-1]):
++        v = m[..., j]
++        for _ in range(_MGS_PASSES):
++            for c in cols:
++                v = v - c * (c * v).sum(-1, keepdim=True)
++        cols.append(v / v.norm(dim=-1, keepdim=True).clamp_min(1e-30))
++    return torch.stack(cols, -1)
++
++
++def _quantize(S: torch.Tensor, q0: torch.Tensor) -> tuple[torch.Tensor, ...]:
++    """Quantize a dense fp32 state [..., V, K] into a LeapQuant checkpoint."""
++    x = S.transpose(-1, -2)  # [..., K, V]
++    qk = _mgs(x @ q0)  # [..., K, R]
++    qv = _mgs(x.transpose(-1, -2) @ qk)  # [..., V, R]
++    uk = x @ qv  # [..., K, R]
++    u_new = uk.transpose(-1, -2).to(torch.float16)  # [..., R, K]
++    q_new = qv.transpose(-1, -2).to(torch.float16)  # [..., R, V]
++    e = S - torch.einsum("...rv,...rk->...vk", q_new.float(), u_new.float())
++    s_k = e.abs().mean(dim=-2).sqrt().clamp_min(EPS)
++    s_v = (e.abs() / s_k.unsqueeze(-2)).amax(dim=-1).clamp_min(EPS)
++    codes = torch.round(e / (s_k.unsqueeze(-2) * s_v.unsqueeze(-1)) * QMAX)
++    codes = codes.clamp(-QMAX, QMAX).to(torch.int8)
++    return codes, s_k, s_v, u_new, q_new
++
++
++class GDNLeapQuantPools:
++    """In-place composite-state views over the layer's ssm_state buffer.
++
++    ``ssm_state`` is [num_slots, H, V, K] fp32 (possibly a strided view into a
++    unified KV buffer). The first ``_LAYOUT_END`` bytes of each slot's storage
++    hold the LeapQuant layout; the rest is unused.
++    """
++
++    def __init__(self, ssm_state: torch.Tensor):
++        assert ssm_state.dtype == torch.float32, f"expect fp32 state, got {ssm_state.dtype}"
++        self.num_slots, self.num_heads, self.head_v, self.head_k = ssm_state.shape
++        H, V, K = self.num_heads, self.head_v, self.head_k
++        self.slot_stride_bytes = ssm_state.stride(0) * 4
++        assert self.slot_stride_bytes >= _LAYOUT_END, "slot buffer too small for LeapQuant layout"
++        i8 = ssm_state.view(torch.int8)  # [num_slots, H, V, K*4]; last-dim fp32->int8 view
++        slot_bytes = self.num_heads * self.head_v * self.head_k * 4
++        flat = torch.as_strided(i8, (self.num_slots, slot_bytes), (i8.stride(0), 1))
++        self._flat = flat
++
++        def typed(offset: int, dtype: torch.dtype, *tail: int) -> torch.Tensor:
++            n = 1
++            for d in tail:
++                n *= d
++            esize = torch.tensor([], dtype=dtype).element_size()
++            cols = flat[:, offset : offset + n * esize]
++            return cols.view(dtype).view(self.num_slots, *tail)
++
++        self.codes = typed(_OFF_CODES, torch.int8, H, V, K)
++        self.kbuf = typed(_OFF_KBUF, torch.bfloat16, H, WINDOW, K)
++        self.ubuf = typed(_OFF_UBUF, torch.bfloat16, H, WINDOW, V)
++        self.u = typed(_OFF_U, torch.float16, H, NUM_COMP_TOKENS, K)
++        self.q = typed(_OFF_Q, torch.float16, H, NUM_COMP_TOKENS, V)
++        self.s_k = typed(_OFF_SK, torch.float32, H, K)
++        self.s_v = typed(_OFF_SV, torch.float32, H, V)
++        self.w = typed(_OFF_W, torch.float32, H, WINDOW)
++        self.p = typed(_OFF_P, torch.float32, H)
++        self.fill = typed(_OFF_FILL, torch.int32, H)
++        gen = torch.Generator(device="cpu").manual_seed(_Q0_SEED)
++        self.q0 = torch.randn(V, NUM_COMP_TOKENS, dtype=torch.float32, generator=gen).to(ssm_state.device)
++
++    def th_index(self, idx: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
++        T = idx.shape[0]
++        t_idx = idx.view(T, 1).expand(T, self.num_heads)
++        h_idx = torch.arange(self.num_heads, device=idx.device).view(1, -1).expand(T, self.num_heads)
++        return t_idx, h_idx
++
++    def decode_step(
++        self,
++        idx: torch.Tensor,
++        kn: torch.Tensor,
++        qn: torch.Tensor,
++        v: torch.Tensor,
++        g_log: torch.Tensor,
++        beta: torch.Tensor,
++        scale: float,
++    ) -> torch.Tensor:
++        """One decode step over a batch of sequences.
++
++        kn, qn: [T, H, K] l2-normalized bf16 (already expanded to value heads,
++            qn without the K**-0.5 factor); v: [T, H, V] bf16;
++            g_log: [T, H] fp32 log-decay; beta: [T, H] bf16; idx: [T] slot ids.
++        Returns o [T, H, V] bf16 and appends the rank-1 update in place.
++        """
++        t_idx, h_idx = self.th_index(idx)
++        L = WINDOW
++
++        codes = self.codes[t_idx, h_idx].float()
++        s_k = self.s_k[t_idx, h_idx]
++        s_v = self.s_v[t_idx, h_idx]
++        s0 = torch.einsum("bhrv,bhrk->bhvk", self.q[t_idx, h_idx].float(), self.u[t_idx, h_idx].float())
++        s0 = s0 + codes * (s_k / QMAX).unsqueeze(-2) * s_v.unsqueeze(-1)
++
++        p = self.p[t_idx, h_idx]
++        at = torch.exp(g_log.float())
++        pn = p * at
++        f = self.fill[t_idx, h_idx]
++        w = self.w[t_idx, h_idx] * at.unsqueeze(-1)  # dead entries stay 0
++        # dead buffer slots may hold stale bytes that are not finite as bf16;
++        # mask them out so 0 * NaN does not poison the reconstruction
++        j = torch.arange(L, device=idx.device)
++        live = (j.view(1, 1, L) < f.unsqueeze(-1)).unsqueeze(-1)
++        ubuf = torch.where(live, self.ubuf[t_idx, h_idx].float(), torch.zeros((), device=idx.device))
++        kbuf = torch.where(live, self.kbuf[t_idx, h_idx].float(), torch.zeros((), device=idx.device))
++        s = pn.unsqueeze(-1).unsqueeze(-1) * s0 + torch.einsum("bhj,bhjv,bhjk->bhvk", w, ubuf, kbuf)
++
++        beta_f = beta.float()
++        upd = beta_f.unsqueeze(-1) * (v.float() - torch.einsum("bhvk,bhk->bhv", s, kn.float()))
++        qn_s = qn.float() * scale
++        o = torch.einsum("bhvk,bhk->bhv", s, qn_s) + (kn.float() * qn_s).sum(-1, keepdim=True) * upd
++
++        # append the new update at entry f
++        self.kbuf[t_idx, h_idx, f] = kn.to(torch.bfloat16)
++        self.ubuf[t_idx, h_idx, f] = upd.to(torch.bfloat16)
++        j = torch.arange(L, device=idx.device)
++        w_new = torch.where(j.view(1, 1, L) == f.unsqueeze(-1), torch.ones_like(w), w)
++        self.w[t_idx, h_idx] = w_new
++        self.p[t_idx, h_idx] = pn
++        self.fill[t_idx, h_idx] = f + 1
++        return o.to(torch.bfloat16)
++
++    @torch.no_grad()
++    def flush(self, idx: torch.Tensor) -> None:
++        """Re-quantize the slots of idx whose window just ended (fill == L)."""
++        t_idx, h_idx = self.th_index(idx)
++        f = self.fill[t_idx, h_idx]
++        due4 = (f >= WINDOW).unsqueeze(-1).unsqueeze(-1)
++        due3 = (f >= WINDOW).unsqueeze(-1)
++        due2 = f >= WINDOW
++
++        codes = self.codes[t_idx, h_idx].float()
++        s_k = self.s_k[t_idx, h_idx]
++        s_v = self.s_v[t_idx, h_idx]
++        s_old = torch.einsum("bhrv,bhrk->bhvk", self.q[t_idx, h_idx].float(), self.u[t_idx, h_idx].float())
++        s_old = s_old + codes * (s_k / QMAX).unsqueeze(-2) * s_v.unsqueeze(-1)
++        # mask dead buffer slots: stale bytes may be non-finite as bf16
++        j = torch.arange(WINDOW, device=idx.device)
++        live = (j.view(1, 1, WINDOW) < f.unsqueeze(-1)).unsqueeze(-1)
++        ubuf = torch.where(live, self.ubuf[t_idx, h_idx].float(), torch.zeros((), device=idx.device))
++        kbuf = torch.where(live, self.kbuf[t_idx, h_idx].float(), torch.zeros((), device=idx.device))
++        s = self.p[t_idx, h_idx].unsqueeze(-1).unsqueeze(-1) * s_old + torch.einsum(
++            "bhj,bhjv,bhjk->bhvk",
++            self.w[t_idx, h_idx],
++            ubuf,
++            kbuf,
++        )
++
++        c, sk, sv, u_new, q_new = _quantize(s, self.q0)
++        self.codes[t_idx, h_idx] = torch.where(due4, c, self.codes[t_idx, h_idx])
++        self.s_k[t_idx, h_idx] = torch.where(due3, sk, self.s_k[t_idx, h_idx])
++        self.s_v[t_idx, h_idx] = torch.where(due3, sv, self.s_v[t_idx, h_idx])
++        self.u[t_idx, h_idx] = torch.where(due4, u_new, self.u[t_idx, h_idx])
++        self.q[t_idx, h_idx] = torch.where(due4, q_new, self.q[t_idx, h_idx])
++        self.w[t_idx, h_idx] = torch.where(due3, torch.zeros_like(self.w[t_idx, h_idx]), self.w[t_idx, h_idx])
++        self.p[t_idx, h_idx] = torch.where(due2, torch.ones_like(self.p[t_idx, h_idx]), self.p[t_idx, h_idx])
++        self.fill[t_idx, h_idx] = torch.where(due2, torch.zeros_like(f), f)
++
++    @torch.no_grad()
++    def init_from_dense(self, ssm_state: torch.Tensor, idx: torch.Tensor) -> None:
++        """Quantize the dense fp32 states of slots idx into composite checkpoints.
++
++        Must be called right after a dense-path write to those slots; reads the
++        dense values via a gather first, so in-place aliasing is safe.
++        """
++        t_idx, h_idx = self.th_index(idx)
++        dense = ssm_state[idx].clone().float()
++        c, sk, sv, u_new, q_new = _quantize(dense, self.q0)
++        self.codes[t_idx, h_idx] = c
++        self.s_k[t_idx, h_idx] = sk
++        self.s_v[t_idx, h_idx] = sv
++        self.u[t_idx, h_idx] = u_new
++        self.q[t_idx, h_idx] = q_new
++        self.w[t_idx, h_idx] = 0.0
++        self.p[t_idx, h_idx] = 1.0
++        self.fill[t_idx, h_idx] = 0
++        # the stale dense bytes behind the buffer views are not finite as bf16
++        self.kbuf[t_idx, h_idx] = 0.0
++        self.ubuf[t_idx, h_idx] = 0.0
++
++    def decode_state(self, idx: torch.Tensor) -> torch.Tensor:
++        """Dense fp32 reconstruction of the checkpoint part (window buffer excluded)."""
++        t_idx, h_idx = self.th_index(idx)
++        s = torch.einsum("bhrv,bhrk->bhvk", self.q[t_idx, h_idx].float(), self.u[t_idx, h_idx].float())
++        return s + self.codes[t_idx, h_idx].float() * (self.s_k[t_idx, h_idx] / QMAX).unsqueeze(
++            -2
++        ) * self.s_v[t_idx, h_idx].unsqueeze(-1)
+diff --git a/vllm_ascend/ops/triton/gdn_leapquant_flush.py b/vllm_ascend/ops/triton/gdn_leapquant_flush.py
+new file mode 100644
+index 0000000..72960c9
+--- /dev/null
++++ b/vllm_ascend/ops/triton/gdn_leapquant_flush.py
+@@ -0,0 +1,307 @@
++# SPDX-License-Identifier: Apache-2.0
++"""Triton-Ascend window-flush kernel for LeapQuant-quantized GDN state.
++
++One program per (sequence, head); programs whose window has not ended
++(fill < L) exit immediately. Due programs rebuild the fp32 state from the
++composite checkpoint plus the buffered updates, fit R Compensator Tokens with
++one round of subspace iteration (modified Gram-Schmidt, projections applied
++twice), smooth and quantize the residual to int8, and reset the window.
++
++The state is processed in V-chunks of VH rows so the Unified Buffer footprint
++stays small: five passes (subspace start, orthogonal factor, update factor,
++smoothing scales, quantization) rebuild the chunk on each pass.
++"""
++
++import torch
++from vllm.triton_utils import tl, triton
++
++QMAX: tl.constexpr = 127.0
++EPS: tl.constexpr = 1e-12
++
++
++@triton.jit
++def _rebuild_chunk(
++    codes_ptr,
++    kbuf_ptr,
++    ubuf_ptr,
++    u_ptr,
++    q_ptr,
++    sk_ptr,
++    sv_ptr,
++    w_ptr,
++    p_ptr,
++    slot,
++    h,
++    f,
++    rv_h,
++    cs0,
++    kbs0,
++    ubs0,
++    us0,
++    qs0,
++    sks0,
++    svs0,
++    ws0,
++    ps0,
++    V: tl.constexpr,
++    K: tl.constexpr,
++    L: tl.constexpr,
++    R: tl.constexpr,
++):
++    rk = tl.arange(0, K)
++    sv_h = tl.load(sv_ptr + slot * svs0 + h * V + rv_h)
++    sk_old = tl.load(sk_ptr + slot * sks0 + h * K + rk)
++    codes = tl.load(codes_ptr + slot * cs0 + h * V * K + rv_h[:, None] * K + rk[None, :]).to(tl.float32)
++    S = codes * (sk_old[None, :] / QMAX) * sv_h[:, None]
++    for r in tl.static_range(R):
++        qr = tl.load(q_ptr + slot * qs0 + (h * R + r) * V + rv_h).to(tl.float32)
++        ur = tl.load(u_ptr + slot * us0 + (h * R + r) * K + rk).to(tl.float32)
++        S += qr[:, None] * ur[None, :]
++    p = tl.load(p_ptr + slot * ps0 + h)
++    S = p * S
++    for j in tl.static_range(L):
++        ub = tl.load(ubuf_ptr + slot * ubs0 + (h * L + j) * V + rv_h, mask=j < f, other=0.0).to(tl.float32)
++        kb = tl.load(kbuf_ptr + slot * kbs0 + (h * L + j) * K + rk, mask=j < f, other=0.0).to(tl.float32)
++        wj = tl.load(w_ptr + slot * ws0 + h * L + j, mask=j < f, other=0.0)
++        S += wj * ub[:, None] * kb[None, :]
++    return S
++
++
++@triton.jit
++def _gdn_lq_flush_kernel(
++    codes_ptr,
++    kbuf_ptr,
++    ubuf_ptr,
++    u_ptr,
++    q_ptr,
++    sk_ptr,
++    sv_ptr,
++    w_ptr,
++    p_ptr,
++    fill_ptr,
++    q0_ptr,
++    idx_ptr,
++    cs0,
++    kbs0,
++    ubs0,
++    us0,
++    qs0,
++    sks0,
++    svs0,
++    ws0,
++    ps0,
++    fs0,
++    H: tl.constexpr,
++    V: tl.constexpr,
++    K: tl.constexpr,
++    L: tl.constexpr,
++    R: tl.constexpr,
++    VH: tl.constexpr,
++):
++    pid = tl.program_id(0)
++    b = pid // H
++    h = pid % H
++    slot = tl.load(idx_ptr + b)
++
++    f = tl.load(fill_ptr + slot * fs0 + h)
++    due = f >= L
++    f = tl.where(due, f, L)  # clamp: non-due programs run masked, stores are guarded
++
++    NH: tl.constexpr = V // VH
++    rv = tl.arange(0, V)
++    rk = tl.arange(0, K)
++    rl = tl.arange(0, L)
++
++    # pass 1: m1_r = S^T q0_r, accumulated over V-chunks; then MGS -> qk_r
++    m1_0 = tl.zeros((K,), dtype=tl.float32)
++    m1_1 = tl.zeros((K,), dtype=tl.float32)
++    m1_2 = tl.zeros((K,), dtype=tl.float32)
++    m1_3 = tl.zeros((K,), dtype=tl.float32)
++    for vh in range(NH):
++        rv_h = vh * VH + tl.arange(0, VH)
++        S_h = _rebuild_chunk(codes_ptr, kbuf_ptr, ubuf_ptr, u_ptr, q_ptr, sk_ptr, sv_ptr,
++                             w_ptr, p_ptr, slot, h, f, rv_h, cs0, kbs0, ubs0, us0, qs0,
++                             sks0, svs0, ws0, ps0, V, K, L, R)
++        q0_0 = tl.load(q0_ptr + 0 * V + rv_h)
++        q0_1 = tl.load(q0_ptr + 1 * V + rv_h)
++        q0_2 = tl.load(q0_ptr + 2 * V + rv_h)
++        q0_3 = tl.load(q0_ptr + 3 * V + rv_h)
++        m1_0 += tl.sum(S_h * q0_0[:, None], axis=0)
++        m1_1 += tl.sum(S_h * q0_1[:, None], axis=0)
++        m1_2 += tl.sum(S_h * q0_2[:, None], axis=0)
++        m1_3 += tl.sum(S_h * q0_3[:, None], axis=0)
++    # MGS (twice is enough), normalizing each column before the next uses it
++    n0 = tl.maximum(tl.sqrt(tl.sum(m1_0 * m1_0, axis=0)), 1e-30)
++    qk_0 = m1_0 / n0
++    qk_1 = m1_1 - qk_0 * tl.sum(qk_0 * m1_1, axis=0)
++    qk_1 = qk_1 - qk_0 * tl.sum(qk_0 * qk_1, axis=0)
++    qk_1 = qk_1 / tl.maximum(tl.sqrt(tl.sum(qk_1 * qk_1, axis=0)), 1e-30)
++    qk_2 = m1_2 - qk_0 * tl.sum(qk_0 * m1_2, axis=0)
++    qk_2 = qk_2 - qk_1 * tl.sum(qk_1 * qk_2, axis=0)
++    qk_2 = qk_2 - qk_0 * tl.sum(qk_0 * qk_2, axis=0)
++    qk_2 = qk_2 - qk_1 * tl.sum(qk_1 * qk_2, axis=0)
++    qk_2 = qk_2 / tl.maximum(tl.sqrt(tl.sum(qk_2 * qk_2, axis=0)), 1e-30)
++    qk_3 = m1_3 - qk_0 * tl.sum(qk_0 * m1_3, axis=0)
++    qk_3 = qk_3 - qk_1 * tl.sum(qk_1 * qk_3, axis=0)
++    qk_3 = qk_3 - qk_2 * tl.sum(qk_2 * qk_3, axis=0)
++    qk_3 = qk_3 - qk_0 * tl.sum(qk_0 * qk_3, axis=0)
++    qk_3 = qk_3 - qk_1 * tl.sum(qk_1 * qk_3, axis=0)
++    qk_3 = qk_3 - qk_2 * tl.sum(qk_2 * qk_3, axis=0)
++    qk_3 = qk_3 / tl.maximum(tl.sqrt(tl.sum(qk_3 * qk_3, axis=0)), 1e-30)
++
++    # pass 2: qv_r = S qk_r over V-chunks; then MGS -> qv_r
++    qv_0 = tl.zeros((V,), dtype=tl.float32)
++    qv_1 = tl.zeros((V,), dtype=tl.float32)
++    qv_2 = tl.zeros((V,), dtype=tl.float32)
++    qv_3 = tl.zeros((V,), dtype=tl.float32)
++    for vh in range(NH):
++        rv_h = vh * VH + tl.arange(0, VH)
++        S_h = _rebuild_chunk(codes_ptr, kbuf_ptr, ubuf_ptr, u_ptr, q_ptr, sk_ptr, sv_ptr,
++                             w_ptr, p_ptr, slot, h, f, rv_h, cs0, kbs0, ubs0, us0, qs0,
++                             sks0, svs0, ws0, ps0, V, K, L, R)
++        OH = rv[:, None] == rv_h[None, :]
++        qv_0 += tl.sum(tl.where(OH, tl.sum(S_h * qk_0[None, :], axis=1)[None, :], 0.0), axis=1)
++        qv_1 += tl.sum(tl.where(OH, tl.sum(S_h * qk_1[None, :], axis=1)[None, :], 0.0), axis=1)
++        qv_2 += tl.sum(tl.where(OH, tl.sum(S_h * qk_2[None, :], axis=1)[None, :], 0.0), axis=1)
++        qv_3 += tl.sum(tl.where(OH, tl.sum(S_h * qk_3[None, :], axis=1)[None, :], 0.0), axis=1)
++    n0 = tl.maximum(tl.sqrt(tl.sum(qv_0 * qv_0, axis=0)), 1e-30)
++    qv_0 = qv_0 / n0
++    qv_1 = qv_1 - qv_0 * tl.sum(qv_0 * qv_1, axis=0)
++    qv_1 = qv_1 - qv_0 * tl.sum(qv_0 * qv_1, axis=0)
++    qv_1 = qv_1 / tl.maximum(tl.sqrt(tl.sum(qv_1 * qv_1, axis=0)), 1e-30)
++    qv_2 = qv_2 - qv_0 * tl.sum(qv_0 * qv_2, axis=0)
++    qv_2 = qv_2 - qv_1 * tl.sum(qv_1 * qv_2, axis=0)
++    qv_2 = qv_2 - qv_0 * tl.sum(qv_0 * qv_2, axis=0)
++    qv_2 = qv_2 - qv_1 * tl.sum(qv_1 * qv_2, axis=0)
++    qv_2 = qv_2 / tl.maximum(tl.sqrt(tl.sum(qv_2 * qv_2, axis=0)), 1e-30)
++    qv_3 = qv_3 - qv_0 * tl.sum(qv_0 * qv_3, axis=0)
++    qv_3 = qv_3 - qv_1 * tl.sum(qv_1 * qv_3, axis=0)
++    qv_3 = qv_3 - qv_2 * tl.sum(qv_2 * qv_3, axis=0)
++    qv_3 = qv_3 - qv_0 * tl.sum(qv_0 * qv_3, axis=0)
++    qv_3 = qv_3 - qv_1 * tl.sum(qv_1 * qv_3, axis=0)
++    qv_3 = qv_3 - qv_2 * tl.sum(qv_2 * qv_3, axis=0)
++    qv_3 = qv_3 / tl.maximum(tl.sqrt(tl.sum(qv_3 * qv_3, axis=0)), 1e-30)
++
++    # pass 3: uk_r = S^T qv_r over V-chunks
++    uk_0 = tl.zeros((K,), dtype=tl.float32)
++    uk_1 = tl.zeros((K,), dtype=tl.float32)
++    uk_2 = tl.zeros((K,), dtype=tl.float32)
++    uk_3 = tl.zeros((K,), dtype=tl.float32)
++    for vh in range(NH):
++        rv_h = vh * VH + tl.arange(0, VH)
++        S_h = _rebuild_chunk(codes_ptr, kbuf_ptr, ubuf_ptr, u_ptr, q_ptr, sk_ptr, sv_ptr,
++                             w_ptr, p_ptr, slot, h, f, rv_h, cs0, kbs0, ubs0, us0, qs0,
++                             sks0, svs0, ws0, ps0, V, K, L, R)
++        OH = rv[:, None] == rv_h[None, :]
++        qv_0h = tl.sum(tl.where(OH, qv_0[:, None], 0.0), axis=0)
++        qv_1h = tl.sum(tl.where(OH, qv_1[:, None], 0.0), axis=0)
++        qv_2h = tl.sum(tl.where(OH, qv_2[:, None], 0.0), axis=0)
++        qv_3h = tl.sum(tl.where(OH, qv_3[:, None], 0.0), axis=0)
++        uk_0 += tl.sum(S_h * qv_0h[:, None], axis=0)
++        uk_1 += tl.sum(S_h * qv_1h[:, None], axis=0)
++        uk_2 += tl.sum(S_h * qv_2h[:, None], axis=0)
++        uk_3 += tl.sum(S_h * qv_3h[:, None], axis=0)
++
++    # pass 4a: column absolute sums across all V-chunks (sk needs the full mean)
++    sum_abs = tl.zeros((K,), dtype=tl.float32)
++    for vh in range(NH):
++        rv_h = vh * VH + tl.arange(0, VH)
++        S_h = _rebuild_chunk(codes_ptr, kbuf_ptr, ubuf_ptr, u_ptr, q_ptr, sk_ptr, sv_ptr,
++                             w_ptr, p_ptr, slot, h, f, rv_h, cs0, kbs0, ubs0, us0, qs0,
++                             sks0, svs0, ws0, ps0, V, K, L, R)
++        OH = rv[:, None] == rv_h[None, :]
++        qv_0h = tl.sum(tl.where(OH, qv_0[:, None], 0.0), axis=0)
++        qv_1h = tl.sum(tl.where(OH, qv_1[:, None], 0.0), axis=0)
++        qv_2h = tl.sum(tl.where(OH, qv_2[:, None], 0.0), axis=0)
++        qv_3h = tl.sum(tl.where(OH, qv_3[:, None], 0.0), axis=0)
++        E = S_h - qv_0h[:, None] * uk_0[None, :] - qv_1h[:, None] * uk_1[None, :] - qv_2h[:, None] * uk_2[None, :] - qv_3h[:, None] * uk_3[None, :]
++        sum_abs += tl.sum(tl.abs(E), axis=0)
++    sk = tl.maximum(tl.sqrt(sum_abs / V), EPS)
++    tl.store(sk_ptr + slot * sks0 + h * K + rk, sk, mask=due & (rk >= 0))
++
++    # pass 4b: row scales (max over k of the smoothed residual) per chunk
++    sv_new = tl.zeros((V,), dtype=tl.float32)
++    for vh in range(NH):
++        rv_h = vh * VH + tl.arange(0, VH)
++        S_h = _rebuild_chunk(codes_ptr, kbuf_ptr, ubuf_ptr, u_ptr, q_ptr, sk_ptr, sv_ptr,
++                             w_ptr, p_ptr, slot, h, f, rv_h, cs0, kbs0, ubs0, us0, qs0,
++                             sks0, svs0, ws0, ps0, V, K, L, R)
++        OH = rv[:, None] == rv_h[None, :]
++        qv_0h = tl.sum(tl.where(OH, qv_0[:, None], 0.0), axis=0)
++        qv_1h = tl.sum(tl.where(OH, qv_1[:, None], 0.0), axis=0)
++        qv_2h = tl.sum(tl.where(OH, qv_2[:, None], 0.0), axis=0)
++        qv_3h = tl.sum(tl.where(OH, qv_3[:, None], 0.0), axis=0)
++        E = S_h - qv_0h[:, None] * uk_0[None, :] - qv_1h[:, None] * uk_1[None, :] - qv_2h[:, None] * uk_2[None, :] - qv_3h[:, None] * uk_3[None, :]
++        sv_h = tl.max(tl.abs(E) / sk[None, :], axis=1)
++        sv_new = tl.maximum(sv_new, tl.sum(tl.where(OH, sv_h[None, :], 0.0), axis=1))
++    sv_new = tl.maximum(sv_new, EPS)
++
++    # pass 5: quantize the residual per chunk
++    for vh in range(NH):
++        rv_h = vh * VH + tl.arange(0, VH)
++        S_h = _rebuild_chunk(codes_ptr, kbuf_ptr, ubuf_ptr, u_ptr, q_ptr, sk_ptr, sv_ptr,
++                             w_ptr, p_ptr, slot, h, f, rv_h, cs0, kbs0, ubs0, us0, qs0,
++                             sks0, svs0, ws0, ps0, V, K, L, R)
++        OH = rv[:, None] == rv_h[None, :]
++        qv_0h = tl.sum(tl.where(OH, qv_0[:, None], 0.0), axis=0)
++        qv_1h = tl.sum(tl.where(OH, qv_1[:, None], 0.0), axis=0)
++        qv_2h = tl.sum(tl.where(OH, qv_2[:, None], 0.0), axis=0)
++        qv_3h = tl.sum(tl.where(OH, qv_3[:, None], 0.0), axis=0)
++        E = S_h - qv_0h[:, None] * uk_0[None, :] - qv_1h[:, None] * uk_1[None, :] - qv_2h[:, None] * uk_2[None, :] - qv_3h[:, None] * uk_3[None, :]
++        sv_h = tl.sum(tl.where(OH, sv_new[:, None], 0.0), axis=0)
++        scaled = E / (sk[None, :] * sv_h[:, None]) * QMAX
++        qcodes = tl.where(scaled >= 0, tl.floor(scaled + 0.5), tl.ceil(scaled - 0.5))
++        qcodes = tl.minimum(tl.maximum(qcodes, -QMAX), QMAX)
++        tl.store(codes_ptr + slot * cs0 + h * V * K + rv_h[:, None] * K + rk[None, :], qcodes.to(tl.int8), mask=due & (rv_h[:, None] >= 0))
++
++    tl.store(sv_ptr + slot * svs0 + h * V + rv, sv_new, mask=due & (rv >= 0))
++    tl.store(u_ptr + slot * us0 + (h * R + 0) * K + rk, uk_0.to(tl.float16), mask=due & (rk >= 0))
++    tl.store(u_ptr + slot * us0 + (h * R + 1) * K + rk, uk_1.to(tl.float16), mask=due & (rk >= 0))
++    tl.store(u_ptr + slot * us0 + (h * R + 2) * K + rk, uk_2.to(tl.float16), mask=due & (rk >= 0))
++    tl.store(u_ptr + slot * us0 + (h * R + 3) * K + rk, uk_3.to(tl.float16), mask=due & (rk >= 0))
++    tl.store(q_ptr + slot * qs0 + (h * R + 0) * V + rv, qv_0.to(tl.float16), mask=due & (rv >= 0))
++    tl.store(q_ptr + slot * qs0 + (h * R + 1) * V + rv, qv_1.to(tl.float16), mask=due & (rv >= 0))
++    tl.store(q_ptr + slot * qs0 + (h * R + 2) * V + rv, qv_2.to(tl.float16), mask=due & (rv >= 0))
++    tl.store(q_ptr + slot * qs0 + (h * R + 3) * V + rv, qv_3.to(tl.float16), mask=due & (rv >= 0))
++
++    zero_w = tl.zeros((L,), dtype=tl.float32)
++    tl.store(w_ptr + slot * ws0 + h * L + rl, zero_w, mask=due & (rl >= 0))
++    tl.store(p_ptr + slot * ps0 + h, 1.0, mask=due)
++    tl.store(fill_ptr + slot * fs0 + h, 0, mask=due)
++
++
++def gdn_leapquant_flush(pools, idx):
++    """Flush due slots (fill == L) of the decode batch idx in place."""
++    T = idx.shape[0]
++    H = pools.num_heads
++    grid = (T * H,)
++    _gdn_lq_flush_kernel[grid](
++        pools.codes,
++        pools.kbuf,
++        pools.ubuf,
++        pools.u,
++        pools.q,
++        pools.s_k,
++        pools.s_v,
++        pools.w,
++        pools.p,
++        pools.fill,
++        pools.q0,
++        idx,
++        pools.codes.stride(0),
++        pools.kbuf.stride(0),
++        pools.ubuf.stride(0),
++        pools.u.stride(0),
++        pools.q.stride(0),
++        pools.s_k.stride(0),
++        pools.s_v.stride(0),
++        pools.w.stride(0),
++        pools.p.stride(0),
++        pools.fill.stride(0),
++        H=H,
++        V=pools.head_v,
++        K=pools.head_k,
++        L=pools.kbuf.shape[2],
++        R=pools.u.shape[2],
++        VH=32,
++    )
+diff --git a/vllm_ascend/ops/triton/gdn_leapquant_step.py b/vllm_ascend/ops/triton/gdn_leapquant_step.py
+new file mode 100644
+index 0000000..185f29f
+--- /dev/null
++++ b/vllm_ascend/ops/triton/gdn_leapquant_step.py
+@@ -0,0 +1,155 @@
++# SPDX-License-Identifier: Apache-2.0
++"""Triton-Ascend decode-step kernel for LeapQuant-quantized GDN state.
++
++One program per (sequence, head). Reads the composite checkpoint (int8 codes +
++fp16 Compensator Tokens) and the window's buffered rank-1 updates in place from
++the layer's ssm_state slot views, computes the gated-delta-rule step, appends
++the new update, and returns the token output. fp32 accumulation throughout.
++"""
++
++import torch
++from vllm.triton_utils import tl, triton
++
++QMAX: tl.constexpr = 127.0
++
++
++@triton.jit
++def _gdn_lq_step_kernel(
++    codes_ptr,
++    kbuf_ptr,
++    ubuf_ptr,
++    u_ptr,
++    q_ptr,
++    sk_ptr,
++    sv_ptr,
++    w_ptr,
++    p_ptr,
++    fill_ptr,
++    kn_ptr,
++    qn_ptr,
++    v_ptr,
++    g_ptr,
++    beta_ptr,
++    o_ptr,
++    idx_ptr,
++    cs0,
++    kbs0,
++    ubs0,
++    us0,
++    qs0,
++    sks0,
++    svs0,
++    ws0,
++    ps0,
++    fs0,
++    scale,
++    H: tl.constexpr,
++    V: tl.constexpr,
++    K: tl.constexpr,
++    L: tl.constexpr,
++    R: tl.constexpr,
++):
++    pid = tl.program_id(0)
++    b = pid // H
++    h = pid % H
++    slot = tl.load(idx_ptr + b)
++
++    rv = tl.arange(0, V)
++    rk = tl.arange(0, K)
++    rl = tl.arange(0, L)
++
++    f = tl.load(fill_ptr + slot * fs0 + h)
++    g = tl.load(g_ptr + b * H + h)
++    at = tl.exp(g)
++    p = tl.load(p_ptr + slot * ps0 + h)
++    pn = p * at
++    beta = tl.load(beta_ptr + b * H + h).to(tl.float32)
++
++    # checkpoint part: S0 = q^T u + dequant(codes), then S = pn * S0
++    sv = tl.load(sv_ptr + slot * svs0 + h * V + rv)
++    sk = tl.load(sk_ptr + slot * sks0 + h * K + rk)
++    codes = tl.load(codes_ptr + slot * cs0 + h * V * K + rv[:, None] * K + rk[None, :]).to(tl.float32)
++    S = codes * (sk[None, :] / QMAX) * sv[:, None]
++    for r in tl.static_range(R):
++        qr = tl.load(q_ptr + slot * qs0 + h * R * V + r * V + rv).to(tl.float32)
++        ur = tl.load(u_ptr + slot * us0 + h * R * K + r * K + rk).to(tl.float32)
++        S += qr[:, None] * ur[None, :]
++    S = pn * S
++
++    # buffered updates: S += sum_j (w_j * at) * ubuf_j (x) kbuf_j, live entries only
++    w = tl.load(w_ptr + slot * ws0 + h * L + rl, mask=rl < f, other=0.0)
++    for j in tl.static_range(L):
++        ub = tl.load(ubuf_ptr + slot * ubs0 + (h * L + j) * V + rv, mask=j < f, other=0.0).to(tl.float32)
++        kb = tl.load(kbuf_ptr + slot * kbs0 + (h * L + j) * K + rk, mask=j < f, other=0.0).to(tl.float32)
++        wj = tl.load(w_ptr + slot * ws0 + h * L + j, mask=j < f, other=0.0)
++        S += (wj * at) * ub[:, None] * kb[None, :]
++
++    # gated delta rule on the reconstructed state
++    kn = tl.load(kn_ptr + b * H * K + h * K + rk)
++    knf = kn.to(tl.float32)
++    qn = tl.load(qn_ptr + b * H * K + h * K + rk).to(tl.float32) * scale
++    val = tl.load(v_ptr + b * H * V + h * V + rv).to(tl.float32)
++    Skn = tl.sum(S * knf[None, :], axis=1)
++    u_new = beta * (val - Skn)
++    kq = tl.sum(knf * qn, axis=0)
++    o = tl.sum(S * qn[None, :], axis=1) + kq * u_new
++    tl.store(o_ptr + b * H * V + h * V + rv, o.to(o_ptr.dtype.element_ty))
++
++    # append the new update at entry f
++    tl.store(kbuf_ptr + slot * kbs0 + (h * L + f) * K + rk, kn)
++    tl.store(ubuf_ptr + slot * ubs0 + (h * L + f) * V + rv, u_new.to(ubuf_ptr.dtype.element_ty))
++    wnew = tl.where(rl < f, w * at, tl.where(rl == f, 1.0, 0.0))
++    tl.store(w_ptr + slot * ws0 + h * L + rl, wnew)
++    tl.store(p_ptr + slot * ps0 + h, pn)
++    tl.store(fill_ptr + slot * fs0 + h, f + 1)
++
++
++def gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale):
++    """LeapQuant GDN decode step on the composite pools (see gdn_leapquant.py).
++
++    kn, qn: [T, H, K] bf16 (expanded to value heads, qn unscaled); v: [T, H, V]
++    bf16; g_log: [T, H] fp32; beta: [T, H] bf16; idx: [T] int64 slot ids.
++    Appends the update in place and returns o [T, H, V] bf16.
++    """
++    T = idx.shape[0]
++    H, V, K = pools.num_heads, pools.head_v, pools.head_k
++    L = pools.kbuf.shape[2]
++    R = pools.u.shape[2]
++    o = torch.empty(T, H, V, dtype=torch.bfloat16, device=idx.device)
++    grid = (T * H,)
++    _gdn_lq_step_kernel[grid](
++        pools.codes,
++        pools.kbuf,
++        pools.ubuf,
++        pools.u,
++        pools.q,
++        pools.s_k,
++        pools.s_v,
++        pools.w,
++        pools.p,
++        pools.fill,
++        kn,
++        qn,
++        v,
++        g_log.contiguous(),
++        beta.contiguous(),
++        o,
++        idx,
++        pools.codes.stride(0),
++        pools.kbuf.stride(0),
++        pools.ubuf.stride(0),
++        pools.u.stride(0),
++        pools.q.stride(0),
++        pools.s_k.stride(0),
++        pools.s_v.stride(0),
++        pools.w.stride(0),
++        pools.p.stride(0),
++        pools.fill.stride(0),
++        scale,
++        H=H,
++        V=V,
++        K=K,
++        L=L,
++        R=R,
++    )
++    return o

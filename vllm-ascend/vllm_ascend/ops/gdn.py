@@ -1,0 +1,872 @@
+#
+# Copyright (c) 2025 Huawei Technologies Co., Ltd. All Rights Reserved.
+# This file is a part of the vllm-ascend project.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+from functools import lru_cache, wraps
+import os
+
+import torch
+import torch_npu
+from einops import rearrange
+from fla_npu.ops.ascendc import (
+    causal_conv1d_fn,
+    causal_conv1d_update,
+    recurrent_gated_delta_rule,
+)
+from torch import nn
+from vllm.distributed import get_pcp_group
+from vllm.forward_context import get_forward_context
+from vllm.model_executor.layers.mamba.gdn.base import GatedDeltaNetAttention
+from vllm.model_executor.layers.mamba.mamba_utils import MambaStateShapeCalculator
+from vllm.model_executor.utils import replace_parameter
+from vllm.third_party.flash_linear_attention.ops.l2norm import l2norm_fwd
+from vllm.triton_utils import triton
+from vllm.v1.attention.backend import AttentionBackend, AttentionMetadata  # type: ignore
+from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
+from vllm.v1.attention.backends.utils import PAD_SLOT_ID
+
+from vllm_ascend import envs
+from vllm_ascend.attention.utils import (
+    maybe_save_kv_layer_to_connector,
+    wait_for_kv_layer_from_connector,
+)
+from vllm_ascend.device.device_op import DeviceOperator
+from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
+from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.attention_fence import record_attention_compute_start
+from vllm_ascend.ops.gdn_attn_builder import AscendGDNAttentionBackend
+from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools
+from vllm_ascend.ops.triton.fla.chunk import chunk_gated_delta_rule
+from vllm_ascend.ops.triton.fla.fused_qkvzba_split_reshape import fused_qkvzba_split_reshape_cat
+from vllm_ascend.ops.triton.fla.utils import clear_ssm_states
+from vllm_ascend.ops.triton.gdn_leapquant_step import gdn_leapquant_step
+from vllm_ascend.ops.triton.mamba.causal_conv1d import extract_last_width
+from vllm_ascend.ops.triton.mamba.state_index import gather_ssm_states, scatter_ssm_states_
+
+_PACKED_CONV_WEIGHT_NAME = "ascend_conv1d_weight"
+
+
+def _get_leapquant_pools(layer, ssm_state: torch.Tensor) -> GDNLeapQuantPools:
+    pools = getattr(layer, "_lq_pools", None)
+    if pools is None:
+        pools = GDNLeapQuantPools(ssm_state)
+        layer._lq_pools = pools
+    return pools
+
+
+def _leapquant_resync(layer, ssm_state: torch.Tensor, idx: torch.Tensor) -> None:
+    """Re-quantize dense fp32 states of the given slots into LeapQuant checkpoints.
+
+    Used after any dense-path update (prefill, spec decode, mixed batches) so
+    the composite state always mirrors the dense state at window boundaries.
+    """
+    idx = idx[idx > 0].long()
+    if idx.numel() == 0:
+        return
+    # prefill indices arrive per token; keep one entry per state slot
+    idx = torch.unique(idx)
+    pools = _get_leapquant_pools(layer, ssm_state)
+    if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
+        dense = ssm_state[idx].clone().float()
+        pools.init_from_dense(ssm_state, idx)
+        rec = pools.decode_state(idx)
+        rel = (rec - dense).abs().mean() / dense.abs().mean().clamp_min(1e-6)
+        print(f"[leapquant] resync reconstruction rel err: {rel.item():.6f}", flush=True)
+        step = getattr(layer, "_lq_step", 0)
+        if step == 0:
+            os.makedirs("/tmp/lq_dump", exist_ok=True)
+            torch.save(
+                {"idx": idx.cpu(), "dense0": dense.cpu()},
+                f"/tmp/lq_dump/lq0_{layer.prefix.replace('.', '_')}.pt",
+            )
+        return
+    pools.init_from_dense(ssm_state, idx)
+
+
+def _lq_decode_step(mode, pools, idx, kn, qn, v, g_log, beta, scale):
+    if mode == 2:
+        return gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale)
+    return pools.decode_step(idx=idx, kn=kn, qn=qn, v=v, g_log=g_log, beta=beta, scale=scale)
+
+
+_DUMP_MAX_STEPS = 40
+
+
+def _lq_dump_step(layer, tag, idx, key, query, value, g, beta, out, pre_state=None):
+    step = getattr(layer, "_lq_step", 0)
+    if step >= _DUMP_MAX_STEPS:
+        return
+    layer._lq_step = step + 1
+    os.makedirs("/tmp/lq_dump", exist_ok=True)
+    payload = {
+        "idx": idx.cpu(),
+        "key": key.squeeze(0).cpu(),
+        "query": query.squeeze(0).cpu(),
+        "value": value.squeeze(0).cpu(),
+        "g": g.squeeze(0).cpu(),
+        "beta": beta.squeeze(0).cpu(),
+        "out": out.squeeze(0).cpu(),
+    }
+    if pre_state is not None and step == 0:
+        payload["dense0"] = pre_state
+    torch.save(payload, f"/tmp/lq_dump/{tag}_{layer.prefix.replace('.', '_')}_step{step}.pt")
+
+
+@lru_cache(maxsize=1)
+def _get_fla_gdn_prefill_op():
+    try:
+        from fla_npu.ops.ascendc import chunk_gated_delta_rule_fwd  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    return chunk_gated_delta_rule_fwd
+
+
+def _get_base_conv1d(layer: nn.Module) -> nn.Module:
+    """Return the convolution module owning the base weight.
+
+    LoRA replaces ``conv1d`` with a wrapper while retaining the original
+    linear layer in ``base_layer``. The packed parameter must stay on that base
+    module so layerwise reload materializes source and derived state together.
+    """
+    conv1d = layer.conv1d
+    return getattr(conv1d, "base_layer", conv1d)
+
+
+@torch.no_grad()
+def _pack_conv_weights(conv1d: nn.Module) -> None:
+    """Pack ``[D, 1, W]`` weights into the kernel's ``[W, D]`` layout."""
+    source_weight = conv1d.weight
+    if source_weight.is_meta:
+        return
+
+    packed_param = conv1d.get_parameter(_PACKED_CONV_WEIGHT_NAME)
+    packed_weight = (
+        source_weight.view(source_weight.size(0), source_weight.size(2))
+        .transpose(0, 1)
+        .to(device=packed_param.device, dtype=packed_param.dtype)
+        .contiguous()
+    )
+    replace_parameter(
+        conv1d,
+        _PACKED_CONV_WEIGHT_NAME,
+        packed_weight,
+        prefer_copy=True,
+    )
+
+
+def initialize_packed_conv_weight(layer: nn.Module) -> None:
+    """Register the packed weight and repack it after every source load."""
+    conv1d = _get_base_conv1d(layer)
+    source_weight = conv1d.weight
+    if _PACKED_CONV_WEIGHT_NAME not in conv1d._parameters:
+        conv1d.register_parameter(
+            _PACKED_CONV_WEIGHT_NAME,
+            nn.Parameter(
+                torch.empty(
+                    source_weight.size(2),
+                    source_weight.size(0),
+                    dtype=layer.model_config.dtype,
+                    device=source_weight.device,
+                ),
+                requires_grad=False,
+            ),
+        )
+
+    quant_method = getattr(conv1d, "quant_method", None)
+    if quant_method is None:
+        return
+    process_weights_after_loading = getattr(quant_method, "process_weights_after_loading", None)
+    if process_weights_after_loading is None:
+        return
+
+    @wraps(process_weights_after_loading)
+    def process_weights_and_pack(*args, **kwargs):
+        result = process_weights_after_loading(*args, **kwargs)
+        _pack_conv_weights(conv1d)
+        return result
+
+    quant_method.process_weights_after_loading = process_weights_and_pack
+
+
+def _get_packed_conv_weights(layer: nn.Module) -> torch.Tensor:
+    """Return the registered, kernel-layout convolution parameter."""
+    return _get_base_conv1d(layer).get_parameter(_PACKED_CONV_WEIGHT_NAME)
+
+
+def _normalize_causal_cache_indices(cache_indices: torch.Tensor) -> torch.Tensor:
+    """Normalize 1D or 2D GDN cache indices to one index per request."""
+    if cache_indices.dim() == 1:
+        return cache_indices.contiguous()
+    if cache_indices.dim() == 2:
+        return cache_indices[:, 0].contiguous()
+    raise ValueError(f"GDN causal cache_indices must be 1D or 2D, got shape={tuple(cache_indices.shape)}")
+
+
+class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+    @torch.no_grad()
+    def _pack_conv_weights(self) -> None:
+        """Refresh the kernel-layout convolution parameter in place."""
+        _pack_conv_weights(_get_base_conv1d(self))
+
+    # Cached fused-op availability probe result, shared across all layers so the
+    # smoke call runs at most once per process.
+    _fused_chunk_available: bool | None = None
+
+    @classmethod
+    def _probe_fused_chunk(cls) -> bool:
+        """Whether ``torch_npu.npu_chunk_gated_delta_rule`` can actually be used.
+
+        The interface must exist AND a minimal smoke call must succeed (the op is
+        unavailable on some CANN builds / devices). Any failure disables the
+        fused path so we fall back to the Triton pipeline. The result is cached
+        on the class, so only the first layer runs the smoke call.
+        """
+        if cls._fused_chunk_available is not None:
+            return cls._fused_chunk_available
+
+        if not hasattr(torch_npu, "npu_chunk_gated_delta_rule"):
+            cls._fused_chunk_available = False
+            return False
+
+        # TODO(2026/8/6): The A5‑specific implementation is not available in the official release.
+        # Invoking npu_chunk_gated_delta_rule will result in errors.
+        # Remove this conditional block after the new A5 CANN package is released.
+        try:
+            # Minimal smoke call matching the op constraints (Dk == Dv == 128,
+            # Nv % Nk == 0). B=1, one short sequence.
+            device = torch.npu.current_device()
+            dk = dv = 128
+            nk, nv, seqlen = 1, 1, 64
+            q = torch.zeros((seqlen, nk, dk), dtype=torch.bfloat16, device=device)
+            k = torch.zeros((seqlen, nk, dk), dtype=torch.bfloat16, device=device)
+            v = torch.zeros((seqlen, nv, dv), dtype=torch.bfloat16, device=device)
+            beta = torch.full((seqlen, nv), 0.5, dtype=torch.bfloat16, device=device)
+            g = torch.full((seqlen, nv), -0.1, dtype=torch.float32, device=device)
+            initial_state = torch.zeros((1, nv, dv, dk), dtype=torch.bfloat16, device=device)
+            actual_seq_lengths = torch.tensor([seqlen], dtype=torch.int32, device=device)
+            torch_npu.npu_chunk_gated_delta_rule(
+                q,
+                k,
+                v,
+                beta=beta,
+                initial_state=initial_state,
+                actual_seq_lengths=actual_seq_lengths,
+                scale=dk**-0.5,
+                g=g,
+            )
+            torch.npu.synchronize()
+            cls._fused_chunk_available = True
+        except Exception:
+            cls._fused_chunk_available = False
+        return cls._fused_chunk_available
+
+    @staticmethod
+    def _chunk_gated_delta_rule_fused(
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        g: torch.Tensor,
+        beta: torch.Tensor,
+        initial_state: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        scale: float,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Fused prefill path using ``torch_npu.npu_chunk_gated_delta_rule``.
+
+        Drop-in replacement for the Triton ``chunk_gated_delta_rule`` pipeline
+        (chunk_scaled_dot_kkt_fwd + solve_tril + recompute_w_u_fwd + ...).
+        The fused CANN operator expects TND layout and does NOT apply q/k L2 norm
+        or the chunk-local cumsum of ``g`` internally, so q/k are normalized here
+        and the raw ``g`` is passed through.
+
+        Args:
+            q, k: ``[1, T, Nk, Dk]``   v: ``[1, T, Nv, Dv]``
+            g, beta: ``[1, T, Nv]``    g is fp32 (<=0), beta is (0, 1).
+            initial_state: ``[N, Nv, Dv, Dk]`` — same layout as ``ssm_state``,
+                no transpose required.
+            cu_seqlens: cumulative prefill query start locations ``[N+1]``.
+            scale: query scaling factor (``Dk ** -0.5``).
+
+        Returns:
+            o: ``[1, T, Nv, Dv]`` and final_state: ``[N, Nv, Dv, Dk]``.
+        """
+        # TND layout: drop the leading batch dim (batch size is always 1 here).
+        q = l2norm_fwd(q).squeeze(0).contiguous()  # [T, Nk, Dk]
+        k = l2norm_fwd(k).squeeze(0).contiguous()  # [T, Nk, Dk]
+        v = v.squeeze(0).contiguous()  # [T, Nv, Dv]
+        g = g.squeeze(0).to(torch.float32).contiguous()  # [T, Nv]
+        beta = beta.squeeze(0).to(v.dtype).contiguous()  # [T, Nv]
+
+        # The fused op only supports a bfloat16 initial_state, while ssm_state may
+        # be float32 (the recurrent path keeps fp32 state). Cast to bf16 here.
+        initial_state = initial_state.to(torch.bfloat16).contiguous()
+
+        # actual_seq_lengths is per-batch sequence length [N] (per the interface
+        # doc), derived from the cumulative query_start_loc.
+        actual_seq_lengths = torch.diff(cu_seqlens).to(torch.int32)
+
+        o, final_state = torch_npu.npu_chunk_gated_delta_rule(
+            q,
+            k,
+            v,
+            beta=beta,
+            initial_state=initial_state,
+            actual_seq_lengths=actual_seq_lengths,
+            scale=scale,
+            g=g,
+        )
+        return o.unsqueeze(0), final_state
+
+    def _split_ba_for_tp(self, ba: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if hasattr(self, "split_ba"):
+            return self.split_ba(ba)
+        return ba.chunk(2, dim=-1)
+
+    def get_state_shape(
+        self,
+    ) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
+        return MambaStateShapeCalculator.gated_delta_net_state_shape(
+            self.tp_size,
+            self.num_k_heads,
+            self.num_v_heads,
+            self.head_k_dim,
+            self.head_v_dim,
+            self.conv_kernel_size,
+            self.num_spec,
+        )
+
+    def _warmup_prefill_kernels(self, qkv_or_qkvz: torch.Tensor, v_dim: int) -> None:
+        return
+
+    def _warmup_prefill_kernels_v0202(self, mixed_qkv: torch.Tensor) -> None:
+        return
+
+    def get_attn_backend(self) -> type[AttentionBackend]:
+        return AscendGDNAttentionBackend
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        output: torch.Tensor = None,
+    ):
+        """
+        Forward pass with three parts:
+        1. Input projection
+        2. Core attention (custom op)
+        3. Output projection
+        """
+        num_tokens = hidden_states.size(0)
+        if hasattr(self, "in_proj_qkv"):
+            mixed_qkv, _ = self.in_proj_qkv(hidden_states)
+            ba, _ = self.in_proj_ba(hidden_states)
+            z, _ = self.in_proj_z(hidden_states)
+            z = z.reshape(z.size(0), -1, self.head_v_dim)
+            b, a = self._split_ba_for_tp(ba)
+            b = b.contiguous()
+            a = a.contiguous()
+        else:
+            if not self.gqa_interleaved_layout:
+                mixed_qkvz, _ = self.in_proj_qkvz(hidden_states)
+                num_tokens = mixed_qkvz.size(0)
+                qkv_size = (self.key_dim * 2 + self.value_dim) // self.tp_size
+                z_size = self.value_dim // self.tp_size
+                mixed_qkv, z = mixed_qkvz.split([qkv_size, z_size], dim=-1)
+                z = z.reshape(z.size(0), -1, self.head_v_dim)
+                ba, _ = self.in_proj_ba(hidden_states)
+                b, a = self._split_ba_for_tp(ba)
+
+                b = b.contiguous()
+                a = a.contiguous()
+            else:
+                projected_states_qkvz, _ = self.in_proj_qkvz(hidden_states)
+                projected_states_ba, _ = self.in_proj_ba(hidden_states)
+                num_tokens = projected_states_qkvz.size(0)
+
+                mixed_qkv, z, b, a = fused_qkvzba_split_reshape_cat(
+                    projected_states_qkvz,
+                    projected_states_ba,
+                    triton.cdiv(self.num_k_heads, self.tp_size),
+                    triton.cdiv(self.num_v_heads, self.tp_size),
+                    self.head_k_dim,
+                    self.head_v_dim,
+                )
+
+        # ============================================================
+        # Part 2: Core Attention (Custom Op)
+        # ============================================================
+        # Note: we should not use torch.empty here like other attention backends,
+        # see discussions in https://github.com/vllm-project/vllm/pull/28182
+        core_attn_out = torch.zeros(
+            (num_tokens, self.num_v_heads // self.tp_size, self.head_v_dim),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+
+        torch.ops.vllm.qwen_gdn_attention_core(
+            mixed_qkv,
+            b,
+            a,
+            core_attn_out,
+            self.prefix,
+            False,
+        )
+
+        # ============================================================
+        # Part 3: Output Projection
+        # ============================================================
+        z_shape_og = z.shape
+        # Reshape input data into 2D tensor
+        core_attn_out = core_attn_out.reshape(-1, core_attn_out.shape[-1])
+        z = z.reshape(-1, z.shape[-1])
+        core_attn_out = self.norm(core_attn_out, z)
+        core_attn_out = core_attn_out.reshape(z_shape_og)
+        core_attn_out = rearrange(core_attn_out, "... h d -> ... (h d)")
+        out, _ = self.out_proj(core_attn_out)
+        if output is not None:
+            output[:num_tokens] = out
+        return out
+
+    def _forward_core(
+        self,
+        mixed_qkv: torch.Tensor,
+        b: torch.Tensor,
+        a: torch.Tensor,
+        core_attn_out: torch.Tensor,
+    ):
+        """
+        Core attention computation (called by custom op).
+        """
+        forward_context = get_forward_context()
+        attn_metadata: AttentionMetadata = forward_context.attn_metadata
+
+        if attn_metadata is None:
+            # V1 profile run
+            return
+
+        # Layerwise KV pool hooks must stay inside the custom op body: the
+        # forward() caller region is traced by Dynamo in fullgraph mode, and
+        # these side effects (thread locks, connector waits) would break the
+        # graph. Waiting here still orders the deferred mamba state copy and
+        # the layer load before conv/attention kernels touch mamba state.
+        wait_for_kv_layer_from_connector(self.prefix)
+        record_attention_compute_start()
+
+        assert isinstance(attn_metadata, dict)
+        attn_metadata = attn_metadata[self.prefix]
+        assert isinstance(attn_metadata, GDNAttentionMetadata)
+        spec_sequence_masks = attn_metadata.spec_sequence_masks
+        spec_token_indx = attn_metadata.spec_token_indx
+        non_spec_token_indx = attn_metadata.non_spec_token_indx
+        spec_state_indices_tensor = attn_metadata.spec_state_indices_tensor  # noqa: E501
+        non_spec_state_indices_tensor = attn_metadata.non_spec_state_indices_tensor  # noqa: E501
+        self_kv_cache = self.kv_cache
+        ssm_state = self_kv_cache[1]
+        num_actual_tokens = attn_metadata.num_actual_tokens
+        use_leapquant = envs.VLLM_ASCEND_GDN_LEAPQUANT
+
+        mixed_qkv = mixed_qkv[:num_actual_tokens]
+        b = b[:num_actual_tokens]
+        a = a[:num_actual_tokens]
+
+        # 1. Convolution sequence transformation
+        conv_weights_T = _get_packed_conv_weights(self)
+        if spec_sequence_masks is not None:
+            if attn_metadata.num_prefills == 0 and attn_metadata.num_decodes == 0:
+                mixed_qkv_spec = mixed_qkv
+                mixed_qkv_non_spec = None
+            else:
+                mixed_qkv_spec = mixed_qkv.index_select(0, spec_token_indx)
+                mixed_qkv_non_spec = mixed_qkv.index_select(0, non_spec_token_indx)
+        else:
+            mixed_qkv_spec = None
+            mixed_qkv_non_spec = mixed_qkv
+
+        # 1.1: Process the multi-query part
+        if spec_sequence_masks is not None:
+            spec_causal_conv1d_meta = attn_metadata.spec_decode_metadata.spec_causal_conv1d
+            spec_query_start_loc_device = spec_causal_conv1d_meta.query_start_loc
+            output_spec = torch.empty_like(mixed_qkv_spec)
+            output_spec = causal_conv1d_update(
+                mixed_qkv_spec,
+                self_kv_cache[0],
+                conv_weights_T,
+                bias=self.conv1d.bias,
+                activation="silu" if self.activation else None,
+                conv_state_indices=_normalize_causal_cache_indices(spec_causal_conv1d_meta.cache_indices),
+                num_accepted_tokens=spec_causal_conv1d_meta.num_accepted_tokens,
+                query_start_loc=spec_query_start_loc_device,
+                max_query_len=self.num_spec + 1,
+                null_block_id=0,
+                out=output_spec,
+            )
+            mixed_qkv_spec = output_spec
+
+        # 1.2: Process the remaining part
+        if attn_metadata.num_prefills > 0:
+            if mixed_qkv_non_spec is not None:
+                non_spec_causal_conv1d_meta = attn_metadata.non_spec_prefill_metadata.causal_conv1d
+                query_start_loc_opt = non_spec_causal_conv1d_meta.query_start_loc
+                cache_indices_opt = non_spec_causal_conv1d_meta.cache_indices
+                initial_state_mode_opt = non_spec_causal_conv1d_meta.initial_state_mode
+                if get_pcp_group().world_size > 1:
+                    non_spec_query_start_loc = attn_metadata.non_spec_query_start_loc
+                    assert non_spec_query_start_loc is not None
+                    non_spec_state_indices_tensor = attn_metadata.non_spec_state_indices_tensor
+                    width = self.conv_kernel_size
+                    state_len = width - 1
+                    num_seqs = non_spec_query_start_loc.shape[0] - 1
+                    prefill_seq_offset = max(0, num_seqs - attn_metadata.num_prefills)
+                    prefill_cache_indices = non_spec_state_indices_tensor[prefill_seq_offset:]
+                    mixed_qkv_non_spec_T = mixed_qkv_non_spec.transpose(0, 1)
+                    last_width_prefill_x = extract_last_width(
+                        mixed_qkv_non_spec_T, non_spec_query_start_loc[prefill_seq_offset:], state_len
+                    )
+                    pcp_rank = get_pcp_group().rank_in_group
+                    all_last_width_prefill_x = get_pcp_group().all_gather(
+                        last_width_prefill_x.unsqueeze(0).contiguous(), 0
+                    )
+                    if pcp_rank > 0 and prefill_cache_indices.shape[0] > 0:
+                        self_kv_cache[0][prefill_cache_indices, :state_len, :] = all_last_width_prefill_x[
+                            pcp_rank - 1, ...
+                        ].transpose(-1, -2)
+                    mixed_qkv_non_spec_output = causal_conv1d_fn(
+                        mixed_qkv_non_spec,
+                        conv_weights_T,
+                        self.conv1d.bias,
+                        conv_states=self_kv_cache[0],
+                        query_start_loc=query_start_loc_opt,
+                        cache_indices=_normalize_causal_cache_indices(cache_indices_opt),
+                        has_initial_state=initial_state_mode_opt,
+                        activation="silu" if self.activation else None,
+                        pad_slot_id=PAD_SLOT_ID,
+                        null_block_id=0,
+                    )
+                    mixed_qkv_non_spec = mixed_qkv_non_spec_output
+                    if prefill_cache_indices.shape[0] > 0:
+                        self_kv_cache[0][prefill_cache_indices, :state_len, :] = all_last_width_prefill_x[
+                            -1, ...
+                        ].transpose(-1, -2)
+                else:
+                    mixed_qkv_non_spec_output = causal_conv1d_fn(
+                        mixed_qkv_non_spec,
+                        conv_weights_T,
+                        self.conv1d.bias,
+                        conv_states=self_kv_cache[0],
+                        query_start_loc=query_start_loc_opt,
+                        cache_indices=_normalize_causal_cache_indices(cache_indices_opt),
+                        has_initial_state=initial_state_mode_opt,
+                        activation="silu" if self.activation else None,
+                        pad_slot_id=PAD_SLOT_ID,
+                        null_block_id=0,
+                    )
+                    mixed_qkv_non_spec = mixed_qkv_non_spec_output
+        elif attn_metadata.num_decodes > 0:
+            non_spec_causal_conv1d_meta = attn_metadata.non_spec_decode_metadata.causal_conv1d
+            non_spec_query_start_loc_device = non_spec_causal_conv1d_meta.query_start_loc
+            output_non_spec = torch.empty_like(mixed_qkv_non_spec)
+            output_non_spec = causal_conv1d_update(
+                mixed_qkv_non_spec,
+                self_kv_cache[0],
+                conv_weights_T,
+                bias=self.conv1d.bias,
+                activation="silu" if self.activation else None,
+                conv_state_indices=_normalize_causal_cache_indices(non_spec_causal_conv1d_meta.cache_indices),
+                query_start_loc=non_spec_query_start_loc_device,
+                max_query_len=1,
+                null_block_id=0,
+                out=output_non_spec,
+            )
+            mixed_qkv_non_spec = output_non_spec
+        else:
+            mixed_qkv_non_spec = None
+
+        query_spec, key_spec, value_spec = self.rearrange_mixed_qkv(mixed_qkv_spec)
+        query_non_spec, key_non_spec, value_non_spec = self.rearrange_mixed_qkv(mixed_qkv_non_spec)
+
+        # 2. Recurrent attention
+        g, beta = DeviceOperator.fused_gdn_gating(self.A_log, a, b, self.dt_bias)
+        if spec_sequence_masks is not None:
+            if attn_metadata.num_prefills == 0 and attn_metadata.num_decodes == 0:
+                g_spec = g
+                beta_spec = beta
+                g_non_spec = None
+                beta_non_spec = None
+            else:
+                g_spec = g.index_select(1, spec_token_indx)
+                beta_spec = beta.index_select(1, spec_token_indx)
+                g_non_spec = g.index_select(1, non_spec_token_indx)
+                beta_non_spec = beta.index_select(1, non_spec_token_indx)
+        else:
+            g_spec = None
+            beta_spec = None
+            g_non_spec = g
+            beta_non_spec = beta
+
+        split_non_spec = (
+            spec_sequence_masks is None and attn_metadata.num_prefills > 0 and attn_metadata.num_decodes > 0
+        )
+        num_decode_tokens = attn_metadata.num_decode_tokens
+
+        # 2.1: Process the multi-query part
+        if spec_sequence_masks is not None:
+            if use_leapquant:
+                raise RuntimeError(
+                    "VLLM_ASCEND_GDN_LEAPQUANT does not support speculative "
+                    "decoding yet (dense spec path would read composite state)"
+                )
+            actual_seq_lengths = attn_metadata.spec_decode_metadata.actual_seq_lengths
+            query_spec = l2norm_fwd(query_spec)
+            key_spec = l2norm_fwd(key_spec)
+            core_attn_out_spec = recurrent_gated_delta_rule(
+                query_spec.squeeze(0),
+                key_spec.squeeze(0),
+                value_spec.squeeze(0),
+                ssm_state,
+                g=g_spec.squeeze(0),
+                beta=beta_spec.squeeze(0),
+                scale=key_spec.shape[-1] ** -0.5,
+                actual_seq_lengths=actual_seq_lengths,
+                ssm_state_indices=spec_state_indices_tensor.flatten(),
+                num_accepted_tokens=spec_causal_conv1d_meta.num_accepted_tokens.to(torch.int32),
+            ).unsqueeze(0)
+        else:
+            core_attn_out_spec, last_recurrent_state = None, None
+
+        # 2.2: Process non-spec-decode part in mixed non-spec batches
+        if split_non_spec:
+            assert g_non_spec is not None
+            assert beta_non_spec is not None
+            query_decode = query_non_spec[:, :num_decode_tokens]
+            key_decode = key_non_spec[:, :num_decode_tokens]
+            value_decode = value_non_spec[:, :num_decode_tokens]
+            actual_seq_lengths = attn_metadata.non_spec_decode_metadata.actual_seq_lengths
+            query_decode = l2norm_fwd(query_decode)
+            key_decode = l2norm_fwd(key_decode)
+            if use_leapquant:
+                pools = _get_leapquant_pools(self, ssm_state)
+                idx = non_spec_state_indices_tensor[: attn_metadata.num_decodes].flatten().long()
+                num_k = max(self.num_k_heads // self.tp_size, 1)
+                rep = self.num_v_heads // num_k
+                kn = key_decode.squeeze(0).repeat_interleave(rep, dim=1)
+                qn = query_decode.squeeze(0).repeat_interleave(rep, dim=1)
+                o = _lq_decode_step(
+                    use_leapquant,
+                    pools,
+                    idx=idx,
+                    kn=kn,
+                    qn=qn,
+                    v=value_decode.squeeze(0),
+                    g_log=g_non_spec[:, :num_decode_tokens].squeeze(0),
+                    beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
+                    scale=key_decode.shape[-1] ** -0.5,
+                )
+                pools.flush(idx)
+                core_attn_out_decode = o.unsqueeze(0)
+            else:
+                core_attn_out_decode = recurrent_gated_delta_rule(
+                    query_decode.squeeze(0),
+                    key_decode.squeeze(0),
+                    value_decode.squeeze(0),
+                    ssm_state,
+                    g=g_non_spec[:, :num_decode_tokens].squeeze(0),
+                    beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
+                    scale=key_decode.shape[-1] ** -0.5,
+                    actual_seq_lengths=actual_seq_lengths,
+                    ssm_state_indices=non_spec_state_indices_tensor[: attn_metadata.num_decodes],
+                ).unsqueeze(0)
+                if use_leapquant:
+                    _leapquant_resync(self, ssm_state, non_spec_state_indices_tensor[: attn_metadata.num_decodes].flatten())
+        else:
+            core_attn_out_decode = None
+
+        # 2.3: Process the remaining part
+        if attn_metadata.num_prefills > 0:
+            prefill_query_start_loc = attn_metadata.prefill_query_start_loc
+            prefill_state_indices = attn_metadata.prefill_state_indices
+            prefill_has_initial_state = attn_metadata.prefill_has_initial_state
+            assert prefill_query_start_loc is not None
+            assert prefill_state_indices is not None
+            assert prefill_has_initial_state is not None
+            assert g_non_spec is not None
+            assert beta_non_spec is not None
+            if use_leapquant and bool(prefill_has_initial_state.any().item()):
+                n_init = int(prefill_has_initial_state.sum().item())
+                n_tot = int(prefill_has_initial_state.numel())
+                raise RuntimeError(
+                    "VLLM_ASCEND_GDN_LEAPQUANT does not support chunked prefill "
+                    "with initial state yet (continuation reads composite state "
+                    f"as fp32); has_initial_state={n_init}/{n_tot} chunks, "
+                    "raise max_num_batched_tokens above the prompt length"
+                )
+            if split_non_spec:
+                query_non_spec = query_non_spec[:, num_decode_tokens:]
+                key_non_spec = key_non_spec[:, num_decode_tokens:]
+                value_non_spec = value_non_spec[:, num_decode_tokens:]
+                g_non_spec = g_non_spec[:, num_decode_tokens:]
+                beta_non_spec = beta_non_spec[:, num_decode_tokens:]
+
+            use_fla_gdn_prefill = get_pcp_group().world_size == 1 and get_current_hardware_profile().supports(
+                HardwareCapability.FLA_GDN_PREFILL
+            )
+            fla_gdn_prefill_op = _get_fla_gdn_prefill_op() if use_fla_gdn_prefill else None
+            if fla_gdn_prefill_op is not None:
+                initial_state = gather_ssm_states(
+                    ssm_state,
+                    prefill_state_indices,
+                    prefill_has_initial_state,
+                )
+                (core_attn_out_non_spec, last_recurrent_state) = DeviceOperator.fla_gdn_prefill(
+                    q=query_non_spec,
+                    k=key_non_spec,
+                    v=value_non_spec,
+                    g=g_non_spec,
+                    beta=beta_non_spec,
+                    initial_state=initial_state,
+                    scale=key_non_spec.shape[-1] ** -0.5,
+                    prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
+                    fused_fwd=fla_gdn_prefill_op,
+                )
+                scatter_ssm_states_(
+                    ssm_state,
+                    prefill_state_indices,
+                    last_recurrent_state.to(ssm_state.dtype).contiguous(),
+                )
+            # Use the fused CANN operator when available (probed once, cached on
+            # the class) and applicable. It only supports the non-PCP case; fall
+            # back to the Triton pipeline under PCP or if the op is unavailable.
+            elif AscendGatedDeltaNetAttention._probe_fused_chunk() and get_pcp_group().world_size == 1:
+                # Gather only the selected rows. Generic advanced indexing first
+                # materializes the complete cache when ssm_state has a padded
+                # batch stride under the hybrid KV-cache manager.
+                initial_state = gather_ssm_states(
+                    ssm_state,
+                    prefill_state_indices,
+                    prefill_has_initial_state,
+                    output_dtype=torch.bfloat16,
+                )
+                core_attn_out_non_spec, last_recurrent_state = (
+                    AscendGatedDeltaNetAttention._chunk_gated_delta_rule_fused(
+                        q=query_non_spec,
+                        k=key_non_spec,
+                        v=value_non_spec,
+                        g=g_non_spec,
+                        beta=beta_non_spec,
+                        initial_state=initial_state,
+                        cu_seqlens=prefill_query_start_loc,
+                        scale=key_non_spec.shape[-1] ** -0.5,
+                    )
+                )
+                scatter_ssm_states_(
+                    ssm_state,
+                    prefill_state_indices,
+                    last_recurrent_state,
+                )
+            else:
+                initial_state = ssm_state[prefill_state_indices].transpose(-1, -2).contiguous()
+                clear_ssm_states(initial_state, prefill_has_initial_state)
+                (core_attn_out_non_spec, last_recurrent_state) = chunk_gated_delta_rule(
+                    q=query_non_spec,
+                    k=key_non_spec,
+                    v=value_non_spec,
+                    g=g_non_spec,
+                    beta=beta_non_spec,
+                    initial_state=initial_state,
+                    output_final_state=True,
+                    cu_seqlens=prefill_query_start_loc,
+                    prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
+                    head_first=False,
+                    use_qk_l2norm_in_kernel=True,
+                )
+                ssm_state[prefill_state_indices] = (
+                    last_recurrent_state.transpose(-1, -2).contiguous().to(ssm_state.dtype)
+                )
+            if use_leapquant:
+                _leapquant_resync(self, ssm_state, prefill_state_indices.flatten())
+            if split_non_spec:
+                core_attn_out_non_spec = torch.cat(
+                    [core_attn_out_decode, core_attn_out_non_spec],
+                    dim=1,
+                )
+        elif attn_metadata.num_decodes > 0:
+            actual_seq_lengths = attn_metadata.non_spec_decode_metadata.actual_seq_lengths
+            query_non_spec = l2norm_fwd(query_non_spec)
+            key_non_spec = l2norm_fwd(key_non_spec)
+            if use_leapquant and spec_sequence_masks is None:
+                pools = _get_leapquant_pools(self, ssm_state)
+                idx = non_spec_state_indices_tensor.flatten().long()
+                num_k = max(self.num_k_heads // self.tp_size, 1)
+                rep = self.num_v_heads // num_k
+                # expand GQA key/query to value heads: value head h uses key head h // rep
+                kn = key_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
+                qn = query_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
+                o = _lq_decode_step(
+                    use_leapquant,
+                    pools,
+                    idx=idx,
+                    kn=kn,
+                    qn=qn,
+                    v=value_non_spec.squeeze(0),
+                    g_log=g_non_spec.squeeze(0),
+                    beta=beta_non_spec.squeeze(0),
+                    scale=key_non_spec.shape[-1] ** -0.5,
+                )
+                pools.flush(idx)
+                core_attn_out_non_spec = o.unsqueeze(0)
+                if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
+                    _lq_dump_step(self, "lq", idx, key_non_spec, query_non_spec, value_non_spec,
+                                  g_non_spec, beta_non_spec, core_attn_out_non_spec)
+            else:
+                dump_on = bool(os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"))
+                pre_state = (
+                    ssm_state[non_spec_state_indices_tensor.flatten().long()].clone().cpu()
+                    if dump_on
+                    else None
+                )
+                core_attn_out_non_spec = recurrent_gated_delta_rule(
+                    query_non_spec.squeeze(0),
+                    key_non_spec.squeeze(0),
+                    value_non_spec.squeeze(0),
+                    ssm_state,
+                    g=g_non_spec.squeeze(0) if g_non_spec is not None else g_non_spec,
+                    beta=beta_non_spec.squeeze(0) if beta_non_spec is not None else beta_non_spec,
+                    scale=key_non_spec.shape[-1] ** -0.5,
+                    actual_seq_lengths=actual_seq_lengths,
+                    ssm_state_indices=non_spec_state_indices_tensor,
+                ).unsqueeze(0)
+                if use_leapquant:
+                    _leapquant_resync(self, ssm_state, non_spec_state_indices_tensor.flatten())
+                if dump_on:
+                    _lq_dump_step(self, "dense", non_spec_state_indices_tensor.flatten().long(),
+                                  key_non_spec, query_non_spec, value_non_spec,
+                                  g_non_spec, beta_non_spec, core_attn_out_non_spec,
+                                  pre_state)
+        else:
+            core_attn_out_non_spec, last_recurrent_state = None, None
+
+        # 3. Merge core attention output
+        if spec_sequence_masks is not None and core_attn_out_non_spec is not None:
+            merged_out = torch.empty(
+                (1, num_actual_tokens, *core_attn_out_spec.shape[2:]),
+                dtype=core_attn_out_non_spec.dtype,
+                device=core_attn_out_non_spec.device,
+            )
+            merged_out.index_copy_(1, spec_token_indx, core_attn_out_spec)
+            merged_out.index_copy_(1, non_spec_token_indx, core_attn_out_non_spec)
+            core_attn_out[:num_actual_tokens] = merged_out.squeeze(0)
+        elif spec_sequence_masks is not None:
+            core_attn_out[:num_actual_tokens] = core_attn_out_spec.squeeze(0)
+        else:
+            core_attn_out[:num_actual_tokens] = core_attn_out_non_spec.squeeze(0)
+        maybe_save_kv_layer_to_connector("", [])
