@@ -109,3 +109,25 @@ strided/AscendC step）。triton kernel 计时持平（0.444/4.238 ms @B=16/256�
    block-table 两级查址、SRAM 解压不回写）、per-token 连续字节行布局、
    逐层 cosine≥0.998 验证法。负面教训：norm 绝不存 uint8 截断；
    192KB UB 预算下别贪多字段合一 kernel。
+
+## 更新 2026-10-05 深夜（M2-D1 cube GEMV 探针，全 GO）
+
+探针 op `GdnLqGemvProbe`（vllm-ascend commit `a3bd862`，报告
+`leapquant-npu/results/M2-D1-probe.md`）：
+
+- **编译 GO**：fp16 16×128×128 GEMM/cube-core 实例在 ascend910_93 构建通过。
+  scale 按 per-k-row 因式分解到 q 侧（`q·scale` 预乘），cube 吃纯 fp16。
+- **数值 GO**：9 配置（G=512/2048/8192 × N=1/2/8）rel L2 ≈ 2.1e-4（线 3e-3）。
+- **计时 GO**（纯 cube kernel ms）：G=512 → 0.036；G=2048 → ~0.07；
+  G=8192 → ~0.41。**triton step 同口径重测 2.097/3.018/6.031**
+  （注意：与旧数字 0.444/4.238 口径不一致，step v2 验收对照线用重测值）。
+
+### 关键发现：MIX kernel 在本环境不可用
+`KERNEL_TYPE_MIX_AIC_1_2` 经 aclnn 启动走 fftsplus task，**空 kernel 也必炸**
+（0x800000 MTE invalid GM）；dav_l300 的 CrossCoreSetFlag/WaitFlag 是空实现，
+AIV↔AIC 硬件握手不存在。AIV-only / AIC-only 均正常。
+
+**step v2 改三段式**（与 TQ 厂商算子同形态）：① AIV-only dequant op
+（int8→fp16 staging，已实测 B tile 逐位一致）；② AIC-only cube GEMV
+（本探针）；③ vector epilogue（rank-1 项 + 装配）。遗留：AIV-only CopyOut
+有未定位的编译器层故障，epilogue op 需重写再趟。
