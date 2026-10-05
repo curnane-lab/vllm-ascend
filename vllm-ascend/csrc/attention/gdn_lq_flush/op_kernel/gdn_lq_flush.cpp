@@ -141,7 +141,7 @@ public:
         pipe->InitBuffer(redBuf, 16 * 8 * sizeof(float));
         pipe->InitBuffer(metaBuf, 2 * align32(h * sizeof(int32_t)));
         pipe->InitBuffer(idxBuf, align32(t * sizeof(int64_t)));
-        pipe->InitBuffer(outQ, 1, F_V * F_K * sizeof(int8_t) + 2560);
+        pipe->InitBuffer(outQ, 1, F_V * F_K * sizeof(int8_t) + 3584);
 
         sUb = sBuf.Get<float>();
         codesUb = codesBuf.Get<int8_t>();
@@ -435,15 +435,17 @@ private:
 
         // ---- write back: stage all payloads into ONE queue buffer (the
         // framework V->MTE3 ordering is paid once), then fan out.
-        // Payload layout (20KB buffer, int8 view):
+        // Payload layout (outQ buffer, int8 view):
         //   [0:16384]       codes int8
         //   [16384:16896]   s_k fp32 (f32 offset 4096)
         //   [16896:17408]   s_v fp32 (f32 offset 4224)
-        //   [17408:17920]   u fp16 = f32 4352..4608 as half (bf16 offset 8704)
-        //   [17920:18432]   q fp16 (bf16 offset 8960)
-        //   [18432:18496]   w zeros (f32 offset 4608)
-        //   [18496:18500]   p = 1.0 (f32 offset 4624)
-        //   [18500:18504]   fill = 0 (i32 view offset 4626)
+        //   [17408:18432]   u fp16, 512 halves (half offset 8704)
+        //   [18432:19456]   q fp16, 512 halves (half offset 9216)
+        //   [19456:19520]   w zeros (f32 offset 4864) -- MUST sit after q:
+        //                     the old offset 4352 overlapped u and clobbered
+        //                     the first 48 halves of compensator token r=0
+        //   [19520:19524]   p = 1.0 (f32 offset 4880)
+        //   [19524:19528]   fill = 0 (i32 view of the w-zero region)
         LocalTensor<int8_t> oq = outQ.AllocTensor<int8_t>();
         DataCopy(oq, codesUb, F_V * F_K);
         LocalTensor<float> sf = oq.ReinterpretCast<float>();
@@ -452,8 +454,8 @@ private:
         LocalTensor<half> uh = oq.ReinterpretCast<half>();
         Cast(uh[F_R * F_V * 17], ukFUb, RoundMode::CAST_RINT, F_R * F_V);
         Cast(uh[F_R * F_V * 18], qvFUb, RoundMode::CAST_RINT, F_R * F_V);
-        Duplicate(sf[F_V * F_K / 4 + 2 * F_K], 0.0f, F_L);
-        Duplicate(sf[F_V * F_K / 4 + 2 * F_K + 16], 1.0f, 8);
+        Duplicate(sf[F_V * F_K / 4 + 6 * F_K], 0.0f, F_L);
+        Duplicate(sf[F_V * F_K / 4 + 6 * F_K + 16], 1.0f, 8);
         outQ.EnQue(oq);
         LocalTensor<int8_t> dq = outQ.DeQue<int8_t>();
         DataCopy(gmCodes[0], dq, F_V * F_K);
@@ -463,12 +465,12 @@ private:
         LocalTensor<half> dh = dq.ReinterpretCast<half>();
         DataCopy(gmU[0], dh[F_R * F_V * 17], F_R * F_V);
         DataCopy(gmQ[0], dh[F_R * F_V * 18], F_R * F_V);
-        DataCopy(gmW[0], df[F_V * F_K / 4 + 2 * F_K], F_L);
-        DataCopyPad(gmP[h], df[F_V * F_K / 4 + 2 * F_K + 16],
+        DataCopy(gmW[0], df[F_V * F_K / 4 + 6 * F_K], F_L);
+        DataCopyPad(gmP[h], df[F_V * F_K / 4 + 6 * F_K + 16],
                     DataCopyParams{1, 4, 0, 0});
         // float 0.0f bit pattern is int32 0: read the w-zero region low word
         DataCopyPad(gmFill[h],
-                    df.ReinterpretCast<int32_t>()[F_V * F_K / 4 + 2 * F_K],
+                    df.ReinterpretCast<int32_t>()[F_V * F_K / 4 + 6 * F_K],
                     DataCopyParams{1, 4, 0, 0});
         outQ.FreeTensor(dq);
     }

@@ -2,6 +2,7 @@
 
 using namespace AscendC;
 
+
 // pure vector-core kernel: keep the framework out of MIX codegen
 ENABLE_FEATURE_FOR_COMPILE(default, KERNEL_TYPE_AIV_ONLY);
 
@@ -60,9 +61,9 @@ __aicore__ inline int32_t findPowerTwo(int32_t n)
 
 // slot[0] = sum of src[0..count); src is clobbered. Proven helper from
 // gdn_sketch_step; slot must be 32-byte aligned (never an element view).
-// The compute mask is preset ONCE in Init (every reduce here uses
-// count=128 -> mask 64); per-call SetMask would serialize the whole
-// reduce pipeline through the shared mask register.
+// The mask MUST be set immediately before every WholeReduceSum: the
+// persistent mask register is clobbered by ordinary vector ops, and an
+// isSetMask=false reduce silently uses whatever mask is left behind.
 __aicore__ inline void ReduceSumHalfInterval(
     const LocalTensor<float>& dst_local, const LocalTensor<float>& src_local,
     int32_t count)
@@ -78,6 +79,7 @@ __aicore__ inline void ReduceSumHalfInterval(
             Add(src_local, src_local, src_local[bodyCount], bodyCount);
         }
     }
+    AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32);
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003
     WholeReduceSum(dst_local, src_local, ELEM_PER_REP_FP32, 1, 1, 1, 8);
 #else
@@ -132,7 +134,7 @@ public:
         pipe->InitBuffer(wF, align32(F_L * sizeof(float)));
         pipe->InitBuffer(metaBuf, 5 * 32);  // g, betaF, p, fill, betaRaw
         pipe->InitBuffer(scrBuf, 38 * F_K * sizeof(float));
-        pipe->InitBuffer(redBuf, 256 * sizeof(float));  // 16 batches x 16 contiguous results
+        pipe->InitBuffer(redBuf, 2048 * sizeof(float));  // 16 batches x 16 stride-8 slots
         pipe->InitBuffer(idxBuf, align32(t * sizeof(int64_t)));
         // largest staged payload: two bf16 rows (kbuf/ubuf append) or o row
         pipe->InitBuffer(outQ, 1, 4 * F_V * sizeof(bfloat16_t));
@@ -202,32 +204,31 @@ private:
     }
 
     // one batch of 16 codes-row dots: dst[v0+i] = sum_k codes[v+i,k]*vec[k].
-    // Each row is halved to 64 lanes (one elementwise Add), the 16 rows are
-    // packed contiguously, and ONE repeatTime=16 WholeReduceSum produces all
-    // 16 partial sums contiguously — the reduce port is occupied once per
-    // batch instead of 16 times (a lone WRS costs ~50+ cycles and does not
-    // overlap with its neighbours).
+    // Each row is halved to 64 lanes (one elementwise Add), then ONE
+    // repeatTime=1 WholeReduceSum per row writes the sum at
+    // red[base + i*8] element 0 (the proven single-repeat form; the
+    // repeat-form dstRepStride unit turned out to be datablock-dependent
+    // and mis-scattered the sums). All 16 reduces queue on the reduce port
+    // back-to-back; one V_S sync covers the whole batch.
     __aicore__ inline void CodesDots16(const LocalTensor<float>& dst,
                                        uint32_t v0,
                                        const LocalTensor<float>& vec)
     {
-        // rows stay at 128-float stride; two repeat=16 WRS (low/high 64
-        // halves) + one 16-wide add produce the 16 row sums contiguously
-        uint32_t base = (v0 / 16) * 16;
+        LocalTensor<float> packed = scrUb[26 * F_K];  // 16 x 64
+        uint32_t base = (v0 / 16) * 128;
+        AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32);
         for (uint32_t i = 0; i < 16; ++i) {
             LocalTensor<float> row = scrUb[i * F_K];
             Mul(row, codesFUb[(v0 + i) * F_K], vec, F_K);
-        }
+            Add(packed[i * 64], row, row[64], 64);
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003
-        WholeReduceSum(redUb[128], scrUb[0], ELEM_PER_REP_FP32, 16, 1, 1, 16);
-        WholeReduceSum(redUb[192], scrUb[64], ELEM_PER_REP_FP32, 16, 1, 1, 16);
+            WholeReduceSum(redUb[base + i * 8], packed[i * 64],
+                           ELEM_PER_REP_FP32, 1, 1, 1, 8);
 #else
-        WholeReduceSum<float, false>(redUb[128], scrUb[0],
-                                     ELEM_PER_REP_FP32, 16, 1, 1, 16);
-        WholeReduceSum<float, false>(redUb[192], scrUb[64],
-                                     ELEM_PER_REP_FP32, 16, 1, 1, 16);
+            WholeReduceSum<float, false>(redUb[base + i * 8], packed[i * 64],
+                                         ELEM_PER_REP_FP32, 1, 1, 1, 8);
 #endif
-        Add(redUb[base], redUb[128], redUb[192], 16);
+        }
     }
 
 #ifdef GDN_LQ_STEP_DEBUG
@@ -312,9 +313,18 @@ private:
                           ? static_cast<uint32_t>(f)
                           : static_cast<uint32_t>(F_L);
 
-        // ---- bulk casts ----
-        Cast(kbufFUb, kbufRawUb, RoundMode::CAST_NONE, F_L * F_K);
-        Cast(ubufFUb, ubufRawUb, RoundMode::CAST_NONE, F_L * F_K);
+        // row-wise casts: a single call with count > 255 overflows the uint8
+        // repeat field of the cast instruction and silently misbehaves
+        // (observed: NaN-garbage codes rows on some heads). 128-element rows
+        // stay well inside the limit.
+        for (uint32_t v = 0; v < F_V; ++v) {
+            Cast(codesHUb[v * F_K], codesUb[v * F_K], RoundMode::CAST_NONE, F_K);
+            Cast(codesFUb[v * F_K], codesHUb[v * F_K], RoundMode::CAST_NONE, F_K);
+        }
+        for (uint32_t j = 0; j < F_L; ++j) {
+            Cast(kbufFUb[j * F_K], kbufRawUb[j * F_K], RoundMode::CAST_NONE, F_K);
+            Cast(ubufFUb[j * F_K], ubufRawUb[j * F_K], RoundMode::CAST_NONE, F_K);
+        }
         Cast(uFUb, uqRawUb, RoundMode::CAST_NONE, F_R * F_V);
         Cast(qFUb, uqRawUb[F_R * F_V], RoundMode::CAST_NONE, F_R * F_V);
         Cast(knFUb, knRawUb, RoundMode::CAST_NONE, F_K);
@@ -356,29 +366,28 @@ private:
         }
         // window rows, live only: ckj_j = (w_j*at)*(kbuf_j.kn),
         // cqk_j = (w_j*at)*(kbuf_j.qn_s); dead rows are skipped (non-finite
-        // stale bytes must never be multiplied by zero)
-        for (uint32_t j0 = 0; j0 < F_L; j0 += 8) {
-            uint32_t cnt = (nj > j0 + 8) ? 8 : ((nj > j0) ? nj - j0 : 0);
-            for (uint32_t i = 0; i < cnt; ++i) {
-                uint32_t j = j0 + i;
-                Dot(redUb[i * 8], kbufFUb[j * F_K], knFUb, scrUb[i * F_K]);
-                Dot(redUb[64 + i * 8], kbufFUb[j * F_K], qnFUb,
-                    scrUb[8 * F_K]);
+        // stale bytes must never be multiplied by zero). The loops are
+        // fully unrolled over the compile-time j so the coefficient arrays
+        // are register-promoted — runtime-indexed local arrays are
+        // miscompiled by the cce frontend (observed: entries beyond index 0
+        // read back as garbage, silently dropping window rows >= 1).
+        for (uint32_t j = 0; j < F_L; ++j) {
+            if (j < nj) {
+                Dot(redUb[j * 8], kbufFUb[j * F_K], knFUb, scrUb[j * F_K]);
+                Dot(redUb[128 + j * 8], kbufFUb[j * F_K], qnFUb,
+                    scrUb[((j + 8) % 16) * F_K]);
             }
-            SyncV2S();
-            for (uint32_t i = 0; i < cnt; ++i) {
-                uint32_t j = j0 + i;
+        }
+        SyncV2S();
+        for (uint32_t j = 0; j < F_L; ++j) {
+            if (j < nj) {
                 float wj = wFUb.GetValue(j);  // MTE2-loaded: still valid
                 float wat = wj * at;
-                ckj[j] = wat * redUb[i * 8].GetValue(0);
-                cqk[j] = wat * redUb[64 + i * 8].GetValue(0);
+                ckj[j] = wat * redUb[j * 8].GetValue(0);
+                cqk[j] = wat * redUb[128 + j * 8].GetValue(0);
             }
         }
 
-        // whole-tile int8 -> fp16 -> fp32 casts (two ops replace 512 row
-        // casts; codes values are integers in [-127,127], both stages exact)
-        Cast(codesHUb, codesUb, RoundMode::CAST_NONE, F_V * F_K);
-        Cast(codesFUb, codesHUb, RoundMode::CAST_NONE, F_V * F_K);
         // ---- codes row dots: codesKn[v] = codes_row_v . kn,
         //      codesQn[v] = codes_row_v . qn_s (8 rows per V_S round) ----
         LocalTensor<float> codesKn = scrUb[16 * F_K];
@@ -386,13 +395,19 @@ private:
         for (uint32_t v0 = 0; v0 < F_V; v0 += 16) {
             CodesDots16(codesKn, v0, kn2);
         }
-        // batch results are contiguous in redUb[0:128] — one V->V copy
-        // replaces 128 GetValue/SetValue round trips (no S-pipe, no sync)
-        DataCopy(codesKn, redUb, F_V);
+        SyncV2S();
+        for (uint32_t v = 0; v < F_V; ++v) {
+            codesKn.SetValue(v, redUb[(v / 16) * 128 + (v % 16) * 8].GetValue(0));
+        }
+        PipeBarrier<PIPE_ALL>();  // S scatter -> next side's V reduces
         for (uint32_t v0 = 0; v0 < F_V; v0 += 16) {
             CodesDots16(codesQn, v0, qn2);
         }
-        DataCopy(codesQn, redUb, F_V);
+        SyncV2S();
+        for (uint32_t v = 0; v < F_V; ++v) {
+            codesQn.SetValue(v, redUb[(v / 16) * 128 + (v % 16) * 8].GetValue(0));
+        }
+        PipeBarrier<PIPE_ALL>();
 
         // ---- assemble Skn / Sqn / u_new / o (all [128] vector ops) ----
         LocalTensor<float> skn = scrUb[20 * F_K];
@@ -417,18 +432,16 @@ private:
         Muls(accB, accB, pn, F_K);
         Add(skn, skn, accA, F_K);
         Add(sqn, sqn, accB, F_K);
-        // window sums (dead rows already excluded from ckj/cqk); two
-        // independent accumulator chains for ILP
+        // window sums (dead rows already excluded from ckj/cqk); fully
+        // unrolled with nj guards (register-promoted coefficient arrays)
         Duplicate(accA, 0.0f, F_K);
         Duplicate(accB, 0.0f, F_K);
-        uint32_t nj2 = nj / 2;
-        for (uint32_t j = 0; j < nj2; ++j) {
-            Muls(tmpRow, ubufFUb[j * F_K], ckj[j], F_K);
-            Add(accA, accA, tmpRow, F_K);
-        }
-        for (uint32_t j = nj2; j < nj; ++j) {
-            Muls(tmpRow, ubufFUb[j * F_K], ckj[j], F_K);
-            Add(accB, accB, tmpRow, F_K);
+        for (uint32_t j = 0; j < F_L; ++j) {
+            if (j < nj) {
+                Muls(tmpRow, ubufFUb[j * F_K], ckj[j], F_K);
+                Add((j & 1) ? accB : accA, (j & 1) ? accB : accA, tmpRow,
+                    F_K);
+            }
         }
         Add(accA, accA, accB, F_K);
         Add(skn, skn, accA, F_K);
@@ -437,13 +450,12 @@ private:
         Muls(unew, unew, beta, F_K);
         Duplicate(accA, 0.0f, F_K);
         Duplicate(accB, 0.0f, F_K);
-        for (uint32_t j = 0; j < nj2; ++j) {
-            Muls(tmpRow, ubufFUb[j * F_K], cqk[j], F_K);
-            Add(accA, accA, tmpRow, F_K);
-        }
-        for (uint32_t j = nj2; j < nj; ++j) {
-            Muls(tmpRow, ubufFUb[j * F_K], cqk[j], F_K);
-            Add(accB, accB, tmpRow, F_K);
+        for (uint32_t j = 0; j < F_L; ++j) {
+            if (j < nj) {
+                Muls(tmpRow, ubufFUb[j * F_K], cqk[j], F_K);
+                Add((j & 1) ? accB : accA, (j & 1) ? accB : accA, tmpRow,
+                    F_K);
+            }
         }
         Add(accA, accA, accB, F_K);
         Add(sqn, sqn, accA, F_K);
@@ -481,6 +493,8 @@ private:
         Cast(oq, sqn, RoundMode::CAST_RINT, F_V);
         DataCopy(oq[F_V], knRawUb, F_K);
         Cast(oq[2 * F_V], unew, RoundMode::CAST_RINT, F_V);
+        // decay the live window weights, then stage w with entry f = 1.0
+        Muls(wFUb, wFUb, at, F_L);
         LocalTensor<float> wq = oq.ReinterpretCast<float>()[192];
         DataCopy(wq, wFUb, F_L);
         wq.SetValue(f, 1.0f);

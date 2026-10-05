@@ -63,3 +63,26 @@ torch flush（未 kernel 化）：B=16 时约 13–21 ms/层/step，为当前主
 triton step 4.34ms（有效带宽仅 ~1.1TB/s，tl.sum 延迟墙）+ AscendC flush 摊薄
 ~2.8ms + eager launch 开销，vs 稠密 kernel ~5.8ms。优化方向（进行中）：
 step 移植 AscendC（目标 ≤2ms/层 @B=256）、flush 行块 ILP、due-list 共享、ACL graph。
+
+## 更新 2026-10-05 晚（step op + 两 bug 根因 + ACL graph 首验）
+
+### 两个生产 bug 的根因与修复（跨 AI 评审定位）
+1. **flush u 写回**：ILP 重构后 w/p 重置的 Duplicate 落在 f32 偏移 4352/4368，
+   与 u（字节 17408 起）重叠，踩掉主补偿 token r=0 的前 48 个 fp16 → u rel 31.6%。
+   修复：w/p 移到 q 之后（4864/4880），outQ 扩到 19968B（原 18944B 差 512B 溢出）。
+2. **step 窗口系数**：(a) w 衰减 `w *= at` 在早期编辑中被静默删除；(b) kn 侧
+   redUb[j*8] 与 qn 侧 redUb[64+j*8] 从 j=8 起重叠。修复后 step 对拍全绿。
+
+### 工具链结论（重要）
+`WholeReduceSum` 的 repeat-form（repeatTime=16）在本工具链语义不可靠
+（dstRepStride 单位是 datablock 且随 arch 变化）——已废弃，改用 repeat=1 单发形态。
+代价：step AscendC 0.541/1.563/5.573 ms（0.78× triton），reduce 端口-bound，
+暂不接替 triton step（mode 3 保持 triton step + AscendC flush）。
+
+### ACL graph 首验（util 0.80，B=16）
+- PIECEWISE 捕获 5/5 通过（mode 3 的 leapquant op 在图内捕获兼容）。
+- FULL 捕获完成、replay 功能正确，但吞吐 43.1 vs 基线 215.6 tok/s（0.20×）——
+  异常待查（疑似图内 aclnn executor 调用路径）。eager 模式不受影响。
+
+### e2e 最终矩阵（修复后，与回归前一致）
+B=16/64/256：mode 3 = 168.4/470.6/921.5 tok/s vs 基线 204.5/703.9/1900.0。
