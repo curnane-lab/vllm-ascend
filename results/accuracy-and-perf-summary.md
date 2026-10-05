@@ -50,3 +50,16 @@ torch flush（未 kernel 化）：B=16 时约 13–21 ms/层/step，为当前主
   layer 8: 0.44%→1.52%（3.5x），layer 16: 0.48%→1.35%，layer 22: 0.35%→1.02%。
   误差增长 ~3x 后饱和（per-window 量化的收缩映射特性），非 per-step 量化的线性发散。
   数据：results/long_rollout_curve.json（gdn.py dump 设施 + scripts/replay_long.py 回放）。
+
+## 更新 2026-10-05（e2e 吞吐基准，enforce_eager，128 tok/prompt，greedy）
+
+| batch | fp32 基线 tok/s | mode 3 tok/s | 比值 |
+|---|---|---|---|
+| 16  | 203.8  | 168.2  | 0.83× |
+| 64  | 701.8  | 470.7  | 0.67× |
+| 256 | 1844.9 | 921.6  | 0.50× |
+
+结论：kernel 级流量优势尚未转成端到端收益。每步每层分量（B=256）：
+triton step 4.34ms（有效带宽仅 ~1.1TB/s，tl.sum 延迟墙）+ AscendC flush 摊薄
+~2.8ms + eager launch 开销，vs 稠密 kernel ~5.8ms。优化方向（进行中）：
+step 移植 AscendC（目标 ≤2ms/层 @B=256）、flush 行块 ILP、due-list 共享、ACL graph。

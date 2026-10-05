@@ -67,10 +67,9 @@ def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
     Returns False when the custom op is unavailable (caller falls back).
     """
     try:
-        if torch.npu.is_current_stream_capturing():
-            return False
+        capturing = torch.npu.is_current_stream_capturing()
     except Exception:
-        return False
+        capturing = False
     bnd = _binding()
     if bnd is None:
         return False
@@ -88,12 +87,17 @@ def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
     hit = _CACHE.get(key)
     global _WS_BUF
     if hit is not None:
+        if capturing and _WS_BUF is None:
+            return False
         executor = hit[0]
         ret = lib.aclnnGdnLqFlush(
             ctypes.c_void_p(int(_WS_BUF.data_ptr())),
             ctypes.c_uint64(_WS_BUF.numel()),
             executor, ctypes.c_void_p(stream))
         return ret == 0
+    if capturing:
+        # cannot build aclTensor descriptors / executors mid-capture
+        return False
     try:
         ctx = rt._CallContext(runtime, dev)
     except Exception:
