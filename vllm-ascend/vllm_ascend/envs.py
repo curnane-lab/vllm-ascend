@@ -90,7 +90,9 @@ env_variables: dict[str, Callable[[], Any]] = {
     # Enable LeapQuant per-window recurrent-state quantization for GDN decode
     # (arXiv:2609.38166). 0 (default): dense fp32 state. 1: eager torch path
     # (accuracy validation, slow). 2: Triton-Ascend step kernel + torch flush.
-    # Valid values: 0, 1, 2. Not sensitive.
+    # 3: Triton-Ascend step kernel + AscendC flush (falls back to torch flush
+    # when the custom op is unavailable or during graph capture).
+    # Valid values: 0, 1, 2, 3. Not sensitive.
     "VLLM_ASCEND_GDN_LEAPQUANT": lambda: int(os.getenv("VLLM_ASCEND_GDN_LEAPQUANT", "0")),
 }
 

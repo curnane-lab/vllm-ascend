@@ -1,21 +1,853 @@
+diff --git a/csrc/attention/gdn_lq_flush/CMakeLists.txt b/csrc/attention/gdn_lq_flush/CMakeLists.txt
+new file mode 100644
+index 0000000..32c5c3d
+--- /dev/null
++++ b/csrc/attention/gdn_lq_flush/CMakeLists.txt
+@@ -0,0 +1,6 @@
++file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
++foreach(SUB_DIR ${CURRENT_DIRS})
++    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
++        add_subdirectory(${SUB_DIR})
++    endif()
++endforeach()
+diff --git a/csrc/attention/gdn_lq_flush/op_host/CMakeLists.txt b/csrc/attention/gdn_lq_flush/op_host/CMakeLists.txt
+new file mode 100644
+index 0000000..9e29e83
+--- /dev/null
++++ b/csrc/attention/gdn_lq_flush/op_host/CMakeLists.txt
+@@ -0,0 +1,21 @@
++add_op_to_compiled_list()
++
++if (BUILD_OPEN_PROJECT)
++    target_sources(op_host_aclnn PRIVATE
++        gdn_lq_flush_def.cpp
++    )
++endif()
++
++add_ops_compile_options(
++    OP_NAME GdnLqFlush
++    OPTIONS
++        --cce-auto-sync=on
++        -Wno-deprecated-declarations
++)
++
++if (NOT BUILD_OPS_RTY_KERNEL)
++    add_modules_sources(OPTYPE gdn_lq_flush ACLNNTYPE aclnn)
++    target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE
++        ${CMAKE_CURRENT_SOURCE_DIR}
++    )
++endif()
+diff --git a/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_def.cpp b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_def.cpp
+new file mode 100644
+index 0000000..1f730c6
+--- /dev/null
++++ b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_def.cpp
+@@ -0,0 +1,40 @@
++#include "register/op_def_registry.h"
++
++namespace ops {
++class GdnLqFlush : public OpDef {
++public:
++    explicit GdnLqFlush(const char* name) : OpDef(name)
++    {
++        // state is the fp32 [SLOTS, H, V, K] ssm_state slot buffer; the
++        // LeapQuant composite checkpoint lives in the first LAYOUT_END bytes
++        // of each slot. The op updates it in place: the caller passes the
++        // same tensor as the output. Slots may be strided (unified KV pool
++        // pages): IgnoreContiguous — the kernel addresses slots through the
++        // s_slot byte-stride attribute. AutoContiguous would stage a hidden
++        // contiguous copy (breaking the in-place aliasing and the slot
++        // layout); IgnoreContiguous declares the op handles strides itself.
++        this->Input("state").ParamType(REQUIRED)
++            .DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND})
++            .UnknownShapeFormat({ge::FORMAT_ND}).IgnoreContiguous();
++        this->Input("idx").ParamType(REQUIRED)
++            .DataType({ge::DT_INT64}).Format({ge::FORMAT_ND})
++            .UnknownShapeFormat({ge::FORMAT_ND});
++        // q0 pre-transposed to [R, V] fp32 (row r is the torch q0[:, r])
++        this->Input("q0").ParamType(REQUIRED)
++            .DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND})
++            .UnknownShapeFormat({ge::FORMAT_ND});
++        this->Output("out").ParamType(REQUIRED)
++            .DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND})
++            .UnknownShapeFormat({ge::FORMAT_ND});
++
++        this->Attr("h").Int();
++        // slot stride in BYTES (state.stride(0) * 4 of the strided view)
++        this->Attr("s_slot").Int();
++
++        this->AICore().AddConfig("ascend910_93");
++    }
++};
++
++OP_ADD(GdnLqFlush);
++
++}  // namespace ops
+diff --git a/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_infershape.cpp b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_infershape.cpp
+new file mode 100644
+index 0000000..90c0571
+--- /dev/null
++++ b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_infershape.cpp
+@@ -0,0 +1,31 @@
++#include "register/op_impl_registry.h"
++
++using namespace ge;
++
++namespace ops {
++
++static ge::graphStatus InferShape4GdnLqFlush(gert::InferShapeContext* context)
++{
++    auto stateShape = context->GetInputShape(0);
++    if (stateShape == nullptr) {
++        return ge::GRAPH_FAILED;
++    }
++    gert::Shape* outShape = context->GetOutputShape(0);
++    if (outShape == nullptr) {
++        return ge::GRAPH_FAILED;
++    }
++    // in-place op: output mirrors the state tensor
++    *outShape = *stateShape;
++    return GRAPH_SUCCESS;
++}
++
++static ge::graphStatus InferDataType4GdnLqFlush(gert::InferDataTypeContext* context)
++{
++    return GRAPH_SUCCESS;
++}
++
++IMPL_OP_INFERSHAPE(GdnLqFlush)
++    .InferShape(InferShape4GdnLqFlush)
++    .InferDataType(InferDataType4GdnLqFlush);
++
++}  // namespace ops
+diff --git a/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_tiling.cpp b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_tiling.cpp
+new file mode 100644
+index 0000000..2e79bd8
+--- /dev/null
++++ b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_tiling.cpp
+@@ -0,0 +1,75 @@
++#include "gdn_lq_flush_tiling.h"
++#include "register/op_def_registry.h"
++#include "platform/platform_ascendc.h"
++
++namespace optiling {
++
++static ge::graphStatus TilingFunc4GdnLqFlush(gert::TilingContext* context)
++{
++    uint32_t coreNum;
++    auto ptrCompileInfo = reinterpret_cast<const GdnLqFlushCompileInfo*>(
++        context->GetCompileInfo());
++    if (ptrCompileInfo == nullptr) {
++        auto ascendcPlatform = platform_ascendc::PlatformAscendC(
++            context->GetPlatformInfo());
++        // AIV-only kernel (KERNEL_TYPE_AIV_ONLY): schedule on all vector
++        // cores, not the (possibly smaller) AI-core count
++        coreNum = ascendcPlatform.GetCoreNumAiv();
++    } else {
++        coreNum = ptrCompileInfo->totalCoreNum;
++    }
++
++    auto idxShape = context->GetInputShape(1);
++    if (idxShape == nullptr || idxShape->GetStorageShape().GetDimNum() < 1) {
++        return ge::GRAPH_FAILED;
++    }
++    uint32_t batch = static_cast<uint32_t>(idxShape->GetStorageShape().GetDim(0));
++
++    auto attrs = context->GetAttrs();
++    if (attrs == nullptr) {
++        return ge::GRAPH_FAILED;
++    }
++    // attr order: 0 h, 1 s_slot (bytes)
++    uint32_t h = static_cast<uint32_t>(*(attrs->GetAttrPointer<int64_t>(0)));
++    int64_t sSlot = *(attrs->GetAttrPointer<int64_t>(1));
++    uint32_t numInstances = batch * h;
++
++    GdnLqFlushTilingData tiling;
++    tiling.set_numInstances(numInstances);
++    uint32_t usedCoreNum = numInstances < coreNum ? numInstances : coreNum;
++    tiling.set_instancesPerCore(numInstances / usedCoreNum);
++    tiling.set_remainderCores(numInstances % usedCoreNum);
++    tiling.set_usedCoreNum(usedCoreNum);
++    tiling.set_batch(batch);
++    tiling.set_h(h);
++    tiling.set_sSlot(sSlot);
++
++    context->SetBlockDim(usedCoreNum);
++    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(),
++                        context->GetRawTilingData()->GetCapacity());
++    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
++    context->SetTilingKey(0);
++    return ge::GRAPH_SUCCESS;
++}
++
++static ge::graphStatus TilingPrepare4GdnLqFlush(
++    gert::TilingParseContext* context)
++{
++    auto compileInfo = context->GetCompiledInfo<GdnLqFlushCompileInfo>();
++    if (compileInfo == nullptr) {
++        return ge::GRAPH_FAILED;
++    }
++    auto platformInfo = context->GetPlatformInfo();
++    if (platformInfo == nullptr) {
++        return ge::GRAPH_FAILED;
++    }
++    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
++    compileInfo->totalCoreNum = ascendcPlatform.GetCoreNum();
++    return ge::GRAPH_SUCCESS;
++}
++
++IMPL_OP_OPTILING(GdnLqFlush)
++    .Tiling(TilingFunc4GdnLqFlush)
++    .TilingParse<GdnLqFlushCompileInfo>(TilingPrepare4GdnLqFlush);
++
++}  // namespace optiling
+diff --git a/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_tiling.h b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_tiling.h
+new file mode 100644
+index 0000000..c7708df
+--- /dev/null
++++ b/csrc/attention/gdn_lq_flush/op_host/gdn_lq_flush_tiling.h
+@@ -0,0 +1,29 @@
++#ifndef GDN_LQ_FLUSH_TILING_H
++#define GDN_LQ_FLUSH_TILING_H
++
++#include "register/tilingdata_base.h"
++#include "tiling_base/error_log.h"
++#include "register/op_impl_registry.h"
++#include "tiling/platform/platform_ascendc.h"
++
++namespace optiling {
++
++BEGIN_TILING_DATA_DEF(GdnLqFlushTilingData)
++    TILING_DATA_FIELD_DEF(uint32_t, numInstances);
++    TILING_DATA_FIELD_DEF(uint32_t, instancesPerCore);
++    TILING_DATA_FIELD_DEF(uint32_t, remainderCores);
++    TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
++    TILING_DATA_FIELD_DEF(uint32_t, batch);
++    TILING_DATA_FIELD_DEF(uint32_t, h);
++    TILING_DATA_FIELD_DEF(int64_t, sSlot);
++END_TILING_DATA_DEF;
++
++struct GdnLqFlushCompileInfo {
++    uint32_t totalCoreNum = 0;
++};
++
++REGISTER_TILING_DATA_CLASS(GdnLqFlush, GdnLqFlushTilingData)
++
++}  // namespace optiling
++
++#endif  // GDN_LQ_FLUSH_TILING_H
+diff --git a/csrc/attention/gdn_lq_flush/op_kernel/gdn_lq_flush.cpp b/csrc/attention/gdn_lq_flush/op_kernel/gdn_lq_flush.cpp
+new file mode 100644
+index 0000000..d89b8da
+--- /dev/null
++++ b/csrc/attention/gdn_lq_flush/op_kernel/gdn_lq_flush.cpp
+@@ -0,0 +1,574 @@
++#include "kernel_operator.h"
++
++using namespace AscendC;
++
++// pure vector-core kernel: keep the framework out of MIX codegen
++ENABLE_FEATURE_FOR_COMPILE(default, KERNEL_TYPE_AIV_ONLY);
++
++// LeapQuant GDN window flush for one (sequence, head) instance — the AscendC
++// counterpart of the triton gdn_lq_flush kernel / torch GDNLeapQuantPools.flush.
++// One AI vector core processes many instances sequentially; due instances
++// (fill == L) rebuild the fp32 state S[V,K] in UB, fit R Compensator Tokens
++// with one round of subspace iteration (modified Gram-Schmidt, projections
++// applied twice), smooth and quantize the residual to int8, and reset the
++// window bookkeeping. Fixed geometry: V=K=128, R=4, L=16, H=32 layout.
++//
++// Slot byte offsets (all 128-byte aligned, per-head strides fixed):
++//   codes i8  [H,128,128] @ 0        kbuf bf16 [H,16,128] @ 524288
++//   ubuf bf16 [H,16,128] @ 655360    u fp16 [H,4,128] @ 786432
++//   q fp16    [H,4,128] @ 819200     s_k fp32 [H,128] @ 852992
++//   s_v fp32  [H,128] @ 869376       w fp32 [H,16] @ 885760
++//   p fp32    [H] @ 887808           fill i32 [H] @ 887936
++
++constexpr uint32_t F_V = 128;
++constexpr uint32_t F_K = 128;
++constexpr uint32_t F_R = 4;
++constexpr uint32_t F_L = 16;
++constexpr uint32_t ELEM_PER_REP_FP32 = 64;
++constexpr uint32_t ELEM_PER_BLK_FP32 = 8;
++constexpr float QMAX = 127.0f;
++constexpr float QEPS = 1e-12f;
++constexpr float NORM_EPS = 1e-30f;
++
++constexpr uint32_t OFF_CODES = 0;
++constexpr uint32_t OFF_KBUF = 524288;
++constexpr uint32_t OFF_UBUF = 655360;
++constexpr uint32_t OFF_U = 786432;
++constexpr uint32_t OFF_Q = 819200;
++constexpr uint32_t OFF_SK = 852992;
++constexpr uint32_t OFF_SV = 869376;
++constexpr uint32_t OFF_W = 885760;
++constexpr uint32_t OFF_P = 887808;
++constexpr uint32_t OFF_FILL = 887936;
++
++// per-head byte strides inside one slot
++constexpr uint32_t HS_CODES = 16384;
++constexpr uint32_t HS_KBUF = 4096;
++constexpr uint32_t HS_UBUF = 4096;
++constexpr uint32_t HS_UQ = 1024;
++constexpr uint32_t HS_SKV = 512;
++constexpr uint32_t HS_W = 64;
++
++__aicore__ inline int32_t findPowerTwo(int32_t n)
++{
++    n |= n >> 1;
++    n |= n >> 2;
++    n |= n >> 4;
++    n |= n >> 8;
++    n |= n >> 16;
++    return (n + 1) >> 1;
++}
++
++// dst[0] = sum of src[0..count); src is clobbered. Proven helper from
++// gdn_sketch_step (canonical A3 halving-sum for count <= 128).
++__aicore__ inline void ReduceSumHalfInterval(
++    const LocalTensor<float>& dst_local, const LocalTensor<float>& src_local,
++    int32_t count)
++{
++    if (likely(count > ELEM_PER_REP_FP32)) {
++        int32_t bodyCount = findPowerTwo(count);
++        int32_t tailCount = count - bodyCount;
++        if (tailCount > 0) {
++            Add(src_local, src_local, src_local[bodyCount], tailCount);
++            PipeBarrier<PIPE_V>();
++        }
++        while (bodyCount > ELEM_PER_REP_FP32) {
++            bodyCount = bodyCount / 2;
++            Add(src_local, src_local, src_local[bodyCount], bodyCount);
++            PipeBarrier<PIPE_V>();
++        }
++        AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32);
++    } else {
++        AscendCUtils::SetMask<float>(count);
++    }
++#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3003
++    WholeReduceSum(dst_local, src_local, ELEM_PER_REP_FP32, 1, 1, 1,
++                   ELEM_PER_BLK_FP32);
++#else
++    WholeReduceSum<float, false>(dst_local, src_local, ELEM_PER_REP_FP32, 1, 1,
++                                 1, 8);
++#endif
++    PipeBarrier<PIPE_V>();
++}
++
++// halving max-reduce: leaves the max of src[0..count) in src[0..8); src is
++// clobbered. Stops at 8 lanes so every operand stays 32-byte aligned (the
++// final 8 -> 1 step is done with scalar reads after a V_S sync).
++__aicore__ inline void ReduceMaxToEight(const LocalTensor<float>& src_local,
++                                        int32_t count)
++{
++    int32_t bodyCount = count;
++    while (bodyCount > 8) {
++        bodyCount = bodyCount / 2;
++        Max(src_local, src_local, src_local[bodyCount], bodyCount);
++        PipeBarrier<PIPE_V>();
++    }
++}
++
++class GdnLqFlushKernel {
++public:
++    __aicore__ inline void Init(GM_ADDR state, GM_ADDR idx, GM_ADDR q0,
++                                uint32_t myStart, uint32_t myCount, uint32_t t,
++                                uint32_t h, int64_t sSlot, TPipe* pipe)
++    {
++        this->myStart = myStart;
++        this->myCount = myCount;
++        this->batch = t;
++        this->hNum = h;
++        this->sSlot = sSlot;
++        this->stateRaw = reinterpret_cast<__gm__ uint8_t*>(state);
++
++        gmIdx.SetGlobalBuffer((__gm__ int64_t*)idx);
++        gmQ0.SetGlobalBuffer((__gm__ float*)q0);
++
++        auto align32 = [](uint32_t b) { return (b + 31) / 32 * 32; };
++        pipe->InitBuffer(sBuf, F_V * F_K * sizeof(float));
++        pipe->InitBuffer(codesBuf, F_V * F_K * sizeof(int8_t));
++        pipe->InitBuffer(kbufRaw, F_L * F_K * sizeof(bfloat16_t));
++        pipe->InitBuffer(ubufRaw, F_L * F_K * sizeof(bfloat16_t));
++        pipe->InitBuffer(uqRaw, 2 * F_R * F_V * sizeof(half));
++        pipe->InitBuffer(kbufF, F_L * F_K * sizeof(float));
++        pipe->InitBuffer(ubufF, F_L * F_K * sizeof(float));
++        pipe->InitBuffer(uF, F_R * F_V * sizeof(float));
++        pipe->InitBuffer(qF, F_R * F_V * sizeof(float));
++        pipe->InitBuffer(skF, F_K * sizeof(float));
++        pipe->InitBuffer(svF, F_V * sizeof(float));
++        pipe->InitBuffer(wF, align32(F_L * sizeof(float)));
++        pipe->InitBuffer(q0F, F_R * F_V * sizeof(float));
++        pipe->InitBuffer(qkF, F_R * F_V * sizeof(float));
++        pipe->InitBuffer(qvF, F_R * F_V * sizeof(float));
++        pipe->InitBuffer(ukF, F_R * F_V * sizeof(float));
++        pipe->InitBuffer(sumAbs, F_K * sizeof(float));
++        pipe->InitBuffer(scrBuf, 4 * F_K * sizeof(float));
++        pipe->InitBuffer(tmpBuf, 2 * F_K * sizeof(float));
++        pipe->InitBuffer(halfBuf, F_K * sizeof(half));
++        pipe->InitBuffer(redBuf, 16 * 8 * sizeof(float));
++        pipe->InitBuffer(metaBuf, 2 * align32(h * sizeof(int32_t)));
++        pipe->InitBuffer(idxBuf, align32(t * sizeof(int64_t)));
++        pipe->InitBuffer(outQ, 1, F_V * F_K * sizeof(int8_t));
++
++        sUb = sBuf.Get<float>();
++        codesUb = codesBuf.Get<int8_t>();
++        kbufRawUb = kbufRaw.Get<bfloat16_t>();
++        ubufRawUb = ubufRaw.Get<bfloat16_t>();
++        uqRawUb = uqRaw.Get<half>();
++        kbufFUb = kbufF.Get<float>();
++        ubufFUb = ubufF.Get<float>();
++        uFUb = uF.Get<float>();
++        qFUb = qF.Get<float>();
++        skFUb = skF.Get<float>();
++        svFUb = svF.Get<float>();
++        wFUb = wF.Get<float>();
++        q0FUb = q0F.Get<float>();
++        qkFUb = qkF.Get<float>();
++        qvFUb = qvF.Get<float>();
++        ukFUb = ukF.Get<float>();
++        sumAbsUb = sumAbs.Get<float>();
++        tmpUb = tmpBuf.Get<float>();
++        tmp2Ub = tmpBuf.Get<float>()[F_K];
++        scrUb = scrBuf.Get<float>();
++        redUb = redBuf.Get<float>();
++        halfUb = halfBuf.Get<half>();
++        fillUb = metaBuf.Get<int32_t>();
++        pUb = metaBuf.Get<float>()[align32(h * sizeof(int32_t)) / sizeof(float)];
++        idxUb = idxBuf.Get<int64_t>();
++
++        // exact-length idx load (any batch) from the tensor base
++        DataCopyPadParams idxPad{false, 0, 0, 0};
++        DataCopyPad(idxUb, gmIdx[0],
++                    DataCopyParams{1, static_cast<uint16_t>(batch * 8), 0, 0},
++                    idxPad);
++        PipeBarrier<PIPE_ALL>();
++    }
++
++    __aicore__ inline void Process()
++    {
++        for (uint32_t i = 0; i < myCount; ++i) {
++            ProcessOne(myStart + i);
++        }
++    }
++
++private:
++    // V->S: scalar (S-pipe) GetValue reads of V-computed values are NOT
++    // ordered by --cce-auto-sync; a manual V_S event is required once per
++    // batch of scalar reads (same constant-id pattern as gdn_sketch_step).
++    __aicore__ inline void SyncV2S()
++    {
++        SetFlag<HardEvent::V_S>(FLUSH_V_S_EVT);
++        WaitFlag<HardEvent::V_S>(FLUSH_V_S_EVT);
++    }
++
++    __aicore__ inline float DotV(const LocalTensor<float>& a,
++                                 const LocalTensor<float>& b)
++    {
++        Mul(tmpUb, a, b, F_K);
++        PipeBarrier<PIPE_V>();
++        ReduceSumHalfInterval(redUb, tmpUb, F_K);
++        SyncV2S();
++        return redUb.GetValue(0);
++    }
++
++    // modified Gram-Schmidt on 4 [128] vectors held contiguously in vec
++    // (vec[r*128]); projections against each previous column applied twice,
++    // each column normalized before later columns use it. Matches the torch
++    // _mgs reference exactly.
++    __aicore__ inline void Mgs4(const LocalTensor<float>& vec)
++    {
++        float d = DotV(vec, vec);
++        float inv = 1.0f / sqrt(d >= NORM_EPS ? d : NORM_EPS);
++        Muls(vec, vec, inv, F_K);
++        for (uint32_t r = 1; r < F_R; ++r) {
++            LocalTensor<float> vr = vec[r * F_K];
++            for (uint32_t pass = 0; pass < 2; ++pass) {
++                for (uint32_t c = 0; c < r; ++c) {
++                    float coef = DotV(vec[c * F_K], vr);
++                    Muls(tmpUb, vec[c * F_K], coef, F_K);
++                    PipeBarrier<PIPE_V>();
++                    Sub(vr, vr, tmpUb, F_K);
++                    PipeBarrier<PIPE_V>();
++                }
++            }
++            float dr = DotV(vr, vr);
++            float invr = 1.0f / sqrt(dr >= NORM_EPS ? dr : NORM_EPS);
++            Muls(vr, vr, invr, F_K);
++        }
++    }
++
++    __aicore__ inline void ProcessOne(uint32_t inst)
++    {
++        uint32_t b = inst / hNum;
++        uint32_t h = inst % hNum;
++        // low 32-bit word of the int64 slot id (little-endian word order,
++        // same assumption as gdn_sketch_step's write_pos handling)
++        int32_t slot = idxUb.ReinterpretCast<int32_t>().GetValue(b * 2);
++        __gm__ uint8_t* base = stateRaw
++            + static_cast<uint64_t>(slot) * static_cast<uint64_t>(sSlot);
++
++        GlobalTensor<int32_t> gmFill;
++        gmFill.SetGlobalBuffer((__gm__ int32_t*)(base + OFF_FILL));
++        GlobalTensor<float> gmP;
++        gmP.SetGlobalBuffer((__gm__ float*)(base + OFF_P));
++        // per-head window bookkeeping first: non-due heads exit before any
++        // heavy load (fill/p region is 128-byte aligned, H*4 = 128B)
++        DataCopy(fillUb, gmFill[0], hNum);
++        DataCopy(pUb, gmP[0], hNum);
++        PipeBarrier<PIPE_ALL>();
++        int32_t fill = fillUb.GetValue(h);
++        if (fill < static_cast<int32_t>(F_L)) {
++            return;
++        }
++        float pval = pUb.GetValue(h);
++
++        GlobalTensor<int8_t> gmCodes;
++        gmCodes.SetGlobalBuffer((__gm__ int8_t*)(base + OFF_CODES
++                                                 + h * HS_CODES));
++        GlobalTensor<bfloat16_t> gmKbuf;
++        gmKbuf.SetGlobalBuffer((__gm__ bfloat16_t*)(base + OFF_KBUF
++                                                     + h * HS_KBUF));
++        GlobalTensor<bfloat16_t> gmUbuf;
++        gmUbuf.SetGlobalBuffer((__gm__ bfloat16_t*)(base + OFF_UBUF
++                                                     + h * HS_UBUF));
++        GlobalTensor<half> gmU;
++        gmU.SetGlobalBuffer((__gm__ half*)(base + OFF_U + h * HS_UQ));
++        GlobalTensor<half> gmQ;
++        gmQ.SetGlobalBuffer((__gm__ half*)(base + OFF_Q + h * HS_UQ));
++        GlobalTensor<float> gmSk;
++        gmSk.SetGlobalBuffer((__gm__ float*)(base + OFF_SK + h * HS_SKV));
++        GlobalTensor<float> gmSv;
++        gmSv.SetGlobalBuffer((__gm__ float*)(base + OFF_SV + h * HS_SKV));
++        GlobalTensor<float> gmW;
++        gmW.SetGlobalBuffer((__gm__ float*)(base + OFF_W + h * HS_W));
++
++        DataCopy(codesUb, gmCodes[0], F_V * F_K);
++        DataCopy(kbufRawUb, gmKbuf[0], F_L * F_K);
++        DataCopy(ubufRawUb, gmUbuf[0], F_L * F_K);
++        DataCopy(uqRawUb, gmU[0], F_R * F_V);
++        DataCopy(uqRawUb[F_R * F_V], gmQ[0], F_R * F_V);
++        DataCopy(skFUb, gmSk[0], F_K);
++        DataCopy(svFUb, gmSv[0], F_V);
++        DataCopy(wFUb, gmW[0], F_L);
++        DataCopy(q0FUb, gmQ0[0], F_R * F_V);
++        PipeBarrier<PIPE_ALL>();
++
++        // bf16/fp16 -> fp32
++        Cast(kbufFUb, kbufRawUb, RoundMode::CAST_NONE, F_L * F_K);
++        PipeBarrier<PIPE_V>();
++        Cast(ubufFUb, ubufRawUb, RoundMode::CAST_NONE, F_L * F_K);
++        PipeBarrier<PIPE_V>();
++        Cast(uFUb, uqRawUb, RoundMode::CAST_NONE, F_R * F_V);
++        PipeBarrier<PIPE_V>();
++        Cast(qFUb, uqRawUb[F_R * F_V], RoundMode::CAST_NONE, F_R * F_V);
++        PipeBarrier<PIPE_V>();
++        // kw[j] = w[j] * kbuf[j]
++        for (uint32_t j = 0; j < F_L; ++j) {
++            float wj = wFUb.GetValue(j);
++            Muls(kbufFUb[j * F_K], kbufFUb[j * F_K], wj, F_K);
++        }
++        PipeBarrier<PIPE_V>();
++        Duplicate(qkFUb, 0.0f, F_R * F_V);
++        PipeBarrier<PIPE_V>();
++        // one V_S pair covers every scalar read below (all source tensors
++        // were last written by the casts/reduces above)
++        SyncV2S();
++
++        // ---- pass 0+1: rebuild S row by row and accumulate m1 = S^T q0 ----
++        float pOverQmax = pval / QMAX;
++        for (uint32_t v = 0; v < F_V; ++v) {
++            LocalTensor<float> srow = sUb[v * F_K];
++            float av = pOverQmax * svFUb.GetValue(v);
++            // no direct int8<->float cast intrinsic on this arch: route the
++            // exact integer values through fp16 (integers <= 127 are exact)
++            Cast(halfUb, codesUb[v * F_K], RoundMode::CAST_NONE, F_K);
++            Cast(srow, halfUb, RoundMode::CAST_NONE, F_K);
++            Mul(srow, srow, skFUb, F_K);
++            Muls(srow, srow, av, F_K);
++            for (uint32_t r = 0; r < F_R; ++r) {
++                // comp-token term carries the same p factor as the codes
++                // term (torch: S = p * s0 + window)
++                float qrv = pval * qFUb.GetValue(r * F_V + v);
++                Muls(tmpUb, uFUb[r * F_K], qrv, F_K);
++                Add(srow, srow, tmpUb, F_K);
++            }
++            for (uint32_t j = 0; j < F_L; ++j) {
++                float ub = ubufFUb.GetValue(j * F_V + v);
++                Muls(tmpUb, kbufFUb[j * F_K], ub, F_K);
++                Add(srow, srow, tmpUb, F_K);
++            }
++            for (uint32_t r = 0; r < F_R; ++r) {
++                float q0v = q0FUb.GetValue(r * F_V + v);
++                Muls(tmpUb, srow, q0v, F_K);
++                Add(qkFUb[r * F_K], qkFUb[r * F_K], tmpUb, F_K);
++            }
++        }
++        PipeBarrier<PIPE_V>();
++
++        // ---- subspace iteration: qk = mgs(S^T q0) ----
++        Mgs4(qkFUb);
++        PipeBarrier<PIPE_V>();
++
++        // ---- pass 2: qv_r[v] = sum_k S[v,k] qk_r[k], then mgs ----
++        // WholeReduceSum dst must be 32B-aligned: reduce into red slots
++        // (stride 8 floats), four rows (16 dots) per V_S round trip, then
++        // scatter with SetValue (V-pipe scalar store at any offset).
++        for (uint32_t v0 = 0; v0 < F_V; v0 += 4) {
++            uint32_t idx = 0;
++            for (uint32_t i = 0; i < 4; ++i) {
++                LocalTensor<float> srow = sUb[(v0 + i) * F_K];
++                for (uint32_t r = 0; r < F_R; ++r) {
++                    Mul(tmpUb, srow, qkFUb[r * F_K], F_K);
++                    PipeBarrier<PIPE_V>();
++                    ReduceSumHalfInterval(redUb[idx * 8], tmpUb, F_K);
++                    ++idx;
++                }
++            }
++            SyncV2S();
++            idx = 0;
++            for (uint32_t i = 0; i < 4; ++i) {
++                for (uint32_t r = 0; r < F_R; ++r) {
++                    qvFUb.SetValue(r * F_V + v0 + i, redUb[idx * 8].GetValue(0));
++                    ++idx;
++                }
++            }
++            PipeBarrier<PIPE_V>();
++        }
++        Mgs4(qvFUb);
++        PipeBarrier<PIPE_V>();
++
++        // ---- pass 3: uk_r[k] = sum_v S[v,k] qv_r[v] ----
++        Duplicate(ukFUb, 0.0f, F_R * F_V);
++        PipeBarrier<PIPE_V>();
++        SyncV2S();  // qv reduce results -> scalar reads
++        for (uint32_t v = 0; v < F_V; ++v) {
++            LocalTensor<float> srow = sUb[v * F_K];
++            float c0 = qvFUb.GetValue(v);
++            float c1 = qvFUb.GetValue(F_V + v);
++            float c2 = qvFUb.GetValue(2 * F_V + v);
++            float c3 = qvFUb.GetValue(3 * F_V + v);
++            Muls(tmpUb, srow, c0, F_K);
++            Add(ukFUb[0], ukFUb[0], tmpUb, F_K);
++            Muls(tmpUb, srow, c1, F_K);
++            Add(ukFUb[F_K], ukFUb[F_K], tmpUb, F_K);
++            Muls(tmpUb, srow, c2, F_K);
++            Add(ukFUb[2 * F_K], ukFUb[2 * F_K], tmpUb, F_K);
++            Muls(tmpUb, srow, c3, F_K);
++            Add(ukFUb[3 * F_K], ukFUb[3 * F_K], tmpUb, F_K);
++        }
++        PipeBarrier<PIPE_V>();
++
++        // ---- pass 4a: E = S - qv uk^T (in place), sk = sqrt(mean_v |E|) ----
++        Duplicate(sumAbsUb, 0.0f, F_K);
++        PipeBarrier<PIPE_V>();
++        for (uint32_t v = 0; v < F_V; ++v) {
++            LocalTensor<float> srow = sUb[v * F_K];
++            float c0 = qvFUb.GetValue(v);
++            float c1 = qvFUb.GetValue(F_V + v);
++            float c2 = qvFUb.GetValue(2 * F_V + v);
++            float c3 = qvFUb.GetValue(3 * F_V + v);
++            Muls(tmpUb, ukFUb[0], c0, F_K);
++            Muls(tmp2Ub, ukFUb[F_K], c1, F_K);
++            Add(tmpUb, tmpUb, tmp2Ub, F_K);
++            Muls(tmp2Ub, ukFUb[2 * F_K], c2, F_K);
++            Add(tmpUb, tmpUb, tmp2Ub, F_K);
++            Muls(tmp2Ub, ukFUb[3 * F_K], c3, F_K);
++            Add(tmpUb, tmpUb, tmp2Ub, F_K);
++            Sub(srow, srow, tmpUb, F_K);
++            Abs(tmpUb, srow, F_K);
++            Add(sumAbsUb, sumAbsUb, tmpUb, F_K);
++        }
++        PipeBarrier<PIPE_V>();
++        // sk into skFUb (old s_k dead after the rebuild)
++        Muls(skFUb, sumAbsUb, 0.0078125f, F_K);  // 1/V
++        Sqrt(skFUb, skFUb, F_K);
++        Maxs(skFUb, skFUb, QEPS, F_K);
++        PipeBarrier<PIPE_V>();
++
++        // ---- pass 4b+5 fused: sv[v] = max_k |E|/sk, codes = rint(127 E/sk/sv) ----
++        // four rows per V_S round trip: the |E|/sk rows are reduced to one
++        // max lane each, a single sync makes all four readable, then the
++        // quantized rows are produced.
++        for (uint32_t v0 = 0; v0 < F_V; v0 += 4) {
++            for (uint32_t i = 0; i < 4; ++i) {
++                LocalTensor<float> acc = scrUb[i * F_K];
++                Div(acc, sUb[(v0 + i) * F_K], skFUb, F_K);
++                PipeBarrier<PIPE_V>();
++                Abs(acc, acc, F_K);
++                ReduceMaxToEight(acc, F_K);
++            }
++            SyncV2S();
++            for (uint32_t i = 0; i < 4; ++i) {
++                uint32_t v = v0 + i;
++                float svv = scrUb[i * F_K].GetValue(0);
++                for (uint32_t j = 1; j < 8; ++j) {
++                    float c = scrUb[i * F_K].GetValue(j);
++                    svv = c > svv ? c : svv;
++                }
++                if (svv < QEPS) {
++                    svv = QEPS;
++                }
++                svFUb.SetValue(v, svv);
++                float inv = QMAX / svv;
++                Div(tmpUb, sUb[v * F_K], skFUb, F_K);
++                Muls(tmpUb, tmpUb, inv, F_K);
++                Maxs(tmpUb, tmpUb, -QMAX, F_K);
++                Mins(tmpUb, tmpUb, QMAX, F_K);
++                // round-half-even in fp32, then two exact narrowing casts
++                Cast(halfUb, tmpUb, RoundMode::CAST_RINT, F_K);
++                Cast(codesUb[v * F_K], halfUb, RoundMode::CAST_RINT, F_K);
++            }
++            PipeBarrier<PIPE_V>();
++        }
++
++        // ---- write back through the out queue (framework V->MTE3 order) ----
++        LocalTensor<int8_t> oq = outQ.AllocTensor<int8_t>();
++        DataCopy(oq, codesUb, F_V * F_K);
++        outQ.EnQue(oq);
++        LocalTensor<int8_t> dq = outQ.DeQue<int8_t>();
++        DataCopy(gmCodes[0], dq, F_V * F_K);
++        outQ.FreeTensor(dq);
++
++        StoreVec(gmSk, skFUb, F_K);
++        StoreVec(gmSv, svFUb, F_V);
++
++        LocalTensor<float> fq = outQ.AllocTensor<float>();
++        LocalTensor<half> hq = fq.ReinterpretCast<half>();
++        Cast(hq, ukFUb, RoundMode::CAST_RINT, F_R * F_V);
++        outQ.EnQue(fq);
++        LocalTensor<float> fqd = outQ.DeQue<float>();
++        DataCopy(gmU[0], fqd.ReinterpretCast<half>(), F_R * F_V);
++        outQ.FreeTensor(fqd);
++
++        LocalTensor<float> gq = outQ.AllocTensor<float>();
++        LocalTensor<half> hq2 = gq.ReinterpretCast<half>();
++        Cast(hq2, qvFUb, RoundMode::CAST_RINT, F_R * F_V);
++        outQ.EnQue(gq);
++        LocalTensor<float> gqd = outQ.DeQue<float>();
++        DataCopy(gmQ[0], gqd.ReinterpretCast<half>(), F_R * F_V);
++        outQ.FreeTensor(gqd);
++
++        // w[:] = 0
++        LocalTensor<float> wq = outQ.AllocTensor<float>();
++        Duplicate(wq, 0.0f, F_L);
++        outQ.EnQue(wq);
++        LocalTensor<float> wqd = outQ.DeQue<float>();
++        DataCopy(gmW[0], wqd, F_L);
++        outQ.FreeTensor(wqd);
++
++        // p = 1.0, fill = 0 (4-byte pad stores)
++        LocalTensor<float> pq = outQ.AllocTensor<float>();
++        Duplicate(pq, 1.0f, 8);
++        outQ.EnQue(pq);
++        LocalTensor<float> pqd = outQ.DeQue<float>();
++        DataCopyPad(gmP[h], pqd, DataCopyParams{1, 4, 0, 0});
++        outQ.FreeTensor(pqd);
++
++        LocalTensor<float> zq = outQ.AllocTensor<float>();
++        Duplicate(zq, 0.0f, 8);
++        outQ.EnQue(zq);
++        LocalTensor<float> zqd = outQ.DeQue<float>();
++        // float 0.0f bit pattern is int32 0
++        DataCopyPad(gmFill[h], zqd.ReinterpretCast<int32_t>(),
++                    DataCopyParams{1, 4, 0, 0});
++        outQ.FreeTensor(zqd);
++    }
++
++    __aicore__ inline void StoreVec(const GlobalTensor<float>& gm,
++                                    const LocalTensor<float>& src,
++                                    uint32_t len)
++    {
++        LocalTensor<float> oq = outQ.AllocTensor<float>();
++        DataCopy(oq, src, len);
++        outQ.EnQue(oq);
++        LocalTensor<float> dq = outQ.DeQue<float>();
++        DataCopy(gm[0], dq, len);
++        outQ.FreeTensor(dq);
++    }
++
++    GlobalTensor<int64_t> gmIdx;
++    GlobalTensor<float> gmQ0;
++    __gm__ uint8_t* stateRaw = nullptr;
++    TBuf<QuePosition::VECCALC> sBuf, codesBuf, kbufRaw, ubufRaw, uqRaw;
++    TBuf<QuePosition::VECCALC> kbufF, ubufF, uF, qF, skF, svF, wF;
++    TBuf<QuePosition::VECCALC> q0F, qkF, qvF, ukF, sumAbs, scrBuf, tmpBuf;
++    TBuf<QuePosition::VECCALC> redBuf, halfBuf;
++    TBuf<QuePosition::VECCALC> metaBuf, idxBuf;
++    TQue<QuePosition::VECOUT, 1> outQ;
++    LocalTensor<float> sUb, kbufFUb, ubufFUb, uFUb, qFUb, skFUb, svFUb;
++    LocalTensor<float> wFUb, q0FUb, qkFUb, qvFUb, ukFUb, sumAbsUb, tmpUb;
++    LocalTensor<float> tmp2Ub, scrUb, redUb, pUb;
++    LocalTensor<half> halfUb;
++    LocalTensor<int8_t> codesUb;
++    LocalTensor<bfloat16_t> kbufRawUb, ubufRawUb;
++    LocalTensor<half> uqRawUb;
++    LocalTensor<int32_t> fillUb;
++    LocalTensor<int64_t> idxUb;
++    static constexpr uint32_t FLUSH_V_S_EVT = 2;
++    uint32_t myStart = 0, myCount = 0, batch = 0, hNum = 32;
++    int64_t sSlot = 0;
++};
++
++extern "C" __global__ __aicore__ void gdn_lq_flush(
++    GM_ADDR state, GM_ADDR idx, GM_ADDR q0, GM_ADDR out,
++    GM_ADDR workspace, GM_ADDR tiling)
++{
++    GET_TILING_DATA(tilingData, tiling);
++    if (GetBlockIdx() >= tilingData.usedCoreNum) {
++        return;
++    }
++    uint32_t myStart;
++    uint32_t myCount;
++    if (GetBlockIdx() < tilingData.remainderCores) {
++        myStart = GetBlockIdx() * (tilingData.instancesPerCore + 1);
++        myCount = tilingData.instancesPerCore + 1;
++    } else {
++        myStart = tilingData.remainderCores
++            * (tilingData.instancesPerCore + 1)
++            + (GetBlockIdx() - tilingData.remainderCores)
++            * tilingData.instancesPerCore;
++        myCount = tilingData.instancesPerCore;
++    }
++    TPipe pipe;
++    GdnLqFlushKernel op;
++    op.Init(state, idx, q0, myStart, myCount, tilingData.batch, tilingData.h,
++            tilingData.sSlot, &pipe);
++    op.Process();
++}
+diff --git a/csrc/build_aclnn.sh b/csrc/build_aclnn.sh
+index 4706b5d..073d49d 100755
+--- a/csrc/build_aclnn.sh
++++ b/csrc/build_aclnn.sh
+@@ -182,6 +182,7 @@ elif [[ "$SOC_VERSION" =~ ^ascend910_93 ]]; then
+         "chunk_fwd_o_vllm"
+         "chunk_kda_fwd"
+                 "kda_layout_swap12"
++        "gdn_lq_flush"
+         "store_kv_block"
+         "store_kv_block_metadata"
+         "sparse_attention_score"
 diff --git a/vllm_ascend/envs.py b/vllm_ascend/envs.py
-index ed5ae96..d29a5b1 100644
+index ed5ae96..c7df5de 100644
 --- a/vllm_ascend/envs.py
 +++ b/vllm_ascend/envs.py
-@@ -87,6 +87,11 @@ env_variables: dict[str, Callable[[], Any]] = {
+@@ -87,6 +87,13 @@ env_variables: dict[str, Callable[[], Any]] = {
      # (safe for Ascend 910B/A3). Set to a positive value to override when
      # auto-detection is unavailable or for debugging UB overflow issues.
      "VLLM_ASCEND_ROPE_UB_SIZE_KB": lambda: int(os.getenv("VLLM_ASCEND_ROPE_UB_SIZE_KB") or 0),
 +    # Enable LeapQuant per-window recurrent-state quantization for GDN decode
 +    # (arXiv:2609.38166). 0 (default): dense fp32 state. 1: eager torch path
 +    # (accuracy validation, slow). 2: Triton-Ascend step kernel + torch flush.
-+    # Valid values: 0, 1, 2. Not sensitive.
++    # 3: Triton-Ascend step kernel + AscendC flush (falls back to torch flush
++    # when the custom op is unavailable or during graph capture).
++    # Valid values: 0, 1, 2, 3. Not sensitive.
 +    "VLLM_ASCEND_GDN_LEAPQUANT": lambda: int(os.getenv("VLLM_ASCEND_GDN_LEAPQUANT", "0")),
  }
  
  # end-env-vars-definition
 diff --git a/vllm_ascend/ops/gdn.py b/vllm_ascend/ops/gdn.py
-index e5ac67e..0d50265 100644
+index e5ac67e..e992ce4 100644
 --- a/vllm_ascend/ops/gdn.py
 +++ b/vllm_ascend/ops/gdn.py
 @@ -16,6 +16,7 @@
@@ -34,11 +866,12 @@ index e5ac67e..0d50265 100644
  from vllm_ascend.attention.utils import (
      maybe_save_kv_layer_to_connector,
      wait_for_kv_layer_from_connector,
-@@ -45,15 +47,83 @@ from vllm_ascend.device.device_op import DeviceOperator
+@@ -45,15 +47,121 @@ from vllm_ascend.device.device_op import DeviceOperator
  from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
  from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.attention_fence import record_attention_compute_start
  from vllm_ascend.ops.gdn_attn_builder import AscendGDNAttentionBackend
 +from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools
++from vllm_ascend.ops.gdn_lq_flush_ascendc import flush_pools_ascendc
  from vllm_ascend.ops.triton.fla.chunk import chunk_gated_delta_rule
  from vllm_ascend.ops.triton.fla.fused_qkvzba_split_reshape import fused_qkvzba_split_reshape_cat
  from vllm_ascend.ops.triton.fla.utils import clear_ssm_states
@@ -68,6 +901,13 @@ index e5ac67e..0d50265 100644
 +        return
 +    # prefill indices arrive per token; keep one entry per state slot
 +    idx = torch.unique(idx)
++    if os.getenv("VLLM_ASCEND_GDN_LQ_DEBUG"):
++        print(
++            f"[leapquant] resync slots={idx.numel()} "
++            f"allocated={torch.npu.memory_allocated() / 2**30:.2f}GiB "
++            f"reserved={torch.npu.memory_reserved() / 2**30:.2f}GiB",
++            flush=True,
++        )
 +    pools = _get_leapquant_pools(layer, ssm_state)
 +    if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
 +        dense = ssm_state[idx].clone().float()
@@ -87,15 +927,32 @@ index e5ac67e..0d50265 100644
 +
 +
 +def _lq_decode_step(mode, pools, idx, kn, qn, v, g_log, beta, scale):
-+    if mode == 2:
++    if mode == 2 or mode == 3:
 +        return gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale)
 +    return pools.decode_step(idx=idx, kn=kn, qn=qn, v=v, g_log=g_log, beta=beta, scale=scale)
 +
 +
-+_DUMP_MAX_STEPS = 40
++def _lq_flush(mode, pools, idx):
++    if mode >= 3 and flush_pools_ascendc(pools, idx):
++        return
++    pools.flush(idx)
++
++
++_DUMP_MAX_STEPS = int(os.getenv("VLLM_ASCEND_GDN_LQ_DUMP_STEPS", "40"))
++_DUMP_LAYERS = os.getenv("VLLM_ASCEND_GDN_LQ_DUMP_LAYERS")  # e.g. "0,8,16,22"
++_DUMP_STATE = bool(os.getenv("VLLM_ASCEND_GDN_LQ_DUMP_STATE"))
++
++
++def _layer_selected(layer) -> bool:
++    if not _DUMP_LAYERS:
++        return True
++    short = layer.prefix.split("layers.")[1].split(".")[0]
++    return short in _DUMP_LAYERS.split(",")
 +
 +
 +def _lq_dump_step(layer, tag, idx, key, query, value, g, beta, out, pre_state=None):
++    if not _layer_selected(layer):
++        return
 +    step = getattr(layer, "_lq_step", 0)
 +    if step >= _DUMP_MAX_STEPS:
 +        return
@@ -113,12 +970,25 @@ index e5ac67e..0d50265 100644
 +    if pre_state is not None and step == 0:
 +        payload["dense0"] = pre_state
 +    torch.save(payload, f"/tmp/lq_dump/{tag}_{layer.prefix.replace('.', '_')}_step{step}.pt")
++    if _DUMP_STATE and tag == "dense" and step % 16 == 15:
++        # window-boundary dense state snapshot (fp32 run): the reference
++        # trajectory for the long-rollout state-error curve
++        _dump_state_snapshot(layer, idx, step)
++
++
++def _dump_state_snapshot(layer, idx, step):
++    ssm_state = layer.kv_cache[1]
++    snap = ssm_state[idx].clone().cpu()
++    torch.save(
++        {"idx": idx.cpu(), "state": snap},
++        f"/tmp/lq_dump/state_{layer.prefix.replace('.', '_')}_step{step}.pt",
++    )
 +
 +
  @lru_cache(maxsize=1)
  def _get_fla_gdn_prefill_op():
      try:
-@@ -404,6 +474,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -404,6 +512,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
          self_kv_cache = self.kv_cache
          ssm_state = self_kv_cache[1]
          num_actual_tokens = attn_metadata.num_actual_tokens
@@ -126,7 +996,7 @@ index e5ac67e..0d50265 100644
  
          mixed_qkv = mixed_qkv[:num_actual_tokens]
          b = b[:num_actual_tokens]
-@@ -550,6 +621,11 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -550,6 +659,11 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
  
          # 2.1: Process the multi-query part
          if spec_sequence_masks is not None:
@@ -138,7 +1008,7 @@ index e5ac67e..0d50265 100644
              actual_seq_lengths = attn_metadata.spec_decode_metadata.actual_seq_lengths
              query_spec = l2norm_fwd(query_spec)
              key_spec = l2norm_fwd(key_spec)
-@@ -578,17 +654,40 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -578,17 +692,40 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
              actual_seq_lengths = attn_metadata.non_spec_decode_metadata.actual_seq_lengths
              query_decode = l2norm_fwd(query_decode)
              key_decode = l2norm_fwd(key_decode)
@@ -171,7 +1041,7 @@ index e5ac67e..0d50265 100644
 +                    beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
 +                    scale=key_decode.shape[-1] ** -0.5,
 +                )
-+                pools.flush(idx)
++                _lq_flush(use_leapquant, pools, idx)
 +                core_attn_out_decode = o.unsqueeze(0)
 +            else:
 +                core_attn_out_decode = recurrent_gated_delta_rule(
@@ -190,7 +1060,7 @@ index e5ac67e..0d50265 100644
          else:
              core_attn_out_decode = None
  
-@@ -602,6 +701,15 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -602,6 +739,15 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
              assert prefill_has_initial_state is not None
              assert g_non_spec is not None
              assert beta_non_spec is not None
@@ -206,7 +1076,7 @@ index e5ac67e..0d50265 100644
              if split_non_spec:
                  query_non_spec = query_non_spec[:, num_decode_tokens:]
                  key_non_spec = key_non_spec[:, num_decode_tokens:]
-@@ -684,6 +792,8 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -684,6 +830,8 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                  ssm_state[prefill_state_indices] = (
                      last_recurrent_state.transpose(-1, -2).contiguous().to(ssm_state.dtype)
                  )
@@ -215,7 +1085,7 @@ index e5ac67e..0d50265 100644
              if split_non_spec:
                  core_attn_out_non_spec = torch.cat(
                      [core_attn_out_decode, core_attn_out_non_spec],
-@@ -693,17 +803,55 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
+@@ -693,17 +841,55 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
              actual_seq_lengths = attn_metadata.non_spec_decode_metadata.actual_seq_lengths
              query_non_spec = l2norm_fwd(query_non_spec)
              key_non_spec = l2norm_fwd(key_non_spec)
@@ -249,7 +1119,7 @@ index e5ac67e..0d50265 100644
 +                    beta=beta_non_spec.squeeze(0),
 +                    scale=key_non_spec.shape[-1] ** -0.5,
 +                )
-+                pools.flush(idx)
++                _lq_flush(use_leapquant, pools, idx)
 +                core_attn_out_non_spec = o.unsqueeze(0)
 +                if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
 +                    _lq_dump_step(self, "lq", idx, key_non_spec, query_non_spec, value_non_spec,
@@ -522,6 +1392,180 @@ index 0000000..d9dc50b
 +        return s + self.codes[t_idx, h_idx].float() * (self.s_k[t_idx, h_idx] / QMAX).unsqueeze(
 +            -2
 +        ) * self.s_v[t_idx, h_idx].unsqueeze(-1)
+diff --git a/vllm_ascend/ops/gdn_lq_flush_ascendc.py b/vllm_ascend/ops/gdn_lq_flush_ascendc.py
+new file mode 100644
+index 0000000..6836ffa
+--- /dev/null
++++ b/vllm_ascend/ops/gdn_lq_flush_ascendc.py
+@@ -0,0 +1,168 @@
++# SPDX-License-Identifier: Apache-2.0
++"""AscendC LeapQuant GDN window flush (A3) — ctypes binding wrapper.
++
++Calls the custom opp op ``GdnLqFlush`` (gdn_lq_flush) in libcust_opapi.so.
++The op updates the LeapQuant composite checkpoint in place inside the fp32
++ssm_state slot buffer; the caller passes the same tensor as output.
++
++q0 is expected pre-transposed as [R, V] fp32 (row r = torch q0[:, r]).
++"""
++
++import ctypes
++import glob
++import os
++
++import torch
++
++_B = None
++_AVAILABLE = None
++_CACHE = {}
++_CACHE_CAP = 256  # keyed by data_ptrs; addresses are stable in decode loops
++_WS_BUF = None  # one shared workspace: the op's kernel takes no workspace
++# argument, and aclnn executions on the same stream are serialized, so a
++# single buffer sized to the max requested workspace serves all executors
++# (the autogen wrapper derives ~state-size workspace per call site).
++
++
++def _binding():
++    global _B, _AVAILABLE
++    if _AVAILABLE is False:
++        return None
++    if _B is None:
++        cands = (glob.glob("/tmp/probe_opp_v*/vendors/custom_transformer/"
++                           "op_api/lib/libcust_opapi.so")
++                 + glob.glob("/usr/local/Ascend/opp/vendors/*/op_api/lib/"
++                             "libcust_opapi.so", recursive=True)
++                 + glob.glob("/mnt/workspace/vllm-ascend/vllm_ascend/"
++                             "_cann_ops_custom/**/op_api/lib/libcust_opapi.so",
++                             recursive=True))
++        if not cands:
++            _AVAILABLE = False
++            return None
++        try:
++            lib = ctypes.CDLL(cands[0])
++        except OSError:
++            _AVAILABLE = False
++            return None
++        import torch_npu  # noqa: F401
++
++        from fla_npu.ops.ascendc import _runtime as rt
++
++        _B = (rt, rt.runtime(), lib)
++        lib.aclnnGdnLqFlushGetWorkspaceSize.restype = ctypes.c_int
++        lib.aclnnGdnLqFlush.argtypes = [
++            ctypes.c_void_p, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p
++        ]
++        lib.aclnnGdnLqFlush.restype = ctypes.c_int
++    return _B
++
++
++def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
++    """Flush due slots of the decode batch idx in place.
++
++    state: fp32 [SLOTS, H, V, K] ssm_state buffer (strided view is fine, the
++        slot stride in bytes is taken from state.stride(0) * 4).
++    idx: int64 [T] slot ids.
++    q0_rv: fp32 [R, V] subspace seed, rows = torch q0 columns.
++    Returns False when the custom op is unavailable (caller falls back).
++    """
++    try:
++        if torch.npu.is_current_stream_capturing():
++            return False
++    except Exception:
++        return False
++    bnd = _binding()
++    if bnd is None:
++        return False
++    rt, runtime, lib = bnd
++    dev = state.device
++    idx = idx.to(device=dev, dtype=torch.int64)
++    if not idx.is_contiguous():
++        idx = idx.contiguous()
++    if not q0_rv.is_contiguous():
++        q0_rv = q0_rv.contiguous()
++    slot_stride_bytes = state.stride(0) * state.element_size()
++    stream = int(torch.npu.current_stream().npu_stream)
++    key = (int(state.data_ptr()), int(idx.data_ptr()), int(q0_rv.data_ptr()),
++           int(state.stride(0)), int(idx.shape[0]), int(num_heads))
++    hit = _CACHE.get(key)
++    global _WS_BUF
++    if hit is not None:
++        executor = hit[0]
++        ret = lib.aclnnGdnLqFlush(
++            ctypes.c_void_p(int(_WS_BUF.data_ptr())),
++            ctypes.c_uint64(_WS_BUF.numel()),
++            executor, ctypes.c_void_p(stream))
++        return ret == 0
++    try:
++        ctx = rt._CallContext(runtime, dev)
++    except Exception:
++        return False
++    try:
++        args = [
++            ctx.tensor(state, "state"),
++            ctx.tensor(idx, "idx"),
++            ctx.tensor(q0_rv, "q0"),
++            ctypes.c_int64(int(num_heads)),
++            ctypes.c_int64(int(slot_stride_bytes)),
++            ctx.tensor(state, "out"),  # in-place: aliased output
++        ]
++        ws_size = ctypes.c_uint64(0)
++        executor = ctypes.c_void_p()
++        ret = lib.aclnnGdnLqFlushGetWorkspaceSize(
++            *args, ctypes.byref(ws_size), ctypes.byref(executor))
++        assert ret == 0, f"get_ws ret={ret} ws={ws_size.value}"
++        if os.getenv("VLLM_ASCEND_GDN_LQ_DEBUG"):
++            print(
++                f"[gdn-lq-flush] new executor key_state={int(state.data_ptr()) & 0xffff} "
++                f"T={idx.shape[0]} ws={ws_size.value} "
++                f"allocated={torch.npu.memory_allocated() / 2**30:.2f}GiB",
++                flush=True,
++            )
++        need = int(ws_size.value) if ws_size.value else 1
++        if _WS_BUF is None or _WS_BUF.numel() < need:
++            _WS_BUF = torch.empty(need, dtype=torch.uint8, device=dev)
++        ret = lib.aclnnGdnLqFlush(
++            ctypes.c_void_p(int(_WS_BUF.data_ptr())),
++            ctypes.c_uint64(need), executor,
++            ctypes.c_void_p(stream))
++        assert ret == 0, f"launch ret={ret}"
++        if len(_CACHE) >= _CACHE_CAP:
++            _CACHE.clear()
++        # keep the tensors alive: the executor bakes their addresses
++        _CACHE[key] = (executor, state, idx, q0_rv)
++        return True
++    except Exception as e:
++        import sys
++        print(f"[gdn-lq-flush] slow-path exception: {type(e).__name__}: {e!r}",
++              file=sys.stderr, flush=True)
++        return False
++    finally:
++        ctx.destroy()
++
++
++def flush_pools_ascendc(pools, idx) -> bool:
++    """Drop-in replacement for GDNLeapQuantPools.flush via the AscendC op."""
++    return gdn_lq_flush_ascendc(_state_tensor(pools), idx,
++                                _q0_rows(pools), pools.num_heads)
++
++
++_Q0_ROWS = {}
++
++
++def _q0_rows(pools):
++    """Persistent [R, V] transpose of pools.q0 (stable executor cache key)."""
++    key = (pools.q0.device, int(pools.q0.data_ptr()), tuple(pools.q0.shape))
++    buf = _Q0_ROWS.get(key)
++    if buf is None:
++        buf = pools.q0.t().contiguous()
++        _Q0_ROWS.clear()  # bounded: one entry per pools instance
++        _Q0_ROWS[key] = buf
++    return buf
++
++
++def _state_tensor(pools):
++    # pools keeps the strided int8 view over the layer ssm_state; recover the
++    # fp32 view with the same slot stride so the kernel sees identical layout
++    flat = pools._flat  # [num_slots, slot_bytes] int8
++    return flat.view(torch.float32)
 diff --git a/vllm_ascend/ops/triton/gdn_leapquant_flush.py b/vllm_ascend/ops/triton/gdn_leapquant_flush.py
 new file mode 100644
 index 0000000..72960c9

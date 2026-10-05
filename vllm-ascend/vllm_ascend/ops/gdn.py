@@ -48,6 +48,7 @@ from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.attention_fence import record_attention_compute_start
 from vllm_ascend.ops.gdn_attn_builder import AscendGDNAttentionBackend
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools
+from vllm_ascend.ops.gdn_lq_flush_ascendc import flush_pools_ascendc
 from vllm_ascend.ops.triton.fla.chunk import chunk_gated_delta_rule
 from vllm_ascend.ops.triton.fla.fused_qkvzba_split_reshape import fused_qkvzba_split_reshape_cat
 from vllm_ascend.ops.triton.fla.utils import clear_ssm_states
@@ -77,6 +78,13 @@ def _leapquant_resync(layer, ssm_state: torch.Tensor, idx: torch.Tensor) -> None
         return
     # prefill indices arrive per token; keep one entry per state slot
     idx = torch.unique(idx)
+    if os.getenv("VLLM_ASCEND_GDN_LQ_DEBUG"):
+        print(
+            f"[leapquant] resync slots={idx.numel()} "
+            f"allocated={torch.npu.memory_allocated() / 2**30:.2f}GiB "
+            f"reserved={torch.npu.memory_reserved() / 2**30:.2f}GiB",
+            flush=True,
+        )
     pools = _get_leapquant_pools(layer, ssm_state)
     if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
         dense = ssm_state[idx].clone().float()
@@ -96,15 +104,32 @@ def _leapquant_resync(layer, ssm_state: torch.Tensor, idx: torch.Tensor) -> None
 
 
 def _lq_decode_step(mode, pools, idx, kn, qn, v, g_log, beta, scale):
-    if mode == 2:
+    if mode == 2 or mode == 3:
         return gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale)
     return pools.decode_step(idx=idx, kn=kn, qn=qn, v=v, g_log=g_log, beta=beta, scale=scale)
 
 
-_DUMP_MAX_STEPS = 40
+def _lq_flush(mode, pools, idx):
+    if mode >= 3 and flush_pools_ascendc(pools, idx):
+        return
+    pools.flush(idx)
+
+
+_DUMP_MAX_STEPS = int(os.getenv("VLLM_ASCEND_GDN_LQ_DUMP_STEPS", "40"))
+_DUMP_LAYERS = os.getenv("VLLM_ASCEND_GDN_LQ_DUMP_LAYERS")  # e.g. "0,8,16,22"
+_DUMP_STATE = bool(os.getenv("VLLM_ASCEND_GDN_LQ_DUMP_STATE"))
+
+
+def _layer_selected(layer) -> bool:
+    if not _DUMP_LAYERS:
+        return True
+    short = layer.prefix.split("layers.")[1].split(".")[0]
+    return short in _DUMP_LAYERS.split(",")
 
 
 def _lq_dump_step(layer, tag, idx, key, query, value, g, beta, out, pre_state=None):
+    if not _layer_selected(layer):
+        return
     step = getattr(layer, "_lq_step", 0)
     if step >= _DUMP_MAX_STEPS:
         return
@@ -122,6 +147,19 @@ def _lq_dump_step(layer, tag, idx, key, query, value, g, beta, out, pre_state=No
     if pre_state is not None and step == 0:
         payload["dense0"] = pre_state
     torch.save(payload, f"/tmp/lq_dump/{tag}_{layer.prefix.replace('.', '_')}_step{step}.pt")
+    if _DUMP_STATE and tag == "dense" and step % 16 == 15:
+        # window-boundary dense state snapshot (fp32 run): the reference
+        # trajectory for the long-rollout state-error curve
+        _dump_state_snapshot(layer, idx, step)
+
+
+def _dump_state_snapshot(layer, idx, step):
+    ssm_state = layer.kv_cache[1]
+    snap = ssm_state[idx].clone().cpu()
+    torch.save(
+        {"idx": idx.cpu(), "state": snap},
+        f"/tmp/lq_dump/state_{layer.prefix.replace('.', '_')}_step{step}.pt",
+    )
 
 
 @lru_cache(maxsize=1)
@@ -672,7 +710,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                     beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
                     scale=key_decode.shape[-1] ** -0.5,
                 )
-                pools.flush(idx)
+                _lq_flush(use_leapquant, pools, idx)
                 core_attn_out_decode = o.unsqueeze(0)
             else:
                 core_attn_out_decode = recurrent_gated_delta_rule(
@@ -822,7 +860,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                     beta=beta_non_spec.squeeze(0),
                     scale=key_non_spec.shape[-1] ** -0.5,
                 )
-                pools.flush(idx)
+                _lq_flush(use_leapquant, pools, idx)
                 core_attn_out_non_spec = o.unsqueeze(0)
                 if os.getenv("VLLM_ASCEND_GDN_LQ_DUMP"):
                     _lq_dump_step(self, "lq", idx, key_non_spec, query_non_spec, value_non_spec,
