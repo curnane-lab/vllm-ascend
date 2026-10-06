@@ -131,3 +131,28 @@ AIV↔AIC 硬件握手不存在。AIV-only / AIC-only 均正常。
 （int8→fp16 staging，已实测 B tile 逐位一致）；② AIC-only cube GEMV
 （本探针）；③ vector epilogue（rank-1 项 + 装配）。遗留：AIV-only CopyOut
 有未定位的编译器层故障，epilogue op 需重写再趟。
+
+## 更新 2026-10-06 晨（M2-D2 step v2 三段式，验收全出门）
+
+vllm-ascend commits `cc975a8`→`b2b6f7b`→`c2a6d34`→`677532c`，报告
+`leapquant-npu/results/M2-D2-stepv2.md`。形态：dequant（AIV，codes→fp16
+staging 逐位一致，scale 因式到 q/k 侧）→ batched GEMV（AIC，GEMV 拆分
+0.035/0.063/0.420ms @B=16/64/256）→ epilogue（AIV，v1 assemble 段、
+codes 点积归零），flag `VLLM_ASCEND_GDN_LQ_STEP_V2`（默认关）。
+
+| B | step v2 wall | triton（重测口径） | 稠密 fp32 | v2 vs triton |
+|---|---|---|---|---|
+| 16 | 0.98–1.08 | 2.097 | 11.7 | ~2.0× |
+| 64 | 1.58–1.62 | 3.018 | 13.5 | 1.9× |
+| 256 | 4.91–4.97 | 6.031 | 21.1 | 1.2× |
+
+验收线 B=64<3.018 ✓、B=256<6.031 ✓、B=16≤2.0 ✓ 全过。对拍：w/p/fill
+bitexact，o 曲线与 v1 逐点重合（96 步 9.6e-3 vs v1 9.5e-3，v1 固有漂移）；
+48-token 冒烟 flag 开关均 3/4 逐 token 一致，分歧点与现网完全相同（token 36）。
+
+关键实证：**N=2 打包无意义**——状态按 value head 持有（16 key/32 value
+head，value head h 用 key head h//2），两 value head 的 codes 不共享；
+G=B×32 独立实例。最大坑：binding `.contiguous()` 实体化统一池视图导致
+executor 缓存泄漏 2.6GB/步（已修，as_strided 基址视图）；v1 binding 同隐患
+待修。残留：flag 开时 executor 键不命中走慢路径（B=256 wall-kernel 差
+~3ms，需输入池化）；epilogue 无 double-buffer。

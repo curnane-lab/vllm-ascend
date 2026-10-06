@@ -17,6 +17,7 @@
 
 from functools import lru_cache, wraps
 import os
+import sys
 
 import torch
 import torch_npu
@@ -107,6 +108,26 @@ def _lq_decode_step(mode, pools, idx, kn, qn, v, g_log, beta, scale):
     if mode == 2 or mode == 3:
         return gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale)
     return pools.decode_step(idx=idx, kn=kn, qn=qn, v=v, g_log=g_log, beta=beta, scale=scale)
+
+
+def _lq_decode_step_v2(pools, idx, kn, qn, v, g_log, beta, scale):
+    """M2-D2 three-op AscendC pipeline (dequant -> cube GEMV -> epilogue).
+
+    kn/qn are the UNexpanded [T, Nk, K] key-head rows; the head expansion
+    (value head h uses key head h//rep) moves into the kernels. Returns None
+    when the pipeline is unavailable so the caller falls back to the Triton
+    step. The bindings live in the leapquant-npu workspace (research
+    integration; gated by VLLM_ASCEND_GDN_LQ_STEP_V2, default off).
+    """
+    lq_path = os.environ.get("VLLM_ASCEND_GDN_LQ_PATH",
+                             "/mnt/workspace/leapquant-npu")
+    if lq_path not in sys.path:
+        sys.path.insert(0, lq_path)
+    try:
+        from gdn_lq_step_v2 import step_pools_v2
+    except ImportError:
+        return None
+    return step_pools_v2(pools, idx, kn, qn, v, g_log, beta, scale)
 
 
 def _lq_flush(mode, pools, idx):
@@ -697,19 +718,34 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 idx = non_spec_state_indices_tensor[: attn_metadata.num_decodes].flatten().long()
                 num_k = max(self.num_k_heads // self.tp_size, 1)
                 rep = self.num_v_heads // num_k
-                kn = key_decode.squeeze(0).repeat_interleave(rep, dim=1)
-                qn = query_decode.squeeze(0).repeat_interleave(rep, dim=1)
-                o = _lq_decode_step(
-                    use_leapquant,
-                    pools,
-                    idx=idx,
-                    kn=kn,
-                    qn=qn,
-                    v=value_decode.squeeze(0),
-                    g_log=g_non_spec[:, :num_decode_tokens].squeeze(0),
-                    beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
-                    scale=key_decode.shape[-1] ** -0.5,
-                )
+                o = None
+                if envs.VLLM_ASCEND_GDN_LQ_STEP_V2:
+                    # v2: kn/qn stay unexpanded; the GQA expansion moves
+                    # into the kernels. None -> fall back to the Triton step.
+                    o = _lq_decode_step_v2(
+                        pools,
+                        idx=idx,
+                        kn=key_decode.squeeze(0),
+                        qn=query_decode.squeeze(0),
+                        v=value_decode.squeeze(0),
+                        g_log=g_non_spec[:, :num_decode_tokens].squeeze(0),
+                        beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
+                        scale=key_decode.shape[-1] ** -0.5,
+                    )
+                if o is None:
+                    kn = key_decode.squeeze(0).repeat_interleave(rep, dim=1)
+                    qn = query_decode.squeeze(0).repeat_interleave(rep, dim=1)
+                    o = _lq_decode_step(
+                        use_leapquant,
+                        pools,
+                        idx=idx,
+                        kn=kn,
+                        qn=qn,
+                        v=value_decode.squeeze(0),
+                        g_log=g_non_spec[:, :num_decode_tokens].squeeze(0),
+                        beta=beta_non_spec[:, :num_decode_tokens].squeeze(0),
+                        scale=key_decode.shape[-1] ** -0.5,
+                    )
                 _lq_flush(use_leapquant, pools, idx)
                 core_attn_out_decode = o.unsqueeze(0)
             else:
@@ -846,15 +882,30 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 idx = non_spec_state_indices_tensor.flatten().long()
                 num_k = max(self.num_k_heads // self.tp_size, 1)
                 rep = self.num_v_heads // num_k
-                # expand GQA key/query to value heads: value head h uses key head h // rep
-                kn = key_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
-                qn = query_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
-                o = _lq_decode_step(
-                    use_leapquant,
-                    pools,
-                    idx=idx,
-                    kn=kn,
-                    qn=qn,
+                o = None
+                if envs.VLLM_ASCEND_GDN_LQ_STEP_V2:
+                    # v2: kn/qn stay unexpanded; the GQA expansion moves
+                    # into the kernels. None -> fall back to the Triton step.
+                    o = _lq_decode_step_v2(
+                        pools,
+                        idx=idx,
+                        kn=key_non_spec.squeeze(0),
+                        qn=query_non_spec.squeeze(0),
+                        v=value_non_spec.squeeze(0),
+                        g_log=g_non_spec.squeeze(0),
+                        beta=beta_non_spec.squeeze(0),
+                        scale=key_non_spec.shape[-1] ** -0.5,
+                    )
+                if o is None:
+                    # expand GQA key/query to value heads: value head h uses key head h // rep
+                    kn = key_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
+                    qn = query_non_spec.squeeze(0).repeat_interleave(rep, dim=1)
+                    o = _lq_decode_step(
+                        use_leapquant,
+                        pools,
+                        idx=idx,
+                        kn=kn,
+                        qn=qn,
                     v=value_non_spec.squeeze(0),
                     g_log=g_non_spec.squeeze(0),
                     beta=beta_non_spec.squeeze(0),

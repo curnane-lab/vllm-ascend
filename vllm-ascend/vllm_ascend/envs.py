@@ -94,6 +94,12 @@ env_variables: dict[str, Callable[[], Any]] = {
     # when the custom op is unavailable or during graph capture).
     # Valid values: 0, 1, 2, 3. Not sensitive.
     "VLLM_ASCEND_GDN_LEAPQUANT": lambda: int(os.getenv("VLLM_ASCEND_GDN_LEAPQUANT", "0")),
+    # M2-D2 step v2: replace the Triton LeapQuant decode step with the
+    # three-op AscendC pipeline (AIV dequant staging -> AIC cube GEMV -> AIV
+    # epilogue) in gdn.py. Only effective when VLLM_ASCEND_GDN_LEAPQUANT is
+    # also set (2 or 3); falls back to the Triton step whenever a custom op
+    # is unavailable or returns False. Default 0 (off). Not sensitive.
+    "VLLM_ASCEND_GDN_LQ_STEP_V2": lambda: int(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2", "0")),
 }
 
 # end-env-vars-definition
