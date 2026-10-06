@@ -55,12 +55,15 @@ def main():
     )
     sp = SamplingParams(temperature=0.0, max_tokens=args.tokens)
     prompts = [PROMPT] * args.batch
-    llm.generate(prompts[:1], sp)  # compile/warm
+    llm.generate(prompts, sp)  # compile/warm at the FULL batch shape
     torch.npu.reset_peak_memory_stats()
     t0 = time.time()
     outs = llm.generate(prompts, sp)
     dt = time.time() - t0
     ntok = sum(len(o.outputs[0].token_ids) for o in outs)
+    # wall includes the prefills of all prompts amortized over the whole
+    # run; per-step figures derived as wall/tokens are "generation wall
+    # amortized (prefill included)", NOT pure decode step latency
     # engine allocations live in the EngineCore process; torch stats in
     # the driver see nothing. Query the device directly while the LLM
     # (and its KV pool) is still alive.
@@ -71,6 +74,8 @@ def main():
         import re as _re
         used = [int(m.group(1)) for m in
                 _re.finditer(r"(\d+)\s*/\s*65536", out)]
+        # single end-of-run sample: it bounds the pool size but can miss
+        # the true transient peak; treat as "pool at end of run"
         peak = max(used) / 1024 if used else 0.0
     except Exception:
         peak = torch.npu.max_memory_allocated() / 2 ** 30
@@ -90,7 +95,7 @@ def main():
                 "tokens": args.tokens, "eager": args.eager,
                 "cudagraph": args.cudagraph, "wall_s": dt,
                 "output_toks": ntok, "tok_per_s": ntok / dt,
-                "peak_mem_gib": peak, "tag": args.tag,
+                "pool_at_end_gib": peak, "peak_note": "single npu-smi sample at end of run; not the transient peak", "tag": args.tag,
                 "token_ids": [list(o.outputs[0].token_ids) for o in outs],
             }) + "\n")
 

@@ -202,47 +202,107 @@ def _q0_pad(pools):
 
 
 _WINDOW = 16
+# max idx-view staleness in decode steps; the skip path refreshes the
+# view every _VIEW_LAG steps (a newly admitted slot cannot be due for
+# WINDOW-1 steps, so the lag is safe)
+_VIEW_LAG = 4
 _MIRROR = {}
 
 
-def _mirror(dev, n):
+def _mirror(pools, dev, n):
     """Pinned double buffer + sequence-tag validity for the sync-free due
-    gate. torch.npu.Event is unusable on this stack (query() never fires
-    and repeated record corrupted later kernels), so copy completion is
-    proven by a device round-trip: the host bumps a 1-element device
-    tensor before fprep and copies it back after; a buffer's pinned
-    fills are trustworthy only when its companion pinned slot shows the
-    matching sequence number."""
-    key = str(dev)
+    gate, keyed BY SLOT ID (E2). torch.npu.Event is unusable on this
+    stack, so copy completion is proven by a device round-tripped
+    sequence number. Every flush call enqueues an async idx -> pinned
+    copy (plus a fills copy on launch calls); the decision consumes the
+    freshest PROVEN buffer. fprep additionally writes each instance's
+    slot id into flags plane 1, so the host mirror records
+    slot -> (fill, gen) instead of batch-position -> fill: a batch
+    position swap must not inherit a stale fill."""
+    # Per-pools mirrors: each GDN layer flushes its own pools once per
+    # decode step, and a full model forward of device work separates
+    # consecutive flushes of the SAME layer, so the async idx/seq copies
+    # always prove before that layer's next decision. A shared per-device
+    # mirror instead sees 24 flushes per step and its proofs lag
+    # unpredictably (intermittent missed folds in the unsynced parity
+    # flow). Keyed by id(pools); layers hold their pools for life.
+    key = (str(dev), id(pools))
     st = _MIRROR.get(key)
     if st is None or st["cap"] < n:
         cap = max(n, 4096)
+        pin = [torch.zeros(2 * cap, dtype=torch.int32, pin_memory=True)
+               for _ in range(2)]
+        pin_idx = [torch.zeros(cap, dtype=torch.int64, pin_memory=True)
+                   for _ in range(2)]
+        pin_seq = [torch.zeros(1, dtype=torch.int32, pin_memory=True)
+                   for _ in range(2)]
         st = {
             "cap": cap,
-            "pin": [
-                torch.zeros(cap, dtype=torch.int32, pin_memory=True),
-                torch.zeros(cap, dtype=torch.int32, pin_memory=True),
-            ],
-            "pin_seq": [
-                torch.zeros(1, dtype=torch.int32, pin_memory=True),
-                torch.zeros(1, dtype=torch.int32, pin_memory=True),
-            ],
+            "pin": pin,  # [fills cap | slots cap] int32 per buffer
+            "pin_idx": pin_idx,
+            "pin_seq": pin_seq,
             "dev_seq": torch.zeros(1, dtype=torch.int32, device=dev),
             "host_seq": torch.zeros(1, dtype=torch.int32, pin_memory=True),
-            # numpy views for the microsecond-scale skip decision
-            "pin_np": None,
-            "seq_np": None,
-            # per-slot: gen of the last fills copy written there, the
-            # batch size of that copy, and the steps simulated since
+            "pin_np": [t.numpy() for t in pin],
+            "idx_np": [t.numpy() for t in pin_idx],
+            "seq_np": [t.numpy() for t in pin_seq],
+            # per buffer: gen of the copy written there, its batch size,
+            # whether it carried fills (launch step)
             "buf_gen": [0, 0],
-            "buf_n": [0, 0],
-            "age": 0,
+            "buf_n": [0, 0],       # tokens t (idx view length)
+            "buf_inst": [0, 0],    # instances n = t*h (fills/slots length)
+            "buf_step": [0, 0],
+            "buf_launch": [False, False],
+            # slot id -> (fill observed, observation step); the due sim
+            "fills": {},
             "gen": 0,
+            # pools-side resync epoch (init_from_dense bumps it); a
+            # change invalidates every recorded fill - the slots may
+            # have been recycled with fresh state
+            "epoch": -1,
         }
-        st["pin_np"] = [t.numpy() for t in st["pin"]]
-        st["seq_np"] = [t.numpy() for t in st["pin_seq"]]
         _MIRROR[key] = st
     return st
+
+
+def _apply_proven_launch_copies(st, cur_step):
+    """Fold freshly-proven launch buffers into the slot->fill dict.
+
+    The recorded step is the DECODE step the copy observed (the caller
+    passes one flush per decode step per layer; the dict is shared
+    across layers because all layers' pools advance in lockstep)."""
+    for w in (0, 1):
+        if not st["buf_launch"][w]:
+            continue
+        g = st["buf_gen"][w]
+        if int(st["seq_np"][w][0]) != g:
+            continue
+        n = st["buf_inst"][w]
+        fills = st["pin_np"][w][:n]
+        slots = st["pin_np"][w][n:2 * n]
+        ws = st["buf_step"][w]
+        seen = set()
+        for i in range(n):
+            seen.add(int(slots[i]))
+            st["fills"][int(slots[i])] = (int(fills[i]), ws)
+        # drop slots absent from the launch batch: a departed slot's sim
+        # can only grow, and nothing would ever refresh it - stale
+        # entries would fire phantom launches. Re-entering slots read as
+        # unknown -> conservative due, which is safe because production
+        # re-entries always come with a low fill (resync after prefill;
+        # decode continuity across a batch removal is impossible).
+        for k in [k for k in st["fills"] if k not in seen]:
+            del st["fills"][k]
+        st["buf_launch"][w] = False
+    # drop entries not refreshed recently; a reappearing slot then reads
+    # as unknown -> conservative due
+    keep = cur_step - 2 * _WINDOW
+    for k in [k for k, (_, g) in st["fills"].items() if g < keep]:
+        del st["fills"][k]
+
+
+def launch_stats():
+    return {k[1]: v.get("launches", 0) for k, v in _MIRROR.items()}
 
 
 def reset_due_gate(dev=None):
@@ -254,7 +314,7 @@ def reset_due_gate(dev=None):
         _MIRROR.pop(str(dev), None)
 
 
-def flush_pools_v2(pools, idx) -> bool:
+def flush_pools_v2(pools, idx, step=None) -> bool:
     """Cube-pipeline flush (M3-3b). Returns False when unavailable."""
     try:
         if torch.npu.is_current_stream_capturing():
@@ -266,58 +326,125 @@ def flush_pools_v2(pools, idx) -> bool:
         t = idx.shape[0]
         dev = idx.device
         n = t * h
-        # Sync-free due gate (production pattern: one decode step between
-        # flushes): fill advances by exactly one per decode step, wraps
-        # to 1 after a fold (fill == L), and resync resets it to 0, so
-        # the host simulates fill from the freshest PROVEN pinned values
-        # (a buffer is proven when its round-tripped seq number shows
-        # up) and launches only when the simulated fill reaches L. Slot
-        # churn at a position can only over-predict (launch is always
-        # safe: ftail re-checks due on device); an under-predict would
-        # need a fresh slot to be due earlier than the predecessor's
-        # leftover fill allows, which the arithmetic rules out. Batch
-        # shape change forces a refresh launch. Nothing-due steps cost
-        # zero device work and no synchronize.
-        st = _mirror(dev, n)
-        best = -1
-        bw = 0
+        # Sync-free due gate, keyed BY SLOT (E2). Invariants: (1) one
+        # decode step per flush call (gdn.py calls this once per layer
+        # after the decode step); (2) the caller consumes per-step
+        # results before the next flush (vLLM sampling D2H does this in
+        # production) so the async proof copies land between flushes.
+        # The mirror is per-pools: each layer's flushes are one model
+        # forward apart, which is what makes (2) hold per layer. fill advances by exactly one per decode step,
+        # wraps to 1 after a fold (fill == L), resync resets it to 0.
+        # Every call enqueues an async idx -> pinned copy so the decision
+        # sees the batch's slot ids (<=2 steps stale; a guard bounds the
+        # staleness, and a slot admitted within the grace window cannot
+        # be due yet). Launch iff any viewed slot is UNKNOWN (never
+        # observed) or its simulated fill reaches L. Launching is always
+        # safe (ftail re-checks due on device); the slot-keyed dict makes
+        # position swaps unable to hide a due slot behind a stale low
+        # fill. Nothing-due steps are pure host (~microseconds).
+        st = _mirror(pools, dev, n)
+        gen = st["gen"] + 1
+        cur_step = gen if step is None else int(step)
+        force = bool(os.getenv("VLLM_ASCEND_GDN_LQ_FLUSH_V2_FORCE"))
+        st["host_seq"][0] = gen
+        # NB: Tensor.to(dst, non_blocking=True) is a SILENT NO-OP on this
+        # torch_npu build - dst.copy_(src, non_blocking=True) is the
+        # working async form (verified H2D and D2H).
+        st["dev_seq"].copy_(st["host_seq"], non_blocking=True)
+        _apply_proven_launch_copies(st, cur_step)
+        # pools-side resync (init_from_dense / quantize_from_tensor)
+        # recycles slots behind the mirror's back: drop every record
+        epoch = getattr(pools, "_lq_epoch", 0)
+        if st["epoch"] != epoch:
+            st["fills"].clear()
+            st["epoch"] = epoch
+        launch = True
+        view_g = -1
+        vw = 0
         for w in (0, 1):
             g = st["buf_gen"][w]
-            if g > 0 and int(st["seq_np"][w][0]) == g:
-                if g > best:
-                    best = g
-                    bw = w
-        if best > 0 and st["buf_n"][bw] == n:
-            prev = st["pin_np"][bw][:n]
-            base = np.where(prev >= _WINDOW, 0, prev)
-            if not bool((base + st["age"] + 1 >= _WINDOW).any()):
-                st["age"] += 1
-                return True
+            if g > 0 and int(st["seq_np"][w][0]) == g and g > view_g:
+                view_g = g
+                vw = w
+        # The idx view may lag up to _VIEW_LAG decode steps: a batch
+        # change is fully visible after _VIEW_LAG steps, and a newly
+        # admitted slot needs 15 decode steps before it can be due, so
+        # the lag cannot hide a due slot.
+        reason = "noview"
+        if not force and view_g > 0 and (cur_step - st["buf_step"][vw]) <= _VIEW_LAG:
+            reason = "stale"
+            view = st["idx_np"][vw][:st["buf_n"][vw]]
+            fills = st["fills"]
+            W = _WINDOW
+            for raw in view:
+                ent = fills.get(int(raw))
+                if ent is None:
+                    reason = "unknown"
+                    break
+                f0, s0 = ent
+                if f0 >= W:
+                    # fill == L records the pre-fold reading of a head
+                    # that was due AND folded at observation s0. With an
+                    # explicit step counter the post-fold window is
+                    # sim = cur - s0 (real fill ran 1,2,...): due again
+                    # when it reaches W, and a same-step double flush
+                    # (cur == s0, no decode between) re-fires. Without a
+                    # step counter (step=None) no credit applies at all:
+                    # two consecutive fill>=L readings always re-fire,
+                    # which keeps no-decode measurement loops honest.
+                    if step is None or cur_step - s0 == 0 \
+                            or cur_step - s0 >= W:
+                        reason = "due16"
+                        break
+                    continue
+                if f0 + (cur_step - s0) >= W:
+                    reason = "due"
+                    break
+            else:
+                launch = False
+                reason = "skip"
+        if os.getenv("VLLM_ASCEND_GDN_LQ_LAUNCHLOG"):
+            st["reasons"] = st.get("reasons", {})
+            st["reasons"][reason] = st["reasons"].get(reason, 0) + 1
+            if reason not in ("skip",) and (st["reasons"][reason] % 200) == 1:
+                import sys as _s
+                print(f"[lq-reason] pool={id(pools)} gen={gen} step={cur_step} "
+                      f"reason={reason} view_g={view_g} nfills={len(st['fills'])}",
+                      file=_s.stderr, flush=True)
+        if not launch:
+            if gen % _VIEW_LAG == 0:
+                w = gen % 2
+                st["pin_idx"][w][:t].copy_(idx, non_blocking=True)
+                st["pin_seq"][w].copy_(st["dev_seq"], non_blocking=True)
+                st["buf_gen"][w] = gen
+                st["buf_n"][w] = t
+                st["buf_inst"][w] = n
+                st["buf_step"][w] = cur_step
+                st["buf_launch"][w] = False
+            st["gen"] = gen
+            return True
         flags, ab, ba, s, c, kq, vq = _bufs(t, h, dev)
         q0p = _q0_pad(pools)
         state_base = torch.as_strided(pools._state, (1,), (1,))
         slot_stride = pools._state.stride(0) * 4
         base = (int(idx.data_ptr()), int(pools._state.data_ptr()), t, h)
-        counter = st["gen"] + 1
-        st["host_seq"][0] = counter
-        # NB: Tensor.to(dst, non_blocking=True) is a SILENT NO-OP on this
-        # torch_npu build - dst.copy_(src, non_blocking=True) is the
-        # working async form (verified H2D and D2H).
-        st["dev_seq"].copy_(st["host_seq"], non_blocking=True)
         ok = _fprep(state_base, idx, ab, flags, ba, h, slot_stride,
                     ("prep",) + base)
         if not ok:
             return False
-        # Refresh the pinned mirror: alternate the write slot so the
-        # previous launch's copy stays readable until this one proves.
-        w = counter % 2
-        st["pin"][w][:n].copy_(flags.view(torch.int32).reshape(-1)[:n],
-                               non_blocking=True)
-        st["pin_seq"][w].copy_(st["dev_seq"], non_blocking=True)
-        st["buf_gen"][w] = counter
-        st["buf_n"][w] = n
-        st["gen"] = counter
-        st["age"] = 0
+        # mirror bookkeeping for the copies issued after the chain
+        w = gen % 2
+        st["buf_gen"][w] = gen
+        st["buf_n"][w] = t
+        st["buf_inst"][w] = n
+        st["buf_step"][w] = cur_step
+        st["buf_launch"][w] = True
+        st["gen"] = gen
+        st["launches"] = st.get("launches", 0) + 1
+        if os.getenv("VLLM_ASCEND_GDN_LQ_LAUNCHLOG"):
+            import sys as _s
+            print(f"[lq-launch] pool={id(pools)} gen={gen} step={cur_step} "
+                  f"t={t}", file=_s.stderr, flush=True)
         ok = _fgemv(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
                     h, slot_stride, 1, ("g1",) + base)
         ok = ok and _fgemv(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
@@ -332,6 +459,10 @@ def flush_pools_v2(pools, idx) -> bool:
                            h, slot_stride, 4, ("g4",) + base)
         ok = ok and _ftail(state_base, idx, s, c, vq, kq, h, slot_stride, 3,
                            ("t3",) + base)
+        st["pin"][w][:2 * n].copy_(flags.view(torch.int32).reshape(-1)[:2 * n],
+                                   non_blocking=True)
+        st["pin_idx"][w][:t].copy_(idx, non_blocking=True)
+        st["pin_seq"][w].copy_(st["dev_seq"], non_blocking=True)
         return ok
     except Exception as e:
         import sys

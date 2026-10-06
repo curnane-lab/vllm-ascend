@@ -221,9 +221,14 @@ class GDNLeapQuantPools:
     def init_from_dense(self, ssm_state: torch.Tensor, idx: torch.Tensor) -> None:
         """Quantize the dense fp32 states of slots idx into composite checkpoints.
 
+        Bumps ``_lq_epoch``: slot recycling invalidates any host-side
+        fill mirror (flush-v2 due gate), which must then conservatively
+        re-learn the affected slots.
+
         Must be called right after a dense-path write to those slots; reads the
         dense values via a gather first, so in-place aliasing is safe.
         """
+        self._lq_epoch = getattr(self, "_lq_epoch", 0) + 1
         t_idx, h_idx = self.th_index(idx)
         dense = ssm_state[idx].clone().float()
         c, sk, sv, u_new, q_new = _quantize(dense, self.q0)
