@@ -78,3 +78,42 @@ MIX kernel 在本机不可用（fftsplus 空 kernel 也炸，D1 已证），三�
 - vllm-ascend（git）：`csrc/attention/gdn_lq_dequant/`、`csrc/attention/gdn_lq_gemv/`、`csrc/attention/gdn_lq_epilogue/`（均注册进 build_aclnn.sh ascend910_93 列表）；`vllm_ascend/envs.py`、`vllm_ascend/ops/gdn.py`
 - leapquant-npu（非 git）：`gdn_lq_dequant.py` / `gdn_lq_gemv.py` / `gdn_lq_epilogue.py`（ctypes binding）、`gdn_lq_step_v2.py`（pipeline）、`tests/bench_dequant.py` / `tests/bench_gemv.py` / `tests/test_step_v2.py`
 - 复现：`LD_LIBRARY_PATH=/home/developer/Ascend/nnal/atb/9.1.0/atb/cxx_abi_1/lib:$LD_LIBRARY_PATH ASCEND_VISIBLE_DEVICES=5 python tests/test_step_v2.py`
+
+---
+
+## 生产化前置：输入张量池化（2026-10-06）
+
+### executor 键结论
+
+三 op binding 的 executor 缓存键 = 全部输入/输出张量的 **data_ptr 元组** + state.stride + (T, h, scale)（`gdn_lq_{dequant,gemv,epilogue}.py` 的 `_CACHE`；v1 的 `gdn_lq_step_ascendc.py` 同构）。生产形态每步新建 kn/qn/v/g_log/beta/o → 键不命中 → 慢路径（含 host sync）×3。
+
+### 池化设计
+
+`gdn_lq_step_v2.step_pools_v2` 内部维护 (t,nk,h,dev) 键控的**预分配输入槽**（kn/qn/v/g_log/beta/o 各一），每步 `copy_` 进固定槽位（异步流内拷贝），data_ptr 恒定 → 每步全命中。**关键发现：aclnn 运行时 executor 池按 op 类型 + desc 键（不含 data_ptr）**，为同 op 建第二个 executor 会复用内部块、悄悄废掉第一个——4 槽 ring 在复用步（第 5 步）输出全错（o rel 1.2），ring=1 单槽 96+ 步逐位级一致。故 **RING=1**（串行 decode 步间流序本就强制，无性能损失）；副作用：返回的 o 是池视图，仅保证到下一次 step_pools_v2 调用前有效（gdn.py 立即消费进 core_attn_out ✓，需久持请 .cpu() 快照）。另将共享 `_WS_BUF` 地板设为 256MB（防任何重分配）。
+
+### wall 前后对照（ms/步，每步全新数据内容，设备端生成）
+
+| B | 池化前 prod wall | 池化后 prod wall | cached wall | 加速 |
+|---|---|---|---|---|
+| 16 | 5.75 | **0.764** | 0.272 | 7.5× |
+| 64 | 9.67 | **0.697** | 0.450 | 13.9× |
+| 256 | 29.30 | **2.216** | 1.947 | 13.2× |
+
+池化后 prod-cached 差 0.25-0.49ms = 设备端输入生成（5 个 torch op，模拟 projection 输出，非 step 成本）+ copy_。
+
+### copy_ 开销（5 次拷贝合计，纯测量）
+
+B=16: 0.104ms；B=64: 0.095ms；B=256: 0.076ms —— 在 +0.2ms 预算内。
+
+### 验收状态
+
+- step 全契约对拍：STEP V2 PARITY PASS（96 步 6 窗）
+- 五份基线全绿；48-token 冒烟 flag 关 4.5s / flag 开 9.3s，均 3/4 逐 token 一致（token 36 既有分歧不变）
+- v2 生产形态 wall B=256 = 2.216ms vs triton 同口径 4.066ms —— **生产形态下 v2 也赢了**
+- 提交：池化全部落在 leapquant-npu（非 git 仓），vllm-ascend 零改动、无需 commit
+
+### 残留风险
+
+1. RING=1 的 o 生命周期契约（下一步调用即失效）——gdn.py 现用法安全，后续调用方需知悉。
+2. executor-per-op-per-shape 限制：同进程多 (T,h) 组合并存时同 op 多 executor 的相互影响未系统性验证（本机 smoke/parity 单形状通过；多形状同进程建议每形状一轮或加进程级验证）。
+3. 设备 flaky 依旧在（全部测量重试兜底）。
