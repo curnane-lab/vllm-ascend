@@ -1,0 +1,4 @@
+{"prompt": "\u8bf7\u7528\u4e2d\u6587\u7b80\u8981\u4ecb\u7ecd\u91cf\u5b50\u8ba1\u7b97\u7684\u57fa\u672c\u539f\u7406\u3002", "text": "\n\n<think>\nHere's a thinking process", "token_ids": [271, 248068, 198, 8160, 579, 264, 7047, 1817]}
+{"prompt": "Write a short Python function to compute the nth Fibonacci number and explain it.", "text": "\n\ndef fib(n):\n    if", "token_ids": [271, 727, 15336, 1393, 1590, 198, 262, 413]}
+{"prompt": "Solve step by step: A train travels 300 km in 2 hours, then 150 km in 1 hour. What is its average speed for the whole journey?", "text": "\n\nTo find the average speed for the", "token_ids": [271, 1206, 1423, 279, 5289, 4478, 364, 279]}
+{"prompt": "Explain the difference between TCP and UDP to a junior engineer, with one use case each.", "text": "\n\nHere is an explanation tailored for a", "token_ids": [271, 8160, 369, 449, 15673, 39445, 364, 264]}
