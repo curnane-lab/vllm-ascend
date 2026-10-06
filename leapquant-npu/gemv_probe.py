@@ -112,7 +112,12 @@ def gdn_lq_gemv_probe(a, b, c) -> bool:
         ret = lib.aclnnGdnLqGemvProbeGetWorkspaceSize(
             *args, ctypes.byref(ws_size), ctypes.byref(executor))
         assert ret == 0, f"get_ws ret={ret} ws={ws_size.value}"
-        need = int(ws_size.value) if ws_size.value else 1
+        # floor the shared workspace so it never reallocates: the cached
+        # executor bakes the workspace ADDRESS at creation, and a later
+        # realloc frees the old block for the caching allocator - the next
+        # torch allocation lands on it and the stale executor corrupts it
+        # (found via input-ring reuse at step 5, 2026-10-06)
+        need = max(int(ws_size.value) if ws_size.value else 1, 256 * 2 ** 20)
         if _WS_BUF is None or _WS_BUF.numel() < need:
             _WS_BUF = torch.empty(need, dtype=torch.uint8, device=dev)
         ret = lib.aclnnGdnLqGemvProbe(
