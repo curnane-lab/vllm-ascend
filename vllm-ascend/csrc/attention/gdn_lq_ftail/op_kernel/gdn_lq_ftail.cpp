@@ -277,7 +277,12 @@ private:
 
         // E = S - sum_r qv[r,v] * uk[r,:]; uk[k,r] = cUb[k*16+r].
         // stage uk rows contiguously first (4 rows x 128 scalars).
+        // sumAbs MUST be zero-initialized before the accumulation (v1
+        // gdn_lq_flush line ~400 does); without it sk/sv inherited
+        // uninitialized UB bytes - intermittently NaN - while codes
+        // survived only because Maxs/Mins clamp NaN to +-QMAX.
         LocalTensor<float> sumAbs = scrUb;  // F_K floats, dead after sk
+        Duplicate(sumAbs, 0.0f, F_K);
         for (uint32_t r = 0; r < F_R; ++r) {
             for (uint32_t k = 0; k < F_K; ++k) {
                 vecUb.SetValue(r * F_K + k, cUb.GetValue(k * 32 + r));
@@ -342,6 +347,12 @@ private:
         }
 
         // ---- payload writeback (same layout as gdn_lq_flush) ----
+        // V/S-computed skUb/svUb/codesUb/vecUb are consumed by the UB->UB
+        // payload copies below; without a full barrier the copies
+        // intermittently read un-settled data (s_k/s_v came back NaN on
+        // back-to-back cached launches while codes survived only because
+        // the scalar q-gather loop delayed its copy).
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<int8_t> oq = outQ.AllocTensor<int8_t>();
         DataCopy(oq, codesUb, F_V * F_K);
         LocalTensor<float> sf = oq.ReinterpretCast<float>();

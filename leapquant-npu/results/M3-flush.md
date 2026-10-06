@@ -10,7 +10,7 @@
 | M3-1 fill=L 语义 | ✅ 完成（三重门全绿） | 5 对拍 PASS + v2 parity PASS + 48-token 冒烟 3/4（分歧仍在 token 36） |
 | M3-2 flush due 扫描 | ✅ 完成 | nothing-due 0.046/0.078/0.051ms @B=16/64/256（≤0.1ms 达标）；all-due 不退化 |
 | M3-3a flush S→fp16 | ❌ 实测回退 | 见下（更慢 + 判据余量变小，已 checkout） |
-| M3-3b flush 三段式 cube | ⏸ 未动工（设计已定，工作量估算见下） | — |
+| M3-3b flush 三段式 cube | ✅ 全链贯通（修正轮修复 4 个代码 bug：staging undersize / 漏 p / sumAbs 未清零 / executor 池 phase 碰撞） | 对拍 ratio 1.0000，延迟表见 3b 章节 |
 | v1 binding 修复 | ✅ 完成 | test_step_ascendc / flush / strided parity 不变（PASS） |
 | FULL-graph 复测 | ⏸ 未复测 | 代码路径未变（capture 时 binding 返回 False → 图内录 torch flush），piecewise-only 限制维持 |
 
@@ -74,7 +74,7 @@ flush(idx) 不得对同一头连续调用两次而中间无该头的 step：gdn.
 
 1. 设备偶发 vec error（跨进程残留型，重试即过）仍在，所有测量均已重试兜底；根因未定位（疑似驱动级）。
 2. v2 flag 生产形态 wall 高（B 表）——输入池化前不可开。
-3. all-due flush 44ms@B=256 未优化（M3-3b 未做）。
+3. all-due flush 44ms@B=256 已用 v2 cube 链降到 27ms（仍未达个位数，方向 = grouped GEMM）；v2 未接入生产路径，见 3b 章节。
 4. FULL-graph capture 未复测；piecewise-only 限制维持原结论。
 5. leapquant-npu 侧 binding（gdn_lq_*.py）的 warm_cache/dummy 几何与 key 策略同 v1 隐患已修；leapquant-npu 非 git 仓，变更以文件为准。
 
@@ -91,15 +91,33 @@ flush(idx) 不得对同一头连续调用两次而中间无该头的 step：gdn.
 
 ## 趟出的平台事实（已写进代码注释）
 
-1. **AIC 上 GlobalTensor::GetValue 标量读 GM 必然故障**（假"全实例处理"对照实验证实）→ fgemv 无法 kernel 内判 due，改 fprep 写 flags + host 端 `flags.sum().item()` 门控剩余 7 次发射。
+1. **AIC 上 GlobalTensor::GetValue 标量读 GM 必然故障**（假"全实例处理"对照实验证实）→ fgemv 无法 kernel 内判 due，改 fprep 写 flags（fill 值）+ host 端无同步 due 门（pinned 镜像模拟，见 3b 修正章节；最初的 `flags.sum().item()` 实现已废弃）。
 2. **转置 B 的 ND 读在 G>64 时 MTE 非法地址**（T=2 过、T=8 崩，两次复现）→ kq/vq 由 AIV 预转置成 [K,32]，cube 直读。
 3. **mgs 结果的裸 TBuf→GM DataCopy 故障** → 改走 v1 验证过的 TQue payload 路径后 t1 通过。
 4. MatmulApiTiling 拒绝 N=16（→32）、拒绝复用 SetShape 的对象（→双 tiling 对象）。
 
-## 卡点（如实记录）
+## 卡点（2026-10-06 修正轮：已全部解决，全链贯通）
 
-`ftail` phase-2（vq 存储）确定性 MTE 非法地址故障，已尝试：S_V 同步、V_MTE3 同步、TQue 存储路径、vq 改 output——每步推进后故障点在 t1/t2 间漂移且 standalone 与链内表现不一致（t1 链内过、standalone 崩），**已无法与本机 flaky 设备故障区分**。fprep/g1/g2/t1/g3  individually 验证通过，全链未贯通。留给后续：在健康环境/新驱动上首先复验 flaky 假设（同代码多跑几次看是否漂移），再若稳定复现则用最小 repro（ftail 单 op + 固定 staging 输入）继续定位。
+原记录「ftail phase-2 确定性 MTE 故障、无法与 flaky 区分」——修正轮定位出**四个真实代码 bug**（均非设备问题），修复后 8 发射全链贯通、对拍 ratio 1.0000（3 seeds × 2 rounds）：
 
-## 当前 flush 延迟表（M3-3b 未接入，生产路径 = M3-2 状态）
+1. **staging 缓冲区 2 倍 undersize（ftail phase-2 故障的真凶）**：驱动 `_bufs` 把 c/kq/vq 分配为 `[t,h,128,16]`/`[t,h,16,128]`（2048 元素/实例），而 fgemv phases 2-4 的 tiling 是 N=32（MatmulApiTiling 拒绝 N=16）、kernel 按 `[128,32]`（4096 元素/实例）寻址——全部实例越界写。越界落点决定是否踩到未映射页（MTE invalid-GM-address）还是只污染相邻张量（silent corruption/NaN），这正是「故障点在 t1/t2 间漂移、standalone 与链内不一致」的来源。修：c/kq/vq 分配 `[t,h,128,32]`，q0_pad 补到 `[128,32]`。最小 repro：`tests/debug_ftail_repro.py old|new`（old=NaN/0.157 错误，new=PASS 0.0023）。
+2. **fprep 漏 p**：staging 低秩项重建为 qᵀu，契约是 p·qᵀu（diag 行已乘 s_v·p，q 行没乘）。p=Πexp(g) 逐头差异大（测试轨迹 0.2~5），漏 p 造成 ~14% 误差。修：q 行经 fp32 乘 pval 再转 fp16 写入 A 行 0-3，与 torch 参考舍入路径对齐。修复后 rel err 0.137→0.005。
+3. **ftail sumAbs 未清零**：E 累加器 `sumAbs`（别名 scrUb）未初始化就累加（v1 `gdn_lq_flush.cpp:400` 有 `Duplicate(sumAbsUb,0,F_K)`，ftail 抄漏了）→ sk/sv 间歇 NaN（UB 残留字节解释）而 codes 因 Maxs/Mins 把 NaN clamp 成 ±127 反而存活——与观察到的「sk/sv NaN、codes 有限」完全吻合。修：`Duplicate(sumAbs, 0.0f, F_K)`。另在 payload 组装前加 `PipeBarrier<PIPE_ALL>()`。
+4. **aclnn executor 池 phase 碰撞（最难缠的间歇性 corruption）**：运行时 executor 池键 = op 类型 + 张量 desc，**不含 attr**——fgemv 的 4 个 phase（ftail 3 个）executor 句柄相同、后建覆盖先建，缓存的 g1 在 g2 创建后实际跑 g2 的 N=32 tiling（输出全零），且表现随 allocator 布局间歇变化（曾误判为设备 flaky / Event 问题）。验证：in-flight 任务的 launch 在 enqueue 时已快照，不受后续建 executor 影响。修：多 phase op **每次发射前现建 executor**（get_ws+launch+destroy，实测 ~0.37ms/级，host 侧），fprep 单 phase 保持缓存。附带发现：`ctx.destroy()` 后 executor 的 desc 悬空，缓存路径必须保活 ctx。
 
-无变化：all-due 2.78/11.10/43.77ms，nothing-due 0.046/0.078/0.051ms（见上表）。M3-3b 若贯通，预期 all-due ≈ 1-2ms@B=256（4 次 batched GEMM ≈ step-v2 的 4 倍 kernel 时间 + staging 流量）。
+## flush v2 延迟表（贯通后实测，`tests/test_flush_v2.py`）
+
+| B | all-due | nothing-due（skip 步 host wall 中位） | 16 步窗口对账 |
+|---|---------|----------------------------------------|----------------|
+| 16 | 3.9–4.6 ms | 0.065 ms（max 0.10） | 16 步内恰好 1 次全量发射（step 16）+ 1 次 refresh |
+| 64 | 8.8–9.0 ms | 0.065 ms（max 0.10） | 同上 |
+| 256 | 27–28 ms | 0.065 ms（max 0.10） | 同上 |
+
+- **due 门控（A2 要求的 host 同步修正）**：`flags.sum().item()` 已删除。fprep 把每个 head 的 fill 值写进 flags → 异步 D2H 到 pinned → host 从**上一步**的 pinned 值模拟 fill（decode 每步 +1、fold 后 wrap 到 1、resync 归 0），预测 due 才发射剩余 7 级；skip 步纯 host（numpy 判定，~65µs）**零 device 工作、零 synchronize**。复制完成度由 device 往返 seq number 证明（`Event.query()` 在本栈恒 False 且 record 有副作用，弃用）。序列数轮替双缓冲。注意 `Tensor.to(dst, non_blocking=True)` 在本 torch_npu 是**静默 no-op**，必须用 `dst.copy_(src, non_blocking=True)`（autogen 陷阱实证）。
+- **16 步对账**：从 fill=0 起跑，16 步 decode+flush 中恰好 step 16 一次全量 due（window16 实测 heavy=[refresh, step16]）；64 步 4 窗 = 4 次 due + 1 次 refresh，与预算一致。
+- **all-due 27ms@B=256 仍未达个位数目标**：瓶颈是 8192 实例 × 4 phase 的 per-instance 微 GEMM（[128,192]×[192,128]）cube 利用率低 + staging 流量；改进方向是把多实例 batch 成 grouped GEMM（kernel 级工作，未做）。即便 27ms，摊销 27/16×24 ≈ 40ms/step 仍好于 v1 的 66ms/step，且 nothing-due 从 v1 的 0.05ms 再降到 ~0。
+- 对拍判据：decoded-state 误差 vs 纯 fp32 dense 参考，kernel/torch ≤ 1.01；实测 **ratio 1.0000**（3 seeds × 2 rounds，含 16 步混合发射模式）。测试脚手架的 simulate_true 已修正（原实现窗口重复折叠 + 允许正 decay 导致参考自身爆炸）。
+
+## 生产路径声明
+
+v2 仍**未接入 gdn.py**（`flush_pools_v2` 仅测试调用）；生产 flush = `gdn_lq_flush`（v1，AscendC 单 op）不变。接入前待办：all-due 降到个位数 ms（grouped GEMM）、 due 门的「每 decode 步恰好一次 flush 调用」不变式在 gdn.py 混合 batch 路径复核。

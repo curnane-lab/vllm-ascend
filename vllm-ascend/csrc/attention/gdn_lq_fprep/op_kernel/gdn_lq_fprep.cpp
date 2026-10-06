@@ -4,10 +4,12 @@ using namespace AscendC;
 
 // M3-3b stage F1 (AIV). Per due (slot, head): assemble the flush staging.
 // Due = fill >= L (M3-1 semantics); non-due heads cost one 4 B fill read.
+// flags[out] carries the head's fill VALUE (not 0/1): the host wrapper
+// predicts next step's due set as fill == L-1 without any host sync.
 // ONE cube GEMM (fgemv phase 1) then produces S fp16:
-//   S = [q^T | ubuf^T | 0 | codes] @ [u ; w*kbuf ; 0 ; diag(sk/127)]
-// ab_stage[g] fp16 [192,V]: rows 0-3 q, 4-19 ubuf, 20-31 zero,
-//   32-191 = codes rows scaled by (s_v[v]*p)
+//   S = [p*q^T | ubuf^T | 0 | codes] @ [u ; w*kbuf ; 0 ; diag(sk/127)]
+// ab_stage[g] fp16 [192,V]: rows 0-3 p*q (low-rank term is p * q^T u),
+//   4-19 ubuf, 20-31 zero, 32-191 = codes rows scaled by (s_v[v]*p)
 // ba_stage[g] fp16 [192,K]: rows 0-3 u, 4-19 w_j*kbuf_j, 20-31 zero,
 //   32-191 diagonal s_k/127
 // All writes contiguous copies / per-row vector ops; no transposes.
@@ -17,6 +19,7 @@ constexpr uint32_t F_K = 128;
 constexpr uint32_t F_R = 4;
 constexpr uint32_t F_L = 16;
 constexpr uint32_t F_PAD = 192;  // 32 + F_V zero-padded K-dim
+constexpr uint32_t F_SCAN = 16;  // batched due-scan width (v1 pattern)
 constexpr float QMAX = 127.0f;
 
 constexpr uint32_t HEAD_BYTES = 32768;
@@ -70,6 +73,7 @@ public:
         pipe->InitBuffer(svF, F_V * sizeof(float));
         pipe->InitBuffer(wF, F_L * sizeof(float));
         pipe->InitBuffer(metaBuf, 3 * 32);
+        pipe->InitBuffer(scanBuf, F_SCAN * 8 * sizeof(int32_t));
         pipe->InitBuffer(idxBuf, batchNum * sizeof(int64_t));
 
         codesUb = codesBuf.Get<int8_t>();
@@ -83,9 +87,8 @@ public:
         skUb = skF.Get<float>();
         svUb = svF.Get<float>();
         wUb = wF.Get<float>();
-        fillUb = metaBuf.Get<int32_t>();
-        flagWr = metaBuf.Get<int32_t>()[8];
         pUb = metaBuf.Get<float>()[16];
+        fillScanUb = scanBuf.Get<int32_t>();
         idxUb = idxBuf.Get<int64_t>();
 
         DataCopyPadParams pad{false, 0, 0, 0};
@@ -104,13 +107,48 @@ public:
 
     __aicore__ inline void Process()
     {
-        for (uint32_t i = 0; i < myCount; ++i) {
-            ProcessOne(myStart + i);
+        // Due scan with batched fill loads (gdn_lq_flush v1 pattern):
+        // issue a whole batch of 4 B GM reads back-to-back, then ONE
+        // PipeBarrier, then consume. flags are the raw fill values copied
+        // straight out of the scan buffer (no staging slot, no events).
+        for (uint32_t s0 = myStart; s0 < myStart + myCount; s0 += F_SCAN) {
+            uint32_t n = (myStart + myCount - s0) < F_SCAN
+                             ? (myStart + myCount - s0)
+                             : F_SCAN;
+            for (uint32_t i = 0; i < n; ++i) {
+                uint32_t inst = s0 + i;
+                uint32_t b = inst / hNum;
+                uint32_t h = inst % hNum;
+                int32_t slot =
+                    idxUb.ReinterpretCast<int32_t>().GetValue(b * 2);
+                __gm__ uint8_t* base = stateRaw
+                    + static_cast<uint64_t>(slot) * static_cast<uint64_t>(sSlot)
+                    + static_cast<uint64_t>(h) * HEAD_BYTES;
+                GlobalTensor<int32_t> gmFill;
+                gmFill.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ int32_t*>(base + OFF_FILL));
+                DataCopyPad(fillScanUb[i * 8], gmFill[0],
+                            DataCopyParams{1, 4, 0, 0}, padParams);
+            }
+            PipeBarrier<PIPE_ALL>();
+            for (uint32_t i = 0; i < n; ++i) {
+                uint32_t inst = s0 + i;
+                GlobalTensor<int32_t> gmFlag;
+                gmFlag.SetGlobalBuffer(flagsBase + inst);
+                DataCopyPad(gmFlag[0], fillScanUb[i * 8],
+                            DataCopyParams{1, 4, 0, 0});
+                if (fillScanUb.GetValue(i * 8)
+                    >= static_cast<int32_t>(F_L)) {
+                    StageOne(inst);
+                }
+            }
+            // scan buffer slots are reused by the next batch's loads
+            PipeBarrier<PIPE_ALL>();
         }
     }
 
 private:
-    __aicore__ inline void ProcessOne(uint32_t inst)
+    __aicore__ inline void StageOne(uint32_t inst)
     {
         uint32_t b = inst / hNum;
         uint32_t h = inst % hNum;
@@ -118,24 +156,8 @@ private:
         __gm__ uint8_t* base = stateRaw
             + static_cast<uint64_t>(slot) * static_cast<uint64_t>(sSlot)
             + static_cast<uint64_t>(h) * HEAD_BYTES;
-
-        GlobalTensor<int32_t> gmFill;
-        gmFill.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(base + OFF_FILL));
-        DataCopyPad(fillUb, gmFill[0], DataCopyParams{1, 4, 0, 0}, padParams);
-        AscendC::TEventID e0 = pipe->FetchEventID(HardEvent::MTE2_S);
-        SetFlag<HardEvent::MTE2_S>(e0);
-        WaitFlag<HardEvent::MTE2_S>(e0);
-        GlobalTensor<int32_t> gmFlag;
-        gmFlag.SetGlobalBuffer(flagsBase + inst);
-        if (fillUb.GetValue(0) < static_cast<int32_t>(F_L)) {
-            Duplicate(flagWr, 0, 8);
-            DataCopyPad(gmFlag[0], flagWr, DataCopyParams{1, 4, 0, 0});
-            return;
-        }
-        Duplicate(flagWr, 0, 8);
-        flagWr.SetValue(0, 1);
-        DataCopyPad(gmFlag[0], flagWr, DataCopyParams{1, 4, 0, 0});
-
+        // due check + flags write happen in the batched scan (Process);
+        // here: stage the due head's A/B rows for the cube GEMM.
         GlobalTensor<float> gmP;
         gmP.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(base + OFF_P));
         DataCopyPad(pUb, gmP[0], DataCopyParams{1, 4, 0, 0}, padParams);
@@ -170,10 +192,15 @@ private:
         PipeBarrier<PIPE_ALL>();  // MTE2 loads -> V/S consumers
         float pval = pUb.GetValue(0);
 
-        // ---- A staging [192,V] fp16: rows 0-3 q, 4-19 ubuf, 20-31 zero,
+        // ---- A staging [192,V] fp16: rows 0-3 = p*q (contract: the
+        // low-rank term is p * q^T u; q is scaled in fp32 then rounded to
+        // fp16, matching the torch reference's fp32 p * (fp16 q) path as
+        // closely as an fp16 staging allows), 4-19 ubuf, 20-31 zero,
         // rows 32-159 = diag(s_v*p) (one scalar write per row), rest zero
         Duplicate(aUb, static_cast<half>(0.0f), F_PAD * F_V);
-        DataCopy(aUb, uqRawUb[F_R * F_V], F_R * F_V);
+        Cast(tmpF32Ub, uqRawUb[F_R * F_V], RoundMode::CAST_NONE, F_R * F_V);
+        Muls(tmpF32Ub, tmpF32Ub, pval, F_R * F_V);
+        Cast(aUb, tmpF32Ub, RoundMode::CAST_NONE, F_R * F_V);
         Cast(tmpF32Ub, ubufRawUb, RoundMode::CAST_NONE, F_L * F_V);
         Cast(aUb[4 * F_V], tmpF32Ub, RoundMode::CAST_NONE, F_L * F_V);
         FprepSyncV2S();
@@ -222,7 +249,7 @@ private:
     TPipe* pipe = nullptr;
     TBuf<QuePosition::VECCALC> codesBuf, kbufRaw, ubufRaw, uqRaw;
     TBuf<QuePosition::VECCALC> aBuf, bBuf, tmpF32, halfRow, skF, svF, wF;
-    TBuf<QuePosition::VECCALC> metaBuf, idxBuf;
+    TBuf<QuePosition::VECCALC> metaBuf, scanBuf, idxBuf;
     LocalTensor<int8_t> codesUb;
     LocalTensor<bfloat16_t> kbufRawUb, ubufRawUb;
     LocalTensor<half> uqRawUb;
@@ -230,8 +257,7 @@ private:
     LocalTensor<float> tmpF32Ub;
     LocalTensor<half> halfUb;
     LocalTensor<float> skUb, svUb, wUb;
-    LocalTensor<int32_t> fillUb;
-    LocalTensor<int32_t> flagWr;
+    LocalTensor<int32_t> fillScanUb;
     LocalTensor<float> pUb;
     LocalTensor<int64_t> idxUb;
     uint32_t myStart = 0, myCount = 0, batch = 1, hNum = 32;

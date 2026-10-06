@@ -23,15 +23,24 @@
 - 三轮实测结论一致：v2 在全部三档 batch 上输给 mode 3（0.53×/0.67×/0.72×），B 越大差距越小但从未反超。
 - 显存：v2 比 v1 多 ≤ 1 GiB（输入池 + staging），不构成约束。
 
-## 2. 结论：v2 e2e 未赢 mode 3 —— 原因分析
+## 2. 结论：v2 e2e 未赢 mode 3 —— 拆账
 
-kernel 级 wall 时钟上 v2 有明确优势（B=256 生产 step：2.22 ms vs v1 triton 4.07 ms），但没有传导到 e2e：
+kernel 级 wall 时钟上 v2 有明确优势（B=256 生产 step：2.22 ms vs v1 triton 4.07 ms），但没有传导到 e2e。B=256 差值：mode3 278.9 ms/step → v2 388.3 ms/step，**v2 反而 +109 ms/step**。按 24 个 GDN 层拆账（注意是 24 层，32 是头数）：
 
-- e2e B=256 差值：mode3 278.9 ms/step → v2 388.3 ms/step，**v2 反而 +109 ms/step**。
-- v2 step 路径 = 3 个 aclnn op（gdn_lq_dequant AIV / gdn_lq_gemv AIC / gdn_lq_epilogue AIV），每个 op 有 binding + executor 查找 + launch 开销；×32 层后 ≈ **3.4 ms/层** 的 Python/运行时开销，把 kernel 省的 ~1.9 ms/层吃光还倒贴。
-- 换句话说：v2 的瓶颈不在 kernel 而在 op 调度路径，这是 host 侧问题，继续优化 kernel 收益为零。
+| 项 | 每层 | ×24 层 |
+|----|------|--------|
+| kernel 省（4.07 → 2.22 ms） | ~1.85 ms | **~44 ms 省** |
+| host 多（3 次 aclnn 发射的 binding/executor/launch） | ~6.4 ms | **~153 ms 多** |
+| 净 | | **+109 ms/step** |
 
-**建议：`VLLM_ASCEND_GDN_LQ_STEP_V2` 维持默认 0（关）。** v2 保留为 kernel 级基准实现（三 op 正确、PIECEWISE 下数值精确），将来若要启用需要把三 op 合成单 op 或消除 per-op host 开销。
+- v2 step 路径 = 3 个 aclnn op（gdn_lq_dequant AIV / gdn_lq_gemv AIC / gdn_lq_epilogue AIV）；host 开销与 kernel 无关，继续抠 cube 指令 e2e 不动。
+- 瓶颈不在 kernel 而在 per-op 发射路径。**e2e 反超的前提是三次发射收成一次（单 op 化），或图内化且 FULL graph 可用**——这是设计决策，记为待 grok 定夺的开放项。
+
+**建议：`VLLM_ASCEND_GDN_LQ_STEP_V2` 维持默认 0（关）。** v2 保留为 kernel 级基准实现（三 op 正确、PIECEWISE 下数值精确）。
+
+### 池化一节补记（隐患）
+
+`gdn.py` decode 路径的 `idx = indices[:n].flatten().long()` 每层新建张量，executor 缓存键含 `idx.data_ptr()`：当前 caching allocator 对该尺寸的稳定复用使 data_ptr 不变、未触发慢路径；一旦分配模式变化（batch 尺寸抖动、显存压力）键会 miss 而每步退回 slow path（含 host sync）。启用 v2 前应把 idx 纳入输入池（ring slot + 稳定 data_ptr），与 kn/qn/v 同待遇。
 
 ## 3. ACL graph 回归门（B=16，48 tokens）
 
@@ -56,11 +65,12 @@ kernel 级 wall 时钟上 v2 有明确优势（B=256 生产 step：2.22 ms vs v1
 
 - `SMOKE_MEM_UTIL=0.85` 下 FULL **捕获期 OOM**（capture 时额外申请 4.10 GiB 失败，已分配 49.93 GiB / 空闲 1.40 GiB）；降到 0.75 才能跑。`--cudagraph full` 需要比 piecewise 更高的捕获余量。
 - 吞吐 0.23–0.24× eager，与既有 ~0.20× 记录一致。根因（已知，M3-4 记录，本次不改）：`gdn_lq_flush_ascendc` 在 capture 时 executor 未缓存返回 False → torch flush 回退被录进图；v2 三 op 同样因 `torch.npu.is_current_stream_capturing()` 检查回退 triton。v1 的 seq0 漂移即图内回退路径数值差异所致。
+- **澄清**：v2 的「16/16 精确」是捕获期回退到 triton 的结果，不是三段式在图里跑；FULL 下没有任何 LeapQuant 自定义 kernel 进图。
 - 结论：FULL 对两种形态都不构成可启用路径，维持关闭；v2 在 FULL 下数值仍精确（回退到与 v1 相同的 triton 语义）。
 
 ## 4. due-step 摊销附注
 
-all-due flush（fill=L 后每 16 步触发一次全量 flush）单次实测 43.77 ms（B=256），摊销 = 43.77 / 16 ≈ **+2.74 ms/step**，与 batch 无关（host 侧扫描 + 单 op）。v1/v2 两形态共用同一 due 扫描路径，摊销量相同。B=256 下占总 step（~279 ms）约 1%，不构成启用/禁用 v2 的决策因素。
+all-due flush（fill=L 后每 16 步触发一次全量 flush）单次实测 43.77 ms（B=256）。注意这笔账的层数口径：摊销 = 43.77 / 16 ≈ 2.74 ms/step **每层**，× 24 个 GDN 层 ≈ **66 ms/step，已含在 mode 3 的 278.9 ms 里（约 1/4）**——不是可忽略项，只是 v1/v2 两形态共用同一 flush 路径、与 v2 开关决策无关。v2 若启用同样省不掉这笔（flush 不变）；只有把 all-due 本身降下来的 cube 化（M3-3b）才动它。
 
 ## 5. M4 终态回归（vllm-ascend 零改动复核）
 
@@ -75,5 +85,5 @@ all-due flush（fill=L 后每 16 步触发一次全量 flush）单次实测 43.7
 
 ## 6. 变更与 commit
 
-- M4 对 `vllm-ascend` **零代码改动**（纯测量任务），工作区干净，无需 commit。
-- 唯一改动是测量工具 `leapquant-npu/scripts/bench_e2e.py`（加 `--cudagraph piecewise|full`、`--tag`、jsonl 输出、npu-smi 显存峰值解析修复），该目录非 git 仓。
+- M4 测量本身对 `vllm-ascend` 零代码改动；唯一改动是测量工具 `leapquant-npu/scripts/bench_e2e.py`（加 `--cudagraph piecewise|full`、`--tag`、jsonl 输出、npu-smi 显存峰值解析修复），该目录非 git 仓。
+- 本报告的账目修正（拆账/摊销/结论/FULL 澄清/idx 隐患）随修正轮落地，关联的 M3-3b kernel 修复以两个 commit 进 vllm-ascend：`08323c4`（fprep 折 p + flags 语义）、`b39d4d2`（ftail sumAbs 清零 + payload 屏障），详见 `results/M3-flush.md` 3b 修正章节。
