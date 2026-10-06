@@ -77,3 +77,29 @@ flush(idx) 不得对同一头连续调用两次而中间无该头的 step：gdn.
 3. all-due flush 44ms@B=256 未优化（M3-3b 未做）。
 4. FULL-graph capture 未复测；piecewise-only 限制维持原结论。
 5. leapquant-npu 侧 binding（gdn_lq_*.py）的 warm_cache/dummy 几何与 key 策略同 v1 隐患已修；leapquant-npu 非 git 仓，变更以文件为准。
+
+---
+
+# M3-3b 追加章节（flush 三段式 cube，2026-10-06 收尾）
+
+## 设计落地
+
+三个新 op（commit `a1af622`，**未接入 gdn.py**，v1 flush 仍是唯一 flush 路径）：
+- `gdn_lq_fprep`（AIV）：due 扫描 + 装配 staging。核心技巧：**一次 GEMM 算出 S**——D 项（codes 反量化）不写死，而是 A 的行 32-159 = diag(s_v·p)（128 次标量写）、B 的行 32-159 = codes 行 ×(s_k/127)（连续拷贝+向量乘），K-dim=192。全程零转置（cube 的 isTranspose 做逻辑翻转）。
+- `gdn_lq_fgemv`（AIC，phase 1-4）：S=A^T B（fp16 C）→ m1=S^T q0 → qv=S·qk → uk=S^T qv'。
+- `gdn_lq_ftail`（AIV，phase 1-3）：两次 Mgs4（写预转置 [K,32] staging 喂 cube 直读）+ E/sk/sv/codes 量化写回。
+
+## 趟出的平台事实（已写进代码注释）
+
+1. **AIC 上 GlobalTensor::GetValue 标量读 GM 必然故障**（假"全实例处理"对照实验证实）→ fgemv 无法 kernel 内判 due，改 fprep 写 flags + host 端 `flags.sum().item()` 门控剩余 7 次发射。
+2. **转置 B 的 ND 读在 G>64 时 MTE 非法地址**（T=2 过、T=8 崩，两次复现）→ kq/vq 由 AIV 预转置成 [K,32]，cube 直读。
+3. **mgs 结果的裸 TBuf→GM DataCopy 故障** → 改走 v1 验证过的 TQue payload 路径后 t1 通过。
+4. MatmulApiTiling 拒绝 N=16（→32）、拒绝复用 SetShape 的对象（→双 tiling 对象）。
+
+## 卡点（如实记录）
+
+`ftail` phase-2（vq 存储）确定性 MTE 非法地址故障，已尝试：S_V 同步、V_MTE3 同步、TQue 存储路径、vq 改 output——每步推进后故障点在 t1/t2 间漂移且 standalone 与链内表现不一致（t1 链内过、standalone 崩），**已无法与本机 flaky 设备故障区分**。fprep/g1/g2/t1/g3  individually 验证通过，全链未贯通。留给后续：在健康环境/新驱动上首先复验 flaky 假设（同代码多跑几次看是否漂移），再若稳定复现则用最小 repro（ftail 单 op + 固定 staging 输入）继续定位。
+
+## 当前 flush 延迟表（M3-3b 未接入，生产路径 = M3-2 状态）
+
+无变化：all-due 2.78/11.10/43.77ms，nothing-due 0.046/0.078/0.051ms（见上表）。M3-3b 若贯通，预期 all-due ≈ 1-2ms@B=256（4 次 batched GEMM ≈ step-v2 的 4 倍 kernel 时间 + staging 流量）。
