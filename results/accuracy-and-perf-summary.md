@@ -156,3 +156,32 @@ G=B×32 独立实例。最大坑：binding `.contiguous()` 实体化统一池视
 executor 缓存泄漏 2.6GB/步（已修，as_strided 基址视图）；v1 binding 同隐患
 待修。残留：flag 开时 executor 键不命中走慢路径（B=256 wall-kernel 差
 ~3ms，需输入池化）；epilogue 无 double-buffer。
+
+## 更新 2026-10-06 午（M3 flush 图内化主体 + 计时口径修正）
+
+vllm-ascend 提交链 `a9d4110`（fill=L 论文语义，四份代码同 commit，三重门全绿）
+→ `b84e86e`（flush 设备侧 due 扫描：nothing-due 0.046/0.078/0.051ms@B=16/64/256，
+全档 ≤0.1ms，all-due 不退化）→ `d3b9950`（v1 binding contiguous 隐患修复，
+parity 逐位不变）。报告 `leapquant-npu/results/M3-flush.md`。
+
+### 计时口径修正（grok 复核后重测，纯 kernel、reset 在计时循环外）
+triton step 同口径重测 **复现 4.238ms@B=256**（实测 4.062，差 4%）；D1 的
+6.031 系循环内 reset 口径，作废。step v2 纯 kernel 合计（dequant+gemv+epilogue
+实测）0.176/0.458/**1.824ms**，B=256 对 triton 4.062 **赢 2.3×**、对稠密
+~5.8 赢 3.2×——纯 kernel 口径全档过线。
+
+### 生产形态 wall（每步新 kn/qn，executor 慢路径）
+B=16/64/256：5.75 / 9.67 / **29.3ms**（cached wall 0.95–1.07/4.86）。慢路径
+（含 torch.npu.synchronize）~4.8–24.5ms/步。**输入张量池化前 v2 flag 不可开**
+（默认关）。池化是 v2 生产化的前置。
+
+### flush 延迟表（HEAD=b84e86e，含 due-step 尖峰）
+| B | step(triton) | all-due | nothing-due | 16 步摊销 |
+|---|---|---|---|---|
+| 16 | 0.270 | 2.78 | 0.046 | 0.49 |
+| 64 | 1.096 | 11.10 | 0.078 | 1.87 |
+| 256 | 4.062 | 43.77 | 0.051 | 6.85（v2 step 时 4.61） |
+
+M3-3a fp16-S 实测更慢（50.5 vs 43.8ms@B=256）已回退；M3-3b flush 上 cube
+（三段式，GEMM 分解设计已备）是 all-due 44ms 的唯一通道，待开工。fill=L 后
+「step 先于 flush」时序契约已备案（图内化重排必须保持）。

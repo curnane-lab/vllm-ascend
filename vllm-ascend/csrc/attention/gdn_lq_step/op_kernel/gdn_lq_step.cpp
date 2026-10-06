@@ -313,6 +313,14 @@ private:
         float beta = betaUb.GetValue(0);
         float pval = pUb.GetValue(0);
         int32_t f = fillUb.GetValue(0);
+        // fill == L: window full, flush already folded it - this step opens
+        // the new window at entry 0 (paper semantics). Only the fill
+        // determination changes; the verified compute paths below are
+        // untouched (nj = 0 skips the window, append lands at entry 0,
+        // fill stores f + 1 = 1).
+        if (f >= static_cast<int32_t>(F_L)) {
+            f = 0;
+        }
         float pn = pval * at;
         uint32_t nj = (f < static_cast<int32_t>(F_L))
                           ? static_cast<uint32_t>(f)

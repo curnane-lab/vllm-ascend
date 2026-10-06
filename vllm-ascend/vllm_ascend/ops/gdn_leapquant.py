@@ -152,6 +152,8 @@ class GDNLeapQuantPools:
         at = torch.exp(g_log.float())
         pn = p * at
         f = self.fill[t_idx, h_idx]
+        # fill == L (window full, flush already folded it): new-window start
+        f = torch.where(f >= L, torch.zeros_like(f), f)
         w = self.w[t_idx, h_idx] * at.unsqueeze(-1)  # dead entries stay 0
         # dead buffer slots may hold stale bytes that are not finite as bf16;
         # mask them out so 0 * NaN does not poison the reconstruction
@@ -210,7 +212,10 @@ class GDNLeapQuantPools:
         self.q[t_idx, h_idx] = torch.where(due4, q_new, self.q[t_idx, h_idx])
         self.w[t_idx, h_idx] = torch.where(due3, torch.zeros_like(self.w[t_idx, h_idx]), self.w[t_idx, h_idx])
         self.p[t_idx, h_idx] = torch.where(due2, torch.ones_like(self.p[t_idx, h_idx]), self.p[t_idx, h_idx])
-        self.fill[t_idx, h_idx] = torch.where(due2, torch.zeros_like(f), f)
+        # paper semantics: fill stays L after the fold; the next decode
+        # step treats fill == L as the new-window start. Flush must not
+        # clear it (the old zeroing double-folded nothing but hid the
+        # host-ordering contract).
 
     @torch.no_grad()
     def init_from_dense(self, ssm_state: torch.Tensor, idx: torch.Tensor) -> None:

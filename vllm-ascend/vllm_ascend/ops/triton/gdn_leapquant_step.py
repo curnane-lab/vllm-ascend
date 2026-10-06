@@ -69,6 +69,9 @@ def _gdn_lq_step_kernel(
     rl = tl.arange(0, L)
 
     f = tl.load(fill_ptr + slot * fs0 + h * fhs)
+    # fill == L: window full and flush already folded it - this step opens
+    # the new window at entry 0 (paper semantics)
+    f = tl.where(f >= L, 0, f)
     g = tl.load(g_ptr + b * H + h)
     at = tl.exp(g)
     p = tl.load(p_ptr + slot * ps0 + h * phs)

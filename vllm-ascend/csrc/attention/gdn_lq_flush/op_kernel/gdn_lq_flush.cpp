@@ -136,6 +136,9 @@ public:
         pipe->InitBuffer(halfBuf, F_K * sizeof(half));
         pipe->InitBuffer(redBuf, 16 * 8 * sizeof(float));
         pipe->InitBuffer(metaBuf, 2 * align32(h * sizeof(int32_t)));
+        // due-scan staging: MTE2 4 B pads need 32 B-aligned UB slots, so
+        // each of the SCAN=32 fill words gets its own 32 B slot
+        pipe->InitBuffer(scanBuf, SCAN * 8 * sizeof(int32_t));
         pipe->InitBuffer(idxBuf, align32(t * sizeof(int64_t)));
         pipe->InitBuffer(outQ, 1, F_V * F_K * sizeof(int8_t) + 3584);
 
@@ -162,6 +165,7 @@ public:
         redUb = redBuf.Get<float>();
         halfUb = halfBuf.Get<half>();
         fillUb = metaBuf.Get<int32_t>();
+        fillScanUb = scanBuf.Get<int32_t>();
         pUb = metaBuf.Get<float>()[align32(h * sizeof(int32_t)) / sizeof(float)];
         idxUb = idxBuf.Get<int64_t>();
 
@@ -175,8 +179,35 @@ public:
 
     __aicore__ inline void Process()
     {
-        for (uint32_t i = 0; i < myCount; ++i) {
-            ProcessOne(myStart + i);
+        // due-scan first (M3-2): batch the 4 B fill loads without any
+        // per-instance barrier, then run the heavy fold only for due heads.
+        // Non-due heads cost exactly one 4 B load each; the previous code
+        // paid fill + p loads plus a PIPE_ALL per instance.
+        for (uint32_t s0 = myStart; s0 < myStart + myCount; s0 += SCAN) {
+            uint32_t n = (myStart + myCount - s0) < SCAN
+                             ? (myStart + myCount - s0)
+                             : SCAN;
+            for (uint32_t i = 0; i < n; ++i) {
+                uint32_t inst = s0 + i;
+                uint32_t b = inst / hNum;
+                uint32_t h = inst % hNum;
+                int32_t slot = idxUb.ReinterpretCast<int32_t>().GetValue(b * 2);
+                __gm__ uint8_t* base = stateRaw
+                    + static_cast<uint64_t>(slot) * static_cast<uint64_t>(sSlot);
+                GlobalTensor<int32_t> gmFill;
+                gmFill.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ int32_t*>(base + OFF_FILL
+                                                      + h * HEAD_BYTES));
+                DataCopyPad(fillScanUb[i * 8], gmFill[0],
+                            DataCopyParams{1, 4, 0, 0},
+                            DataCopyPadParams{false, 0, 0, 0});
+            }
+            PipeBarrier<PIPE_ALL>();
+            for (uint32_t i = 0; i < n; ++i) {
+                if (fillScanUb.GetValue(i * 8) >= static_cast<int32_t>(F_L)) {
+                    ProcessDue(s0 + i);
+                }
+            }
         }
     }
 
@@ -223,7 +254,7 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessOne(uint32_t inst)
+    __aicore__ inline void ProcessDue(uint32_t inst)
     {
         uint32_t b = inst / hNum;
         uint32_t h = inst % hNum;
@@ -233,21 +264,13 @@ private:
         __gm__ uint8_t* base = stateRaw
             + static_cast<uint64_t>(slot) * static_cast<uint64_t>(sSlot);
 
-        GlobalTensor<int32_t> gmFill;
-        gmFill.SetGlobalBuffer((__gm__ int32_t*)(base + OFF_FILL + h * HEAD_BYTES));
         GlobalTensor<float> gmP;
         gmP.SetGlobalBuffer((__gm__ float*)(base + OFF_P + h * HEAD_BYTES));
-        // per-head window bookkeeping first: non-due heads exit before any
-        // heavy load. In the head-block layout fill/p of head h sit at
-        // base + h*HEAD_BYTES + OFF_{FILL,P} (not a contiguous [H] array),
-        // so each is a 4-byte load.
-        DataCopyPad(fillUb, gmFill[0], DataCopyParams{1, 4, 0, 0}, DataCopyPadParams{false, 0, 0, 0});
-        DataCopyPad(pUb, gmP[0], DataCopyParams{1, 4, 0, 0}, DataCopyPadParams{false, 0, 0, 0});
+        // due heads only from here on (fill was checked by the batched
+        // pre-scan in Process); p is loaded lazily.
+        DataCopyPad(pUb, gmP[0], DataCopyParams{1, 4, 0, 0},
+                    DataCopyPadParams{false, 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
-        int32_t fill = fillUb.GetValue(0);
-        if (fill < static_cast<int32_t>(F_L)) {
-            return;
-        }
         float pval = pUb.GetValue(0);
 
         GlobalTensor<int8_t> gmCodes;
@@ -443,7 +466,12 @@ private:
         //                     the old offset 4352 overlapped u and clobbered
         //                     the first 48 halves of compensator token r=0
         //   [19520:19524]   p = 1.0 (f32 offset 4880)
-        //   [19524:19528]   fill = 0 (i32 view of the w-zero region)
+        //   [19552:19556]   fill = L (i32 offset 4888, 32 B aligned) --
+        //                     paper semantics: the folded head stays due;
+        //                     the next decode step opens the new window.
+        //                     (The old code aliased fill to the w-zero low
+        //                     word and wrote 0; Duplicate needs 32 B
+        //                     alignment so the slot moved past p.)
         LocalTensor<int8_t> oq = outQ.AllocTensor<int8_t>();
         DataCopy(oq, codesUb, F_V * F_K);
         LocalTensor<float> sf = oq.ReinterpretCast<float>();
@@ -454,6 +482,8 @@ private:
         Cast(uh[F_R * F_V * 18], qvFUb, RoundMode::CAST_RINT, F_R * F_V);
         Duplicate(sf[F_V * F_K / 4 + 6 * F_K], 0.0f, F_L);
         Duplicate(sf[F_V * F_K / 4 + 6 * F_K + 16], 1.0f, 8);
+        Duplicate(oq.ReinterpretCast<int32_t>()[F_V * F_K / 4 + 6 * F_K + 24],
+                  static_cast<int32_t>(F_L), 1);
         outQ.EnQue(oq);
         LocalTensor<int8_t> dq = outQ.DeQue<int8_t>();
         DataCopy(gmCodes[0], dq, F_V * F_K);
@@ -466,9 +496,11 @@ private:
         DataCopy(gmW[0], df[F_V * F_K / 4 + 6 * F_K], F_L);
         DataCopyPad(gmP[0], df[F_V * F_K / 4 + 6 * F_K + 16],
                     DataCopyParams{1, 4, 0, 0});
-        // float 0.0f bit pattern is int32 0: read the w-zero region low word
+        GlobalTensor<int32_t> gmFill;
+        gmFill.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t*>(base + OFF_FILL + h * HEAD_BYTES));
         DataCopyPad(gmFill[0],
-                    df.ReinterpretCast<int32_t>()[F_V * F_K / 4 + 6 * F_K],
+                    dq.ReinterpretCast<int32_t>()[F_V * F_K / 4 + 6 * F_K + 24],
                     DataCopyParams{1, 4, 0, 0});
         outQ.FreeTensor(dq);
     }
@@ -480,7 +512,7 @@ private:
     TBuf<QuePosition::VECCALC> kbufF, ubufF, uF, qF, skF, svF, wF;
     TBuf<QuePosition::VECCALC> q0F, qkF, qvF, ukF, sumAbs, scrBuf, tmpBuf;
     TBuf<QuePosition::VECCALC> redBuf, halfBuf;
-    TBuf<QuePosition::VECCALC> metaBuf, idxBuf;
+    TBuf<QuePosition::VECCALC> metaBuf, scanBuf, idxBuf;
     TQue<QuePosition::VECOUT, 1> outQ;
     LocalTensor<float> sUb, kbufFUb, ubufFUb, uFUb, qFUb, skFUb, svFUb;
     LocalTensor<float> wFUb, q0FUb, qkFUb, qvFUb, ukFUb, sumAbsUb, tmpUb;
@@ -490,8 +522,10 @@ private:
     LocalTensor<bfloat16_t> kbufRawUb, ubufRawUb;
     LocalTensor<half> uqRawUb;
     LocalTensor<int32_t> fillUb;
+    LocalTensor<int32_t> fillScanUb;
     LocalTensor<int64_t> idxUb;
     static constexpr uint32_t FLUSH_V_S_EVT = 2;
+    static constexpr uint32_t SCAN = 32;
     uint32_t myStart = 0, myCount = 0, batch = 0, hNum = 32;
     int64_t sSlot = 0;
 };

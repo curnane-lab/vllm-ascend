@@ -107,7 +107,14 @@ def gdn_lq_step_ascendc(state, idx, kn, qn, v, g_log, beta, o, num_heads,
         return False
     try:
         args = [
-            ctx.tensor(state, "state"),
+            # pass a 1-element view of the pool base: the executor would
+            # otherwise materialize the whole (giant, strided) ssm_state
+            # view at creation (~2.6 GiB per executor, leaking one copy per
+            # step in decode loops with fresh executor keys). The kernel
+            # addresses slots through the base pointer + s_slot stride and
+            # never reads the tensor body. as_strided avoids the
+            # contiguous() copy that _c would trigger.
+            ctx.tensor(torch.as_strided(state, (1,), (1,)), "state"),
             ctx.tensor(idx, "idx"),
             ctx.tensor(kn, "kn"),
             ctx.tensor(qn, "qn"),

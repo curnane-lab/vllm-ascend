@@ -104,12 +104,20 @@ def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
         return False
     try:
         args = [
-            ctx.tensor(state, "state"),
+            # pass a 1-element view of the pool base: the executor would
+            # otherwise materialize the whole (giant, strided) ssm_state
+            # view at creation (~2.6 GiB per executor, leaking one copy per
+            # step in decode loops with fresh executor keys). The kernel
+            # addresses slots through the base pointer + s_slot stride and
+            # never reads the tensor body. as_strided avoids the
+            # contiguous() copy that _c would trigger.
+            ctx.tensor(torch.as_strided(state, (1,), (1,)), "state"),
             ctx.tensor(idx, "idx"),
             ctx.tensor(q0_rv, "q0"),
             ctypes.c_int64(int(num_heads)),
             ctypes.c_int64(int(slot_stride_bytes)),
-            ctx.tensor(state, "out"),  # in-place: aliased output
+            # in-place alias of the same pool: base view for the same reason
+            ctx.tensor(torch.as_strided(state, (1,), (1,)), "out"),
         ]
         ws_size = ctypes.c_uint64(0)
         executor = ctypes.c_void_p()
