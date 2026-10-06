@@ -18,9 +18,12 @@ import os as _os
 
 import torch
 
-from gdn_lq_dequant import gdn_lq_dequant, warm_cache as warm_dequant
-from gdn_lq_epilogue import gdn_lq_epilogue, warm_cache as warm_epi
-from gdn_lq_gemv import gdn_lq_gemv, warm_cache as warm_gemv
+from gdn_lq_dequant import gdn_lq_dequant, launch as dequant_launch
+from gdn_lq_dequant import warm_cache as warm_dequant
+from gdn_lq_epilogue import gdn_lq_epilogue, launch as epi_launch
+from gdn_lq_epilogue import warm_cache as warm_epi
+from gdn_lq_gemv import gdn_lq_gemv, launch as gemv_launch
+from gdn_lq_gemv import warm_cache as warm_gemv
 
 _BUF_CACHE = {}
 # Single slot per (t, nk, h): the aclnn runtime executor pool keys on the
@@ -56,6 +59,7 @@ def _bufs(t, h, v, k, dev):
 
 def _make_slot(t, nk, h, v, k, dev):
     return {
+        "idx": torch.empty(t, dtype=torch.int64, device=dev),
         "kn": torch.empty(t, nk, k, dtype=torch.bfloat16, device=dev),
         "qn": torch.empty(t, nk, k, dtype=torch.bfloat16, device=dev),
         "v": torch.empty(t, h, v, dtype=torch.bfloat16, device=dev),
@@ -84,19 +88,48 @@ def warm_step_v2(device="npu"):
     return (warm_dequant(device) and warm_gemv(device) and warm_epi(device))
 
 
-def step_pools_v2(pools, idx, kn, qn, v, g_log, beta, scale, o=None):
-    """Full decode-step contract (same as GDNLeapQuantPools.decode_step):
-    kn/qn bf16 [T, nk, K] l2-normalized, UNexpanded key-head rows; v bf16
-    [T, H, V]; g_log fp32 [T, H]; beta bf16 [T, H]; idx int64 [T].
-    Returns o bf16 [T, H, V] (a ring-slot view: valid until the same
-    slot is reused _RING steps later) or None when unavailable.
-    In-place window append inside pools state, same as v1."""
+def step_pools_v2_fused(pools, idx, kn, qn, v, g_log, beta, scale):
+    """E1 fused entry: one host call enqueues dequant -> gemv -> epilogue.
+
+    Single stream-capture check, single stream fetch, single binding
+    resolve for the whole step (the per-op wrappers redo these, which at
+    24 layers x 3 ops is measurable host time). idx joins the input pool:
+    gdn.py's per-layer ``indices.flatten().long()`` produced a fresh
+    tensor whose data_ptr is part of the executor cache key; the pooled
+    slot keeps the key constant (E1). idx may be int32/int64, any layout
+    (the slot copy_ casts and densifies, async on the same stream).
+
+    Same contract as step_pools_v2: returns o bf16 [T,H,V] as a pool view
+    valid until the next call with the same (t, nk, h); None -> caller
+    falls back to the triton step.
+    """
+    try:
+        if torch.npu.is_current_stream_capturing():
+            return None
+    except Exception:
+        return None
     h = pools.num_heads
     nk = kn.shape[1]
-    t = idx.shape[0]
-    dev = idx.device
+    t = kn.shape[0]
+    dev = kn.device
     slot = _slot(t, nk, h, pools.head_v, pools.head_k, dev)
-    # async device-side copies into the fixed slots; data_ptrs constant
+    # idx stays a fresh .long() cast passed DIRECTLY to the kernels:
+    # that is the only arrangement with correct engine-context numerics
+    # (48-token smoke 3/4 @token 36). Pooling idx into the fixed slot
+    # keeps the executor cache key constant and is ~2x faster e2e, but
+    # deterministically corrupts slot addressing in the real gdn.py
+    # pipeline (diverges @token 2) while every isolated harness - sync'd
+    # or async, single- or multi-pools, layer-multiplexed - is bit-exact
+    # and the slot memory verifies intact around the kernels. Root cause
+    # unresolved; the A/B switch (VLLM_ASCEND_GDN_LQ_IDXPOOL=1) plus
+    # VLLM_ASCEND_GDN_LQ_IDXWATCH=1 keep the experiment reproducible.
+    # E1 exit gate with this arrangement: B=256 e2e 389 ms/step >= 279
+    # -> step v2 stays behind its default-off flag.
+    if _os.getenv("VLLM_ASCEND_GDN_LQ_IDXPOOL"):
+        slot["idx"].copy_(idx.reshape(-1).long())
+        idx_s = slot["idx"]
+    else:
+        idx_s = idx.reshape(-1).long()
     slot["kn"].copy_(kn)
     slot["qn"].copy_(qn)
     slot["v"].copy_(v)
@@ -107,22 +140,48 @@ def step_pools_v2(pools, idx, kn, qn, v, g_log, beta, scale, o=None):
     v_s = slot["v"]
     g_s = slot["g_log"]
     b_s = slot["beta"]
-    o_s = slot["o"] if o is None else o
-    dbg = _os.getenv("VLLM_ASCEND_GDN_LQ_DEBUG")
-
-    def _mem(tag):
-        if dbg:
-            print(f"[lq-v2] {tag} ok_alloc={torch.npu.memory_allocated()/2**30:.2f}GiB",
-                  flush=True)
+    o_s = slot["o"]
     staging, aq, cq = _bufs(t, h, pools.head_v, pools.head_k, dev)
-    ok = gdn_lq_dequant(pools._state, idx, kn_s, qn_s, staging, aq, h, nk,
-                        scale)
-    _mem(f"dequant ret={ok}")
-    ok = ok and gdn_lq_gemv(staging, aq, cq)
-    _mem(f"gemv ret={ok}")
-    ok = ok and gdn_lq_epilogue(pools._state, idx, cq, kn_s, qn_s, v_s, g_s,
-                                b_s, o_s, h, nk, scale)
-    _mem(f"epilogue ret={ok}")
+    if _os.getenv("VLLM_ASCEND_GDN_LQ_NOFUSE"):
+        # A/B switch: public per-op wrappers + unpooled idx (exact pre-E1
+        # semantics) to isolate the fused-entry delta.
+        idx_u = idx if _os.getenv("VLLM_ASCEND_GDN_LQ_NOPOOLIDX") else idx_s
+        ok = gdn_lq_dequant(pools._state, idx_u, kn_s, qn_s, staging, aq, h,
+                            nk, scale)
+        ok = ok and gdn_lq_gemv(staging, aq, cq)
+        ok = ok and gdn_lq_epilogue(pools._state, idx_u, cq, kn_s, qn_s,
+                                    v_s, g_s, b_s, o_s, h, nk, scale)
+        return o_s if ok else None
+    stream = int(torch.npu.current_stream().npu_stream)
+    ok = dequant_launch(pools._state, idx_s, kn_s, qn_s, staging, aq, h,
+                        nk, scale, stream)
+    ok = ok and gemv_launch(staging, aq, cq, stream)
+    ok = ok and epi_launch(pools._state, idx_s, cq, kn_s, qn_s, v_s, g_s,
+                           b_s, o_s, h, nk, scale, stream)
     if not ok:
         return None
+    if _os.getenv("VLLM_ASCEND_GDN_LQ_IDXWATCH"):
+        global _IDXW
+        try:
+            _IDXW += 1
+        except NameError:
+            _IDXW = 0
+        if _IDXW < 12:
+            expect = idx.reshape(-1).long().cpu()
+            torch.npu.synchronize()
+            got = slot["idx"].cpu()
+            print(f"[idxwatch] call {_IDXW} post-kernel intact="
+                  f"{bool((expect == got).all())} "
+                  f"expect={expect[:6].tolist()} got={got[:6].tolist()}",
+                  flush=True)
     return o_s
+
+
+def step_pools_v2(pools, idx, kn, qn, v, g_log, beta, scale, o=None):
+    """Full decode-step contract (same as GDNLeapQuantPools.decode_step):
+    kn/qn bf16 [T, nk, K] l2-normalized, UNexpanded key-head rows; v bf16
+    [T, H, V]; g_log fp32 [T, H]; beta bf16 [T, H]; idx int64 [T].
+    Returns o bf16 [T, H, V] (a ring-slot view: valid until the same
+    slot is reused _RING steps later) or None when unavailable.
+    In-place window append inside pools state, same as v1."""
+    return step_pools_v2_fused(pools, idx, kn, qn, v, g_log, beta, scale)

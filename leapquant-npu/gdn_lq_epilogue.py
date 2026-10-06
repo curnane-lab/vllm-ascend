@@ -59,6 +59,34 @@ def _binding():
     return _B
 
 
+def launch(state, idx, cq, kn, qn, v, g_log, beta, o, num_heads,
+           num_k_heads, scale, stream) -> bool:
+    """cached fast path with a caller-provided stream; the caller performs
+    the stream-capture check once for the whole fused step. Cache misses
+    fall back to the full wrapper (slow path, once per key)."""
+    bnd = _binding()
+    if bnd is None:
+        return False
+    rt, runtime, lib = bnd
+    key = (int(state.data_ptr()), int(idx.data_ptr()),
+           int(cq.data_ptr()),
+           int(kn.data_ptr()), int(qn.data_ptr()), int(v.data_ptr()),
+           int(g_log.data_ptr()), int(beta.data_ptr()), int(o.data_ptr()),
+           int(state.stride(0)), int(idx.shape[0]), int(num_heads),
+           int(num_k_heads), float(scale))
+    hit = _CACHE.get(key)
+    global _WS_BUF
+    if hit is None:
+        return gdn_lq_epilogue(state, idx, cq, kn, qn, v, g_log, beta, o,
+                               num_heads, num_k_heads, scale)
+    executor = hit[0]
+    ret = lib.aclnnGdnLqEpilogue(
+        ctypes.c_void_p(int(_WS_BUF.data_ptr())),
+        ctypes.c_uint64(_WS_BUF.numel()),
+        executor, ctypes.c_void_p(stream))
+    return ret == 0
+
+
 def gdn_lq_epilogue(state, idx, cq, kn, qn, v, g_log, beta, o, num_heads,
                     num_k_heads, scale) -> bool:
     """state fp32 slot buffer; idx int64 [T]; cq fp32 [T,h,16,V]; kn/qn bf16

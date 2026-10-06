@@ -34,7 +34,7 @@ kernel 级 wall 时钟上 v2 有明确优势（B=256 生产 step：2.22 ms vs v1
 | 净 | | **+109 ms/step** |
 
 - v2 step 路径 = 3 个 aclnn op（gdn_lq_dequant AIV / gdn_lq_gemv AIC / gdn_lq_epilogue AIV）；host 开销与 kernel 无关，继续抠 cube 指令 e2e 不动。
-- 瓶颈不在 kernel 而在 per-op 发射路径。**e2e 反超的前提是三次发射收成一次（单 op 化），或图内化且 FULL graph 可用**——这是设计决策，记为待 grok 定夺的开放项。
+- 瓶颈不在 kernel 而在 per-op 发射路径。**e2e 反超的前提是三次发射收成一次（单 op 化），或图内化且 FULL graph 可用**——这是设计决策，记为待 grok 定夺的开放项。**E1（2026-10-06 后续）已实证检验「收成一次 host 发射」：融合入口 + micro wall host 0.21ms/kernel 2.0ms 成立，但 e2e B=256 正确数值下 388.9 ≥ 279 出口线未过——根子是 idx 的 executor 缓存键抖动，唯一快的排法（idx 进池）撞上未定位的确定性等价性破坏。判定：停，v2 留 microbench，见 `results/E1-stepv2-fused.md`。**
 
 **建议：`VLLM_ASCEND_GDN_LQ_STEP_V2` 维持默认 0（关）。** v2 保留为 kernel 级基准实现（三 op 正确、PIECEWISE 下数值精确）。
 

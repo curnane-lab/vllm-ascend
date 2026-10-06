@@ -111,11 +111,14 @@ def _lq_decode_step(mode, pools, idx, kn, qn, v, g_log, beta, scale):
 
 
 def _lq_decode_step_v2(pools, idx, kn, qn, v, g_log, beta, scale):
-    """M2-D2 three-op AscendC pipeline (dequant -> cube GEMV -> epilogue).
+    """M2-D2 three-op AscendC pipeline (dequant -> cube GEMV -> epilogue),
+    E1 fused single-host-launch entry.
 
     kn/qn are the UNexpanded [T, Nk, K] key-head rows; the head expansion
-    (value head h uses key head h//rep) moves into the kernels. Returns None
-    when the pipeline is unavailable so the caller falls back to the Triton
+    (value head h uses key head h//rep) moves into the kernels. idx may be
+    any dtype/layout (int32/int64, strided views): it is pooled and cast
+    inside, keeping the executor cache keys constant. Returns None when
+    the pipeline is unavailable so the caller falls back to the Triton
     step. The bindings live in the leapquant-npu workspace (research
     integration; gated by VLLM_ASCEND_GDN_LQ_STEP_V2, default off).
     """
@@ -124,10 +127,10 @@ def _lq_decode_step_v2(pools, idx, kn, qn, v, g_log, beta, scale):
     if lq_path not in sys.path:
         sys.path.insert(0, lq_path)
     try:
-        from gdn_lq_step_v2 import step_pools_v2
+        from gdn_lq_step_v2 import step_pools_v2_fused
     except ImportError:
         return None
-    return step_pools_v2(pools, idx, kn, qn, v, g_log, beta, scale)
+    return step_pools_v2_fused(pools, idx, kn, qn, v, g_log, beta, scale)
 
 
 def _lq_flush(mode, pools, idx):
@@ -721,10 +724,12 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 o = None
                 if envs.VLLM_ASCEND_GDN_LQ_STEP_V2:
                     # v2: kn/qn stay unexpanded; the GQA expansion moves
-                    # into the kernels. None -> fall back to the Triton step.
+                    # into the kernels; the fused entry pools idx (raw
+                    # dtype/layout) so the executor cache key stays
+                    # constant. None -> fall back to the Triton step.
                     o = _lq_decode_step_v2(
                         pools,
-                        idx=idx,
+                        idx=non_spec_state_indices_tensor[: attn_metadata.num_decodes],
                         kn=key_decode.squeeze(0),
                         qn=query_decode.squeeze(0),
                         v=value_decode.squeeze(0),
@@ -885,10 +890,12 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 o = None
                 if envs.VLLM_ASCEND_GDN_LQ_STEP_V2:
                     # v2: kn/qn stay unexpanded; the GQA expansion moves
-                    # into the kernels. None -> fall back to the Triton step.
+                    # into the kernels; the fused entry pools idx (raw
+                    # dtype/layout) so the executor cache key stays
+                    # constant. None -> fall back to the Triton step.
                     o = _lq_decode_step_v2(
                         pools,
-                        idx=idx,
+                        idx=non_spec_state_indices_tensor,
                         kn=key_non_spec.squeeze(0),
                         qn=query_non_spec.squeeze(0),
                         v=value_non_spec.squeeze(0),

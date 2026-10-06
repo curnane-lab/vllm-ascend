@@ -59,6 +59,28 @@ def _binding():
     return _B
 
 
+def launch(staging, aq, cq, stream) -> bool:
+    """cached fast path with a caller-provided stream; the caller performs
+    the stream-capture check once for the whole fused step. Cache misses
+    fall back to the full wrapper (slow path, once per key)."""
+    bnd = _binding()
+    if bnd is None:
+        return False
+    rt, runtime, lib = bnd
+    key = (int(staging.data_ptr()), int(aq.data_ptr()), int(cq.data_ptr()),
+           int(staging.shape[0]), int(staging.shape[1]))
+    hit = _CACHE.get(key)
+    global _WS_BUF
+    if hit is None:
+        return gdn_lq_gemv(staging, aq, cq)
+    executor = hit[0]
+    ret = lib.aclnnGdnLqGemv(
+        ctypes.c_void_p(int(_WS_BUF.data_ptr())),
+        ctypes.c_uint64(_WS_BUF.numel()),
+        executor, ctypes.c_void_p(stream))
+    return ret == 0
+
+
 def gdn_lq_gemv(staging, aq, cq) -> bool:
     """staging fp16 [T,h,V,K], aq fp16 [T,h,16,K] -> cq fp32 [T,h,V,16]."""
     try:
