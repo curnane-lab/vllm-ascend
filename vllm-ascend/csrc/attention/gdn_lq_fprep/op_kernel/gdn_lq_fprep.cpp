@@ -73,7 +73,9 @@ public:
         pipe->InitBuffer(svF, F_V * sizeof(float));
         pipe->InitBuffer(wF, F_L * sizeof(float));
         pipe->InitBuffer(metaBuf, 3 * 32);
-        pipe->InitBuffer(scanBuf, F_SCAN * 8 * sizeof(int32_t));
+        // scan buffer second half carries the per-instance slot ids
+        // for the flags plane 1 write (host mirror keys fills by slot)
+        pipe->InitBuffer(scanBuf, 2 * F_SCAN * 8 * sizeof(int32_t));
         pipe->InitBuffer(idxBuf, batchNum * sizeof(int64_t));
 
         codesUb = codesBuf.Get<int8_t>();
@@ -89,6 +91,7 @@ public:
         wUb = wF.Get<float>();
         pUb = metaBuf.Get<float>()[16];
         fillScanUb = scanBuf.Get<int32_t>();
+        slotScanUb = scanBuf.Get<int32_t>()[F_SCAN * 8];
         idxUb = idxBuf.Get<int64_t>();
 
         DataCopyPadParams pad{false, 0, 0, 0};
@@ -109,8 +112,14 @@ public:
     {
         // Due scan with batched fill loads (gdn_lq_flush v1 pattern):
         // issue a whole batch of 4 B GM reads back-to-back, then ONE
-        // PipeBarrier, then consume. flags are the raw fill values copied
-        // straight out of the scan buffer (no staging slot, no events).
+        // PipeBarrier, then consume. flags plane 0 [inst] are the raw
+        // fill values copied straight out of the scan buffer; plane 1
+        // [numInstances + inst] carries the slot id, so the host mirror
+        // keys fills BY SLOT (a batch position swap must not inherit a
+        // stale fill - E2). slotScanUb is filled by an S-pipe SetValue
+        // in the load loop, ordered before the MTE3 stores by the
+        // PipeBarriers.
+        uint32_t numInst = batch * hNum;
         for (uint32_t s0 = myStart; s0 < myStart + myCount; s0 += F_SCAN) {
             uint32_t n = (myStart + myCount - s0) < F_SCAN
                              ? (myStart + myCount - s0)
@@ -121,6 +130,7 @@ public:
                 uint32_t h = inst % hNum;
                 int32_t slot =
                     idxUb.ReinterpretCast<int32_t>().GetValue(b * 2);
+                slotScanUb.SetValue(i * 8, slot);
                 __gm__ uint8_t* base = stateRaw
                     + static_cast<uint64_t>(slot) * static_cast<uint64_t>(sSlot)
                     + static_cast<uint64_t>(h) * HEAD_BYTES;
@@ -136,6 +146,10 @@ public:
                 GlobalTensor<int32_t> gmFlag;
                 gmFlag.SetGlobalBuffer(flagsBase + inst);
                 DataCopyPad(gmFlag[0], fillScanUb[i * 8],
+                            DataCopyParams{1, 4, 0, 0});
+                GlobalTensor<int32_t> gmSlot;
+                gmSlot.SetGlobalBuffer(flagsBase + numInst + inst);
+                DataCopyPad(gmSlot[0], slotScanUb[i * 8],
                             DataCopyParams{1, 4, 0, 0});
                 if (fillScanUb.GetValue(i * 8)
                     >= static_cast<int32_t>(F_L)) {
@@ -257,7 +271,7 @@ private:
     LocalTensor<float> tmpF32Ub;
     LocalTensor<half> halfUb;
     LocalTensor<float> skUb, svUb, wUb;
-    LocalTensor<int32_t> fillScanUb;
+    LocalTensor<int32_t> fillScanUb, slotScanUb;
     LocalTensor<float> pUb;
     LocalTensor<int64_t> idxUb;
     uint32_t myStart = 0, myCount = 0, batch = 1, hNum = 32;
