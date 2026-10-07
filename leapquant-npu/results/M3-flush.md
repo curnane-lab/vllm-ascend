@@ -125,3 +125,54 @@ flush(idx) 不得对同一头连续调用两次而中间无该头的 step：gdn.
 ## 生产路径声明
 
 v2 仍**未接入 gdn.py**（`flush_pools_v2` 仅测试调用）；生产 flush = `gdn_lq_flush`（v1，AscendC 单 op）不变。接入前待办：all-due 降到个位数 ms（grouped GEMM）、 due 门的「每 decode 步恰好一次 flush 调用」不变式在 gdn.py 混合 batch 路径复核。
+
+
+# E3 追加章节（flush v2 all-due → 个位数 ms 尝试，2026-10-07）
+
+## 第一步：吃掉 executor 重建（完成）
+
+剖析：per-stage 的 `ctx+描述符` 实测 ~220µs；7 级合成**单 CallContext 链**
+（`gdn_lq_flush_v2.py:_chain7`：一套描述符、逐级 get_ws+立即发射保持
+phase-collision 安全、attrs 全程保活）。改错一次 ABI 参数序（attrs 必须在
+outputs 前）段错误，已修。
+
+| B | forced all-due 前 | 后 | 链 host（入队墙） |
+|---|------|------|------|
+| 16 | 4.92 | 4.84 | 0.67 ms |
+| 64 | 10.11 | 8.80 | — |
+| 256 | 33.52 | **33.17** | **0.83 ms**（原 ~2.6） |
+
+教训：33.5ms 里 host 只摊到 ~2.6ms，吃掉后 all-due 几乎不动——**瓶颈从来
+不在 host**。
+
+摊销口径（grok 修正）：**稳态 flush 摊销 = all-due / 16**：v2 = 33.2/16 =
+**2.08 ms/step/层**，v1 = 43.8/16 = **2.74** —— **1.32×**（不要把 64 步
+窗里的冷启动发射摊进去，那会低估成 ~1.05×）。E3 数字已补一轮可复现测量，
+原始 jsonl：`runs/flush_v2_measure.jsonl`（2026-10-07 复测：forced all-due
+4.81/8.80/33.17，nothing-due 0.095/0.129/0.150，与提交数一致）。正确性 5/5 过（_chain7 落地后实测）。
+
+## 第二步：grouped GEMM（尝试 → 平台不支持 → 停）
+
+方向：matmul.h 存在 `SetBatchNum/IterateBatch`（batch GEMM，tiling 不变、
+kernel-only 重建）。fgemv 四个 phase 改为每核一次 `IterateBatch(G=myCount)`
+（staging 天然 [numInst,…] 连续，stride 即单实例元素数；p2 的 q0 共享意图用
+batchB=1+strideB=0 广播）。**两级 API 均不可用**：
+- 低层 `MatmulImpl`：无 SetBatchNum/IterateBatch（编译器实证）；
+- 高层 `Matmul`：本栈实例化为 `MatmulServiceAux`，同样无二者、且无
+  SetSubBlockIdx（头文件声明≠本 CANN 版本/架构提供）。
+按红线**未加任何 GEMM phase**，kernel 已 `git checkout` 还原，工作区干净。
+
+## 出口判定：停（到不了 8ms）
+
+forced all-due 33.17ms@B=256，host 0.83ms → **device 32.3ms = cube 利用率
+~2%**（四相位 FLOP 理想 ≈0.5-0.8ms：g1 51.5 GFLOP + p2-4 各 8.6 GFLOP，
+910 fp16 峰值 100+ TFLOPS）。staging GM→L1 流量 ~3.1GB/链 ≈ 1.5ms@2TB/s
+也不解释 32ms——**瓶颈是 per-GEMM 固定开销**：8192 实例 × 4 相位 ≈ 1µs/
+GEMM 的流水线建立（L0/L1 分配、描述符、同步）。这正是 batch API 要吃掉的
+东西，而本 CANN 的 matmul 不提供。
+
+**结论：all-due 个位数 ms 在本平台需要手写 cube 流水（跨实例复用 L0/L1 的
+手工 kernel），不是 API 重排能拿到的；按 grok 红线停在这里**，correctness
+全绿（5/5 + 12 项矩阵），nothing-due 0.11-0.19ms 无退化。下一步（下轮议）：
+fprep/ftail 不动、fgemv 手写 multi-instance cube kernel，或全链 fold 回
+v1 单 op 形态（v1 的 43.77ms 是同平台的参照下界）。

@@ -223,3 +223,44 @@ launch-hit 日志（= 各 1000+ 次真实缓存命中）。机械项全过，但
   解封后第一个验证点；若 B+pooled 正确，则修法=保活描述符（或 op 侧
   拷贝描述符），E1 可重开。
 - 132.9ms 继续作废。旧 "A 正确" 结论作废（triton 假阳性）。
+
+
+---
+
+# E1 解封探针（2026-10-07，grok 处方第 2 项：LC=B 全保活 ctx）——仍损坏，E1 永久冻结
+
+## 协议执行
+
+配置 STEP_V2=1 + IDXPOOL=1 + LC=B（缓存 executor + 保活整个 _CallContext）。
+看护：timeout 600 包裹，全程无 kill -9（实际未挂起，58s 正常退出）。
+卡 5 探针前确认零占用。
+
+## 第 2 步 STEPlog 前置确认（过）
+
+`slow-path exception: 0`；三 op 各 6 条 launch-hit 日志（hit #0/#200/…，
+epilogue 句柄恒定 `c_void_p(187652606462912)`，1000+ 次真实缓存命中）；
+wrapper miss 51（首开期望）。**v2 真跑且缓存命中，不是静默回退**。
+
+## 第 3 步 冒烟数值（不过 → 按协议收工）
+
+prompt 3 分歧 **@token 2**（cand [271,8160,279,430,11] vs base
+[271,8160,369,449,15673]）——按协议"token 3 分叉或更差 → 保持冻结"，
+**不跑 e2e、不重试 B**。原始 jsonl：`runs/e1_lcb_smoke.jsonl`。
+
+## 最终根因画像（证据闭环）
+
+LC=B 下 **tensor 内存 + attrs + 整个 ctx（全部描述符）都保活**，缓存命中
+的 pooled-idx 路径仍确定性损坏 → **描述符/ctx/attrs 生命周期全部排除**。
+唯一剩余解释与 flush v2 的 phase-collision 发现同源：**aclnn 运行时
+executor 池按 (op 类型, desc 形状) 键、不含 data_ptr**——24 层同 op 同
+desc（仅 state 地址不同）的缓存 executor 在池中别名，只有最后一次创建的
+配置有效。旁证自洽：fresh-idx"正确"是因为键漂移导致缓存基本不命中、
+每步实质新建（故慢 ~390ms）；变体 A（不缓存）正确；单 pools 的 micro
+测试全过（无别名）。**step v2 的 e2e 提速需要 24 个同 op executor 并存，
+与该运行时池根本互斥**——非生命周期可修，E1 关闭，不再探。
+
+## 结论
+
+E1 **冻结（终态）**：step v2 留 microbench，`VLLM_ASCEND_GDN_LQ_STEP_V2`
+默认 0，生产 triton step。重开条件（外部）：aclnn 运行时池键纳入
+data_ptr，或 op 侧合并多层 state 为一个张量（架构级）。132.9ms 继续作废。

@@ -7,3 +7,27 @@
 {"scenario": "forced_all_due", "batch": 256, "ms": 33.523, "iters": 30}
 {"scenario": "window_rhythm", "batch": 256, "steps": 64, "launches": 5, "total_ms": 996.3, "amortized_ms_per_step": 15.5679}
 {"scenario": "nothing_due", "batch": 256, "median_host_ms": 0.1561, "max_host_ms": 5.463}
+{"scenario": "forced_all_due", "batch": 16, "ms": 4.843, "iters": 30}
+{"scenario": "forced_all_due", "batch": 64, "ms": 8.812, "iters": 30}
+{"scenario": "forced_all_due", "batch": 256, "ms": 33.174, "iters": 30}
+{"scenario": "forced_all_due", "batch": 16, "ms": 4.841, "iters": 30}
+{"scenario": "window_rhythm", "batch": 16, "steps": 64, "launches": 5, "total_ms": 396.8, "amortized_ms_per_step": 6.1998}
+{"scenario": "nothing_due", "batch": 16, "median_host_ms": 0.1156, "max_host_ms": 0.8119}
+{"scenario": "forced_all_due", "batch": 64, "ms": 8.796, "iters": 30}
+{"scenario": "window_rhythm", "batch": 64, "steps": 64, "launches": 5, "total_ms": 420.1, "amortized_ms_per_step": 6.5641}
+{"scenario": "nothing_due", "batch": 64, "median_host_ms": 0.1093, "max_host_ms": 1.5026}
+{"scenario": "forced_all_due", "batch": 256, "ms": 33.17, "iters": 30}
+{"scenario": "window_rhythm", "batch": 256, "steps": 64, "launches": 5, "total_ms": 1002.1, "amortized_ms_per_step": 15.6583}
+{"scenario": "nothing_due", "batch": 256, "median_host_ms": 0.1855, "max_host_ms": 5.4033}
+{"scenario": "nothing_due", "batch": 16, "median_host_ms": 0.0904, "max_host_ms": 0.7776}
+{"scenario": "nothing_due", "batch": 64, "median_host_ms": 0.1154, "max_host_ms": 1.479}
+{"scenario": "nothing_due", "batch": 256, "median_host_ms": 0.1718, "max_host_ms": 5.5164}
+{"scenario": "forced_all_due", "batch": 16, "ms": 4.811, "iters": 30}
+{"scenario": "window_rhythm", "batch": 16, "steps": 64, "launches": 5, "total_ms": 389.1, "amortized_ms_per_step": 6.0799}
+{"scenario": "nothing_due", "batch": 16, "median_host_ms": 0.0946, "max_host_ms": 0.7722}
+{"scenario": "forced_all_due", "batch": 64, "ms": 8.795, "iters": 30}
+{"scenario": "window_rhythm", "batch": 64, "steps": 64, "launches": 5, "total_ms": 420.6, "amortized_ms_per_step": 6.5722}
+{"scenario": "nothing_due", "batch": 64, "median_host_ms": 0.129, "max_host_ms": 1.5312}
+{"scenario": "forced_all_due", "batch": 256, "ms": 33.171, "iters": 30}
+{"scenario": "window_rhythm", "batch": 256, "steps": 64, "launches": 5, "total_ms": 1003.8, "amortized_ms_per_step": 15.6838}
+{"scenario": "nothing_due", "batch": 256, "median_host_ms": 0.1501, "max_host_ms": 5.4855}
