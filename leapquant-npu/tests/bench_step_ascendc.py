@@ -1,12 +1,14 @@
 """Micro-benchmark: AscendC LeapQuant step vs triton vs eager torch pools."""
 
 import sys
+from pathlib import Path
 import time
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
-sys.path.insert(0, "/mnt/workspace/leapquant-npu")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
+sys.path.insert(0, str(_REPO / "leapquant-npu"))
 
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
 from vllm_ascend.ops.triton.gdn_leapquant_step import gdn_leapquant_step  # noqa: E402

@@ -16,10 +16,12 @@ import glob
 import json
 import os
 import sys
+from pathlib import Path
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools, WINDOW  # noqa: E402
 
 D = "/tmp/lq_dump"
@@ -84,7 +86,8 @@ def main():
             )
             for c in curve[::4]:
                 print(f"  step {c['step']:5d}: mean={c['rel_err_mean']:.5f} max={c['rel_err_max']:.5f}")
-    with open("/mnt/workspace/leapquant-npu/runs/long_rollout_curve.json", "w") as f:
+    out_path = Path(__file__).resolve().parents[1] / "runs" / "long_rollout_curve.json"
+    with out_path.open("w") as f:
         json.dump(out, f)
 
 

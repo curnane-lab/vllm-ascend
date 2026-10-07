@@ -27,8 +27,10 @@ import os
 import numpy as np
 import torch
 
-_VENDOR = ("/mnt/workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/"
-           "vendors/custom_transformer")
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_VENDOR = os.path.join(
+    _REPO, "vllm-ascend", "vllm_ascend", "_cann_ops_custom",
+    "vendors", "custom_transformer")
 if os.path.isdir(_VENDOR):
     _cur = os.environ.get("ASCEND_CUSTOM_OPP_PATH", "")
     _paths = [p for p in _cur.split(":") if p]
@@ -47,8 +49,9 @@ def _binding():
                            "op_api/lib/libcust_opapi.so")
                  + glob.glob("/usr/local/Ascend/opp/vendors/*/op_api/lib/"
                              "libcust_opapi.so", recursive=True)
-                 + glob.glob("/mnt/workspace/vllm-ascend/vllm_ascend/"
-                             "_cann_ops_custom/**/op_api/lib/libcust_opapi.so",
+                 + glob.glob(os.path.join(
+                     _REPO, "vllm-ascend", "vllm_ascend", "_cann_ops_custom",
+                     "**", "op_api", "lib", "libcust_opapi.so"),
                              recursive=True))
         if not cands:
             raise RuntimeError("libcust_opapi.so not found")
@@ -402,7 +405,9 @@ def reset_due_gate(dev=None):
     if dev is None:
         _MIRROR.clear()
     else:
-        _MIRROR.pop(str(dev), None)
+        device_key = str(dev)
+        for key in [key for key in _MIRROR if key[0] == device_key]:
+            del _MIRROR[key]
 
 
 def flush_pools_v2(pools, idx, step=None) -> bool:

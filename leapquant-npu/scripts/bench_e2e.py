@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import torch
 from vllm import LLM, SamplingParams
@@ -44,7 +45,7 @@ def main():
         }
         args.eager = False
     llm = LLM(
-        model="/mnt/workspace/models/Qwen3.5-9B",
+        model=os.environ.get("LQ_MODEL_PATH", "/mnt/workspace/models/Qwen3.5-9B"),
         max_model_len=4096,
         enforce_eager=args.eager,
         gpu_memory_utilization=float(os.getenv("SMOKE_MEM_UTIL", "0.85")),
@@ -93,8 +94,9 @@ def main():
         # overkill: require the caller to tee; here we assert on what
         # this process can see (driver-side import check).
         try:
-            lq_path = os.environ.get("VLLM_ASCEND_GDN_LQ_PATH",
-                                     "/mnt/workspace/leapquant-npu")
+            lq_path = os.environ.get(
+                "VLLM_ASCEND_GDN_LQ_PATH",
+                str(Path(__file__).resolve().parents[1]))
             sys.path.insert(0, lq_path)
             if os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2"):
                 import gdn_lq_step_v2  # noqa: F401

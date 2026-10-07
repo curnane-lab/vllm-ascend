@@ -1,10 +1,12 @@
 """Parity test: Triton-Ascend LeapQuant flush kernel vs eager torch pools flush."""
 
 import sys
+from pathlib import Path
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools, WINDOW  # noqa: E402
 from vllm_ascend.ops.triton.gdn_leapquant_flush import gdn_leapquant_flush  # noqa: E402
 
