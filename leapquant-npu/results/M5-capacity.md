@@ -116,3 +116,15 @@ cache 开/关均 3/4 @token 36 与基线一致（prompt3@36 为已知 pre-existi
 - `_DUMP_STATE` 调试路径在 mode 3 现在读复合字节为 fp32（env 门控 debug-only，已知可接受）。
 - 8K 前缀容量只做了块数解析，未实测（4K 网格已占满本轮单卡时间）。
 - TPOT 指标需修 vLLM 0.30 metrics 属性名才能出数，本轮用 wall/decode 代理。
+
+## 7. 总结（2026-10-07）
+
+**一句话**：LeapQuant 的容量机制（原生 19KB/头 checkpoint + 紧凑池 + restore 闭环）已完整落地且正确性扎实，slot 级显存 2.0× 兑现；但论文的系统级 1.4× 并发收益在本测试形态（4K 唯一前缀 + 48 token decode）下**未兑现**，真实收益点在共享前缀长尾与 8K+ 长上下文，留作开放项。
+
+**交付物**：
+- vllm-ascend 3 个 commit（`4f0a60b` 基座 + `f2241c9` 紧凑池/restore + `ae3e6f5` env 门修复），生产 mode 3 默认行为不变
+- 显存账：slot 2,097,152→1,048,576 B；mamba page 1.43×；block 640→384 tokens（1.55× 块数）
+- 正确性：紧凑 vs 稠密池 4/4 逐 token 一致；cache restore hot-vs-cold 精确、chunked==unchunked 逐字节一致；全量回归 12 项 PASS
+- 容量实测（unique-prefix ramp，3 轮）：两模式在 N≤124 均无内存 cliff；系统容量差不可测；稳态吞吐比 3/0 ≈ 0.58–0.65×（与 M4 一致）
+
+**判断**：容量线的机制工作已完成，差的只是收益场景的覆盖（共享前缀/8K+）。继续投入前应先把 8K+ 长上下文容量实测补上——那是论文 41–56% 数字的实际形态。
