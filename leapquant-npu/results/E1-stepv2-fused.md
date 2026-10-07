@@ -69,3 +69,100 @@ vllm-ascend `a3a46d3` feat(gdn): wire the fused step-v2 entry
 (E1: single host launch, gate FAILED) —— gdn.py 接线（融合入口本体在
 leapquant-npu，非 git 仓）。未 push。`gdn_leapquant.py` 的 M5 在途
 改动（reconstruct_dense + quantize_from_tensor）保留在工作区未提交。
+
+
+---
+
+# E1 有限定位实验（2026-10-07，grok 处方）——根因找到并修复
+
+## 三变体对照（48-token 冒烟 flag 开 + pooled idx，真实 engine）
+
+| 变体 | 行为 | 冒烟 |
+|------|------|------|
+| A 每次重建 executor | 正确 | 3/4 @36 |
+| B 缓存 + 保留 `_CallContext` | 损坏，与 C **逐字节相同** | 0/4 @3 |
+| C 现状（缓存 + destroy ctx） | 损坏（对照） | 0/4 @3 |
+| B2 = B + 保留 ctypes attrs | **正确** | 3/4 @36 |
+| **D = destroy ctx + 保留 attrs（默认）** | **正确** | 3/4 @36 |
+
+## 根因（证据链）
+
+缓存 executor 的 baked launch 引用（不是拷贝）了 slow path 上的
+**ctypes attr 标量对象**（dequant/epilogue 的 `num_heads/num_k_heads/
+slot_stride_bytes/scale`）。wrapper 返回后这些临时对象被 GC，内存复用，
+之后每次缓存命中启动都读到垃圾 attr——`slot_stride_bytes` 损坏 →
+kernel 用错误的 slot 步长寻址 state → 确定性损坏（B/C 输出逐字节一致、
+任何 idx 形式、孤立 harness 全 exact 的谜题全部解释）。
+
+- A 对：每次调用 attrs 新鲜。
+- B 错且与 C 逐字节相同：**排除 ctx/描述符生命周期**（B 保活了 ctx 与全部描述符）。
+- B2/D 对：attrs 是唯一悬空引用。D（destroy ctx + 保 attrs）是生产形态。
+
+旁证：flush v2 的 fprep 缓存路径有同样的潜在悬空（其 attrs 侥幸存活于
+常量复用），已按同一修法保活（`gdn_lq_flush_v2.py:_create` 返回 attrs）。
+
+## 变体 B 的排除记录
+
+B（保活整个 ctx）在 e2e 规模**死锁**（B=16/64/256 全部挂起 >15 分钟，
+SIGTERM 不可杀）——ctx 整体保活会钉住运行时资源，长程运行必现。D 无此问题。
+
+## e2e 规模验证状态
+
+D 的 B=256 e2e 两次尝试被**环境楔死**阻断：LC=B 死锁被 kill -9 后设备
+残留 in-flight ACL 操作，此后 B=64/256 的 epilogue `get_ws` 一律
+ret=161001（C 对照同样失败——非变体问题，已判别）。小形状（冒烟）正常。
+**e2e 门（B=256 ≤279ms/step）留待设备恢复后补测**，作为下轮 grouped GEMM
+之前的第一个动作。
+
+## E1 结论更新（替换本文件上一版"停"的结论）
+
+- 根因：**attrs 生命周期**（已修，变体 D 为默认；`VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE` 保留 A/B/C/D 复现开关）。
+- 冒烟 flag 开（STEP_V2=1，IDXPOOL=1 或默认 fresh-idx）= **3/4 @36 ✓**。
+- e2e 门：两次复测（含静置 90s 后重试）均被环境楔死阻断（exit=124，每步
+  epilogue get_ws ret=161001；C 对照同样失败，非变体问题）。不宣布过、不宣布停；
+  下轮（grouped GEMM 之前）第一个动作 = 设备恢复后补测 B=256 e2e（D 配置：
+  STEP_V2=1 + IDXPOOL=1）。132.9ms 数字保持作废。
+
+
+---
+
+# E1 e2e 门补测尝试（2026-10-07 上午）——设备楔死未恢复，门保持未判定
+
+## 设备状态核验
+
+- 最小探针：小分配+matmul ✓；flush v2 @B=256/64 ✓（v2 flush 族不受影响）。
+- **step v2 的 epilogue op 族楔死**：`get_ws ret=161001`，范围从 t≥64 扩散到
+  warm 的 t=1；跨进程确定性复现；standalone bench（无 engine、无变体）同样失败。
+- 恢复手段逐项排除：残留进程（无，npu-smi 显示零进程）；npu-smi 无
+  非特权 reset 命令；无可清理的用户态 kernel 缓存（仅 atrace 日志）；
+  HBM 3116/65536MB 无泄漏性耗尽；驱动级复位工具（device_boot_init.sh 等）
+  需 root，不在授权范围。
+- 判别：楔死非变体/软件配置问题（C 对照与 D 同样失败，且在楔死前同一
+  配置可运行），系 LC=B 死锁被 kill -9（带 in-flight ACL 操作）后的设备/
+  驱动侧持久状态；且每次 161001 失败后似乎在恶化（t=1 warm 由通过转为失败）。
+
+## e2e 门状态
+
+**未判定（BLOCKED，非失败）**：B=256 ≤279ms/step 的测量需要一个健康的
+epilogue op；当前任何 t≥1 的 epilogue get_ws 都失败。恢复手段需管理员
+（驱动/设备复位）。恢复后的第一个动作（已备好命令）：
+`STEP_V2=1 IDXPOOL=1 bench_e2e B=16/64/256`。
+
+## E1 最终结论（截至本轮）
+
+- 根因：缓存 executor 引用 ctypes attr 临时对象——**已定位、已修复
+  （变体 D 默认）、冒烟 flag 开 3/4 @36 已验证**（上轮）。
+- e2e 门：未判定。按停止规则不宣布过、不宣布冻结——状态为
+  **"修复待设备恢复后补测"**。132.9ms 数字保持作废。
+
+## 勘误（2026-10-07，grok 代码审查）
+
+**变体 D 的冒烟验证无效**：epilogue 的 `attrs`（h/nk/s_slot/scale）建出来了、缓
+存也保活了，但调用是 `GetWorkspaceSize(*args, ...)`——attrs 从未传进 autogen
+接口（签名里它们在 `beta` 与 `out` 之间）。慢路径必失败 → 返回 False → 融合入
+口回退 triton step。triton 现网本身就是 3/4、分歧 @36，所以「D 正确」与「根本没
+跑到 epilogue」不可区分。已修：`*attrs` 插入 args（beta 后、o 前，对齐 autogen
+签名）；文件头注释改为如实描述（默认 D，及本勘误）。**补测前置条件**：确认无
+`[gdn-lq-epilogue] slow-path exception` 日志、`VLLM_ASCEND_GDN_LQ_STEPlog=1`
+下确认缓存命中；设备须先从 kill -9 楔死恢复（epilogue ret=161001）。过门线仍
+是 B=256 ≤279ms/step。132.9ms 继续作废。

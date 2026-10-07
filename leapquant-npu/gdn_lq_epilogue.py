@@ -25,16 +25,20 @@ _CACHE = {}
 _CACHE_CAP = 256
 _WS_BUF = None
 
-# E1 localization experiment: executor/ctx lifecycle. C (default) is the
-# historical behavior - cache the executor, destroy the CallContext.
+# E1 localization experiment: executor/ctx lifecycle. C is the historical
+# behavior - cache the executor, destroy the CallContext and drop attrs.
 # B keeps the context alive inside the cache (flush v2's fprep pattern).
 # A never caches (fresh executor per call). Selected by
-# VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE.
-# Default B: the baked executor references the ctypes attr scalars
-# (not copies); once they are GC'd every cached launch reads garbage -
-# dequant/epilogue's slot_stride attr corruption is the E1 root cause
-# (A/B/C experiment, 2026-10-07). C (destroy ctx, drop attrs) is kept
-# for reproducing the corruption.
+# VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE (read once at import).
+# Default D: destroy ctx but keep the ctypes attr scalars alive in the
+# cache tuple - the baked executor references them (not copies); once they
+# are GC'd every cached launch reads garbage (A/B/C/D experiment,
+# 2026-10-07). NOTE: until the epilogue attrs fix in the same round, the
+# epilogue attrs list was never passed to GetWorkspaceSize at all, so its
+# slow path always failed and variant D's smoke result was ambiguous
+# (silent triton fallback is also 3/4 @36). Any retest must confirm the
+# v2 path actually runs: check for absence of "[gdn-lq-epilogue]
+# slow-path exception" and cache hits under VLLM_ASCEND_GDN_LQ_STEPlog=1.
 _LC = os.getenv("VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE", "D")
 
 
@@ -188,6 +192,7 @@ def gdn_lq_epilogue(state, idx, cq, kn, qn, v, g_log, beta, o, num_heads,
             ctx.tensor(v, "v"),
             ctx.tensor(g_log, "g_log"),
             ctx.tensor(beta, "beta"),
+            *attrs,
             ctx.tensor(o, "o"),
         ]
         ws_size = ctypes.c_uint64(0)
