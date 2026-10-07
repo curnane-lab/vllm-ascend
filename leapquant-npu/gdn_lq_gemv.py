@@ -71,6 +71,10 @@ def _binding():
     return _B
 
 
+def _hc_loggate(n):
+    # log hit #0 and every 200th afterwards
+    return n == 0 or (n % 200) == 0
+
 def launch(staging, aq, cq, stream) -> bool:
     """cached fast path with a caller-provided stream; the caller performs
     the stream-capture check once for the whole fused step. Cache misses
@@ -83,6 +87,13 @@ def launch(staging, aq, cq, stream) -> bool:
            int(staging.shape[0]), int(staging.shape[1]))
     hit = _CACHE.get(key)
     global _WS_BUF
+    if hit is not None and os.getenv("VLLM_ASCEND_GDN_LQ_STEPlog"):
+        _hitc = getattr(launch, "_hits", 0)
+        if _hc_loggate(_hitc):
+            import sys as _s
+            print(f"[stepv2-launch-hit] gemv n={_hitc} "
+                  f"exec={hit[0]}", file=_s.stderr, flush=True)
+        launch._hits = _hitc + 1
     if hit is None:
         return gdn_lq_gemv(staging, aq, cq)
     executor = hit[0]

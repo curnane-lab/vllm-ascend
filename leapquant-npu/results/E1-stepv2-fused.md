@@ -166,3 +166,60 @@ epilogue op；当前任何 t≥1 的 epilogue get_ws 都失败。恢复手段需
 `[gdn-lq-epilogue] slow-path exception` 日志、`VLLM_ASCEND_GDN_LQ_STEPlog=1`
 下确认缓存命中；设备须先从 kill -9 楔死恢复（epilogue ret=161001）。过门线仍
 是 B=256 ≤279ms/step。132.9ms 继续作废。
+
+
+---
+
+# E1 e2e 门补测（2026-10-07 下午，epilogue attrs 修复后）——门判定：冻结
+
+## 勘误（推翻上一节的根因结论）
+
+grok 发现 epilogue 的 attrs 列表**从未传进 GetWorkspaceSize**（我的 hoist
+补丁遗漏），即此前所有 A/B/C/D 冒烟的 epilogue slow path 全部失败、
+**静默回退 triton**——"@36 正确"是 triton 的数值，A/B/C 判别全部作废。
+所谓"设备楔死"（get_ws ret=161001）实为同一参数缺失的确定性失败，与
+设备无关（本轮健康探针秒过：warm 0.2s、B=64/256 正常）。
+
+## 修复后的真实图谱（epilogue attrs 已传，v2 真跑、无 silent fallback）
+
+| 配置 | 冒烟 | 说明 |
+|------|------|------|
+| D（缓存+保 attrs）+ fresh-idx | **3/4 @36 ✓** | 正确但慢（见下） |
+| A（每次重建）+ pooled-idx | **3/4 @36 ✓** | 正确 |
+| D + pooled-idx | 0/4 @3 ✗ | **缓存 executor + 稳定 idx 指针 = 损坏**（真 v2 首次复现原 E1 损坏签名） |
+
+attrs 悬空理论随 B2/D 保活 attrs 仍损坏而**排除**；缓存本身是必要条件
+（A+pooled 正确）。残余嫌疑：executor 引用 ctx 所有的描述符结构（D 只保
+tensor 内存+attrs，未保描述符）——确认需 LC=B，而 LC=B 因 e2e 死锁被纪律
+禁做，**本轮不做**。
+
+## 前置门证据（D + pooled，STEP log）
+
+`slow-path exception: 0`；wrapper miss 51（首开期望）；三 op 各 6 条
+launch-hit 日志（= 各 1000+ 次真实缓存命中）。机械项全过，但**数值损坏**
+（@3）——pooled 不可出厂。
+
+## e2e 门（默认路径 STEP_V2=1，fresh-idx，v2 真跑 exc=0）
+
+| B | tok/s | ms/step | mode 3 对照 | 判定 |
+|---|-------|---------|------------|------|
+| 16 | 86.2/86.5 | ~233 | 96.9 | 差 |
+| 64 | 305-306 | ~215 | 136.7 | 差 |
+| 256 | 660.6/659.5 | **~397** | 278.9 | **未过门（>279）** |
+
+正确的 fresh-idx 路径 ≈397ms/step @B=256：executor 键含 idx.data_ptr()，
+首个 .long() 被缓存持有 → 后续每步新 .long() 地址漂移 → 每步全慢路径
+（含 host sync）——M4 标注的"隐患"在 v2 真跑下确认为**现状**。快的 pooled
+路径数值损坏。两条可用配置都过不了门。
+
+## 最终结论（停止规则）：**冻结**
+
+- step v2 留 microbench；`VLLM_ASCEND_GDN_LQ_STEP_V2` 维持默认 0；生产
+  继续 triton step。不再抠发射/缓存方向；下轮转 grouped GEMM。
+- 已排除项（本轮新增）：attrs 悬空（保活仍坏）、ctx 生命周期（B 被纪律
+  禁测但 B2 保活 ctx 时因 attrs 缺失从未真跑 v2，严格说未排除——记为
+  "未验证"而非"已排除"）、设备楔死（实为参数缺失）。
+- 未验证项：LC=B（ctx+描述符全保活）+ pooled 的正确性——e2e 死锁风险
+  解封后第一个验证点；若 B+pooled 正确，则修法=保活描述符（或 op 侧
+  拷贝描述符），E1 可重开。
+- 132.9ms 继续作废。旧 "A 正确" 结论作废（triton 假阳性）。
