@@ -163,6 +163,73 @@ def _ftail(state_base, idx, s, c, vq, kq, h, s_slot, phase, key):
                          (kq, "kq_stage")])
 
 
+def _chain7(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
+            h, slot_stride, base):
+    """Stages g1..t3 (7 launches) under ONE CallContext: the tensor
+    descriptors are registered once (~220 us total instead of ~220 us
+    per stage - profiled 2026-10-07) and every stage still creates its
+    executor and launches it immediately (the runtime executor pool
+    keys exclude the phase attr, so the four fgemv executors share one
+    pool slot; launching each creation before the next get_ws is what
+    keeps the chain correct). Attr scalars stay alive until the ctx is
+    destroyed (the E1 lesson)."""
+    rt, runtime, lib = _binding()
+    dev = idx.device
+    stream = int(torch.npu.current_stream().npu_stream)
+    ctx = rt._CallContext(runtime, dev)
+    keep = []
+    try:
+        d = {
+            "state": ctx.tensor(state_base, "state"),
+            "idx": ctx.tensor(idx, "idx"),
+            "s": ctx.tensor(s, "s_stage"),
+            "ab": ctx.tensor(ab, "ab_stage"),
+            "flags": ctx.tensor(flags, "flags"),
+            "ba": ctx.tensor(ba, "ba_stage"),
+            "q0": ctx.tensor(q0p, "q0_pad"),
+            "kq": ctx.tensor(kq, "kq_stage"),
+            "vq": ctx.tensor(vq, "vq_stage"),
+            "c": ctx.tensor(c, "c_stage"),
+        }
+        # ABI arg order: inputs, attrs, outputs (per each op's def)
+        gemv_pre = [d["state"], d["idx"], d["s"], d["ab"], d["flags"],
+                    d["ba"], d["q0"], d["kq"], d["vq"]]
+        gemv_post = [d["c"]]
+        tail_pre = [d["state"], d["idx"], d["s"], d["c"]]
+        tail_post = [d["vq"], d["kq"]]
+        stages = (
+            ("GdnLqFgemv", gemv_pre, gemv_post, [h, slot_stride, 1]),
+            ("GdnLqFgemv", gemv_pre, gemv_post, [h, slot_stride, 2]),
+            ("GdnLqFtail", tail_pre, tail_post, [h, slot_stride, 1]),
+            ("GdnLqFgemv", gemv_pre, gemv_post, [h, slot_stride, 3]),
+            ("GdnLqFtail", tail_pre, tail_post, [h, slot_stride, 2]),
+            ("GdnLqFgemv", gemv_pre, gemv_post, [h, slot_stride, 4]),
+            ("GdnLqFtail", tail_pre, tail_post, [h, slot_stride, 3]),
+        )
+        ok = True
+        for name, pre, post, attrs in stages:
+            a = [ctypes.c_int64(int(v)) for v in attrs]
+            keep.append(a)
+            ws_size = ctypes.c_uint64(0)
+            executor = ctypes.c_void_p()
+            get_ws = getattr(lib, f"aclnn{name}GetWorkspaceSize")
+            run = getattr(lib, f"aclnn{name}")
+            ret = get_ws(*pre, *a, *post,
+                         ctypes.byref(ws_size), ctypes.byref(executor))
+            if ret != 0:
+                return False
+            global _WS_BUF
+            need = int(ws_size.value) if ws_size.value else 1
+            if _WS_BUF is None or _WS_BUF.numel() < need:
+                _WS_BUF = torch.empty(need, dtype=torch.uint8, device=dev)
+            ok = run(ctypes.c_void_p(int(_WS_BUF.data_ptr())),
+                     ctypes.c_uint64(_WS_BUF.numel()), executor,
+                     ctypes.c_void_p(stream)) == 0 and ok
+        return ok
+    finally:
+        ctx.destroy()
+
+
 _BUF_CACHE = {}
 _Q0_CACHE = {}
 
@@ -448,20 +515,8 @@ def flush_pools_v2(pools, idx, step=None) -> bool:
             import sys as _s
             print(f"[lq-launch] pool={id(pools)} gen={gen} step={cur_step} "
                   f"t={t}", file=_s.stderr, flush=True)
-        ok = _fgemv(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
-                    h, slot_stride, 1, ("g1",) + base)
-        ok = ok and _fgemv(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
-                           h, slot_stride, 2, ("g2",) + base)
-        ok = ok and _ftail(state_base, idx, s, c, vq, kq, h, slot_stride, 1,
-                           ("t1",) + base)
-        ok = ok and _fgemv(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
-                           h, slot_stride, 3, ("g3",) + base)
-        ok = ok and _ftail(state_base, idx, s, c, vq, kq, h, slot_stride, 2,
-                           ("t2",) + base)
-        ok = ok and _fgemv(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
-                           h, slot_stride, 4, ("g4",) + base)
-        ok = ok and _ftail(state_base, idx, s, c, vq, kq, h, slot_stride, 3,
-                           ("t3",) + base)
+        ok = _chain7(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
+                     h, slot_stride, base)
         st["pin"][w][:2 * n].copy_(flags.view(torch.int32).reshape(-1)[:2 * n],
                                    non_blocking=True)
         st["pin_idx"][w][:t].copy_(idx, non_blocking=True)
