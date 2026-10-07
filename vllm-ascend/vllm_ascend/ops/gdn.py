@@ -48,7 +48,7 @@ from vllm_ascend.device.device_op import DeviceOperator
 from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.attention_fence import record_attention_compute_start
 from vllm_ascend.ops.gdn_attn_builder import AscendGDNAttentionBackend
-from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools
+from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools, HEAD_BYTES
 from vllm_ascend.ops.gdn_lq_flush_ascendc import flush_pools_ascendc
 from vllm_ascend.ops.triton.fla.chunk import chunk_gated_delta_rule
 from vllm_ascend.ops.triton.fla.fused_qkvzba_split_reshape import fused_qkvzba_split_reshape_cat
@@ -399,7 +399,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
     def get_state_shape(
         self,
     ) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
-        return MambaStateShapeCalculator.gated_delta_net_state_shape(
+        conv_shape, temporal_shape = MambaStateShapeCalculator.gated_delta_net_state_shape(
             self.tp_size,
             self.num_k_heads,
             self.num_v_heads,
@@ -408,6 +408,15 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
             self.conv_kernel_size,
             self.num_spec,
         )
+        if envs.VLLM_ASCEND_GDN_LEAPQUANT:
+            # M5 composite pool: the slot stores the LeapQuant head-block
+            # layout (num_heads x HEAD_BYTES = 1 MB) instead of the dense
+            # fp32 [H, V, K] state (2 MB). GDNLeapQuantPools overlays the
+            # layout unchanged; dense fp32 state only exists in transient
+            # prefill tensors (reconstruct_dense / quantize_from_tensor).
+            h = temporal_shape[0]
+            temporal_shape = (h, HEAD_BYTES // 4)
+        return conv_shape, temporal_shape
 
     def _warmup_prefill_kernels(self, qkv_or_qkvz: torch.Tensor, v_dim: int) -> None:
         return
@@ -780,15 +789,19 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
             assert prefill_has_initial_state is not None
             assert g_non_spec is not None
             assert beta_non_spec is not None
-            if use_leapquant and bool(prefill_has_initial_state.any().item()):
-                n_init = int(prefill_has_initial_state.sum().item())
-                n_tot = int(prefill_has_initial_state.numel())
-                raise RuntimeError(
-                    "VLLM_ASCEND_GDN_LEAPQUANT does not support chunked prefill "
-                    "with initial state yet (continuation reads composite state "
-                    f"as fp32); has_initial_state={n_init}/{n_tot} chunks, "
-                    "raise max_num_batched_tokens above the prompt length"
-                )
+            pools = _get_leapquant_pools(self, ssm_state) if use_leapquant else None
+            if pools is not None:
+                # Composite slots: the dense initial state is rebuilt from
+                # the checkpoints. This uniformly covers prefix-cache-hit
+                # first chunks and chunked-prefill continuation - the slot
+                # is always composite at a forward boundary, so the old
+                # "chunked prefill with initial state" error guard is
+                # replaced by this restore path (the raise would be
+                # indistinguishable from a cache hit and is no longer
+                # a correctness risk).
+                dense_init = pools.reconstruct_dense(prefill_state_indices.flatten().long())
+                mask = prefill_has_initial_state.view(-1, 1, 1, 1)
+                dense_init = torch.where(mask, dense_init, torch.zeros_like(dense_init))
             if split_non_spec:
                 query_non_spec = query_non_spec[:, num_decode_tokens:]
                 key_non_spec = key_non_spec[:, num_decode_tokens:]
@@ -801,10 +814,14 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
             )
             fla_gdn_prefill_op = _get_fla_gdn_prefill_op() if use_fla_gdn_prefill else None
             if fla_gdn_prefill_op is not None:
-                initial_state = gather_ssm_states(
-                    ssm_state,
-                    prefill_state_indices,
-                    prefill_has_initial_state,
+                initial_state = (
+                    dense_init
+                    if pools is not None
+                    else gather_ssm_states(
+                        ssm_state,
+                        prefill_state_indices,
+                        prefill_has_initial_state,
+                    )
                 )
                 (core_attn_out_non_spec, last_recurrent_state) = DeviceOperator.fla_gdn_prefill(
                     q=query_non_spec,
@@ -817,11 +834,17 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                     prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
                     fused_fwd=fla_gdn_prefill_op,
                 )
-                scatter_ssm_states_(
-                    ssm_state,
-                    prefill_state_indices,
-                    last_recurrent_state.to(ssm_state.dtype).contiguous(),
-                )
+                if pools is not None:
+                    pools.quantize_from_tensor(
+                        last_recurrent_state.to(torch.float32).contiguous(),
+                        prefill_state_indices.flatten().long(),
+                    )
+                else:
+                    scatter_ssm_states_(
+                        ssm_state,
+                        prefill_state_indices,
+                        last_recurrent_state.to(ssm_state.dtype).contiguous(),
+                    )
             # Use the fused CANN operator when available (probed once, cached on
             # the class) and applicable. It only supports the non-PCP case; fall
             # back to the Triton pipeline under PCP or if the op is unavailable.
@@ -829,11 +852,15 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 # Gather only the selected rows. Generic advanced indexing first
                 # materializes the complete cache when ssm_state has a padded
                 # batch stride under the hybrid KV-cache manager.
-                initial_state = gather_ssm_states(
-                    ssm_state,
-                    prefill_state_indices,
-                    prefill_has_initial_state,
-                    output_dtype=torch.bfloat16,
+                initial_state = (
+                    dense_init.to(torch.bfloat16)
+                    if pools is not None
+                    else gather_ssm_states(
+                        ssm_state,
+                        prefill_state_indices,
+                        prefill_has_initial_state,
+                        output_dtype=torch.bfloat16,
+                    )
                 )
                 core_attn_out_non_spec, last_recurrent_state = (
                     AscendGatedDeltaNetAttention._chunk_gated_delta_rule_fused(
@@ -847,14 +874,23 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                         scale=key_non_spec.shape[-1] ** -0.5,
                     )
                 )
-                scatter_ssm_states_(
-                    ssm_state,
-                    prefill_state_indices,
-                    last_recurrent_state,
-                )
+                if pools is not None:
+                    pools.quantize_from_tensor(
+                        last_recurrent_state.to(torch.float32).contiguous(),
+                        prefill_state_indices.flatten().long(),
+                    )
+                else:
+                    scatter_ssm_states_(
+                        ssm_state,
+                        prefill_state_indices,
+                        last_recurrent_state,
+                    )
             else:
-                initial_state = ssm_state[prefill_state_indices].transpose(-1, -2).contiguous()
-                clear_ssm_states(initial_state, prefill_has_initial_state)
+                if pools is not None:
+                    initial_state = dense_init.transpose(-1, -2).contiguous()
+                else:
+                    initial_state = ssm_state[prefill_state_indices].transpose(-1, -2).contiguous()
+                    clear_ssm_states(initial_state, prefill_has_initial_state)
                 (core_attn_out_non_spec, last_recurrent_state) = chunk_gated_delta_rule(
                     q=query_non_spec,
                     k=key_non_spec,
@@ -868,11 +904,21 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                     head_first=False,
                     use_qk_l2norm_in_kernel=True,
                 )
-                ssm_state[prefill_state_indices] = (
-                    last_recurrent_state.transpose(-1, -2).contiguous().to(ssm_state.dtype)
-                )
-            if use_leapquant:
-                _leapquant_resync(self, ssm_state, prefill_state_indices.flatten())
+                if pools is not None:
+                    # slot already holds the composite checkpoint (the
+                    # quantize_from_tensor above); no dense write exists
+                    pools.quantize_from_tensor(
+                        last_recurrent_state.transpose(-1, -2).contiguous(),
+                        prefill_state_indices.flatten().long(),
+                    )
+                else:
+                    ssm_state[prefill_state_indices] = (
+                        last_recurrent_state.transpose(-1, -2).contiguous().to(ssm_state.dtype)
+                    )
+            # no _leapquant_resync here: with composite slots the prefill
+            # branches quantize from the kernel-returned dense state
+            # directly; resync would re-read a slot that no longer holds
+            # a dense copy
             if split_non_spec:
                 core_attn_out_non_spec = torch.cat(
                     [core_attn_out_decode, core_attn_out_non_spec],

@@ -83,14 +83,23 @@ class GDNLeapQuantPools:
 
     def __init__(self, ssm_state: torch.Tensor):
         assert ssm_state.dtype == torch.float32, f"expect fp32 state, got {ssm_state.dtype}"
-        self.num_slots, self.num_heads, self.head_v, self.head_k = ssm_state.shape
+        if ssm_state.dim() == 4:
+            # dense pool: [num_slots, H, V, K] fp32 (2 MB/slot)
+            self.num_slots, self.num_heads, self.head_v, self.head_k = ssm_state.shape
+            slot_bytes = self.num_heads * self.head_v * self.head_k * 4
+        else:
+            # M5 compact pool: [num_slots, H, HEAD_BYTES // 4] fp32
+            # (1 MB/slot, the LeapQuant head-block layout). The logical
+            # head dims are fixed by the layout (codes are [128, 128]).
+            self.num_slots, self.num_heads, _ = ssm_state.shape
+            self.head_v = self.head_k = 128
+            slot_bytes = self.num_heads * HEAD_BYTES
         H, V, K = self.num_heads, self.head_v, self.head_k
         self.slot_stride_bytes = ssm_state.stride(0) * 4
-        slot_bytes = H * V * K * 4
         assert self.slot_stride_bytes >= slot_bytes, "unexpected ssm_state slot stride"
         assert slot_bytes % HEAD_BYTES == 0, "slot storage must split into head blocks"
         assert H * HEAD_BYTES <= slot_bytes, "slot buffer too small for the head-block layout"
-        i8 = ssm_state.view(torch.int8)  # [num_slots, H, V, K*4]; last-dim fp32->int8 view
+        i8 = ssm_state.view(torch.int8)  # last-dim fp32->int8 view
         self._state = ssm_state
         nblocks = slot_bytes // HEAD_BYTES
         fv = i8.view(self.num_slots, nblocks, HEAD_BYTES)[:, :H, :]
@@ -217,6 +226,33 @@ class GDNLeapQuantPools:
         # clear it (the old zeroing double-folded nothing but hid the
         # host-ordering contract).
 
+    def reconstruct_dense(self, idx: torch.Tensor) -> torch.Tensor:
+        """Full fp32 dense state [T, H, V, K] reconstructed from the composite
+        checkpoint, exactly as ``decode_step`` does before applying a token.
+
+        This is the prefix-cache-hit entry point: a cached block holds the
+        same composite bytes as a live slot, so restoring a hit request's
+        initial state is the same reconstruction decode would have performed
+        from its checkpoint. Dead window entries are masked (fill == L marks
+        a fresh window start, matching decode_step).
+        """
+        t_idx, h_idx = self.th_index(idx)
+        L = WINDOW
+        codes = self.codes[t_idx, h_idx].float()
+        s_k = self.s_k[t_idx, h_idx]
+        s_v = self.s_v[t_idx, h_idx]
+        s0 = torch.einsum("bhrv,bhrk->bhvk", self.q[t_idx, h_idx].float(), self.u[t_idx, h_idx].float())
+        s0 = s0 + codes * (s_k / QMAX).unsqueeze(-2) * s_v.unsqueeze(-1)
+        p = self.p[t_idx, h_idx]
+        f = self.fill[t_idx, h_idx]
+        f = torch.where(f >= L, torch.zeros_like(f), f)
+        w = self.w[t_idx, h_idx]  # dead entries stay 0
+        j = torch.arange(L, device=idx.device)
+        live = (j.view(1, 1, L) < f.unsqueeze(-1)).unsqueeze(-1)
+        ubuf = torch.where(live, self.ubuf[t_idx, h_idx].float(), torch.zeros((), device=idx.device))
+        kbuf = torch.where(live, self.kbuf[t_idx, h_idx].float(), torch.zeros((), device=idx.device))
+        return p.unsqueeze(-1).unsqueeze(-1) * s0 + torch.einsum("bhj,bhjv,bhjk->bhvk", w, ubuf, kbuf)
+
     @torch.no_grad()
     def init_from_dense(self, ssm_state: torch.Tensor, idx: torch.Tensor) -> None:
         """Quantize the dense fp32 states of slots idx into composite checkpoints.
@@ -241,6 +277,32 @@ class GDNLeapQuantPools:
         self.p[t_idx, h_idx] = 1.0
         self.fill[t_idx, h_idx] = 0
         # the stale dense bytes behind the buffer views are not finite as bf16
+        self.kbuf[t_idx, h_idx] = 0.0
+        self.ubuf[t_idx, h_idx] = 0.0
+
+    @torch.no_grad()
+    def quantize_from_tensor(self, dense: torch.Tensor, idx: torch.Tensor) -> None:
+        """Quantize dense fp32 states [T, H, V, K] into the slots' composite
+        checkpoints, resetting the window metadata.
+
+        Used on the prefill path instead of a dense slot write: the dense
+        state only lives in the transient prefill kernel output, and the slot
+        always holds the composite format. Equivalent to ``init_from_dense``
+        but reads the dense values from a tensor instead of the slot (which
+        no longer carries a dense copy).
+        """
+        self._lq_epoch = getattr(self, "_lq_epoch", 0) + 1
+        t_idx, h_idx = self.th_index(idx)
+        dense = dense.float()
+        c, sk, sv, u_new, q_new = _quantize(dense, self.q0)
+        self.codes[t_idx, h_idx] = c
+        self.s_k[t_idx, h_idx] = sk
+        self.s_v[t_idx, h_idx] = sv
+        self.u[t_idx, h_idx] = u_new
+        self.q[t_idx, h_idx] = q_new
+        self.w[t_idx, h_idx] = 0.0
+        self.p[t_idx, h_idx] = 1.0
+        self.fill[t_idx, h_idx] = 0
         self.kbuf[t_idx, h_idx] = 0.0
         self.ubuf[t_idx, h_idx] = 0.0
 
