@@ -25,6 +25,18 @@ _CACHE = {}
 _CACHE_CAP = 256
 _WS_BUF = None
 
+# E1 localization experiment: executor/ctx lifecycle. C (default) is the
+# historical behavior - cache the executor, destroy the CallContext.
+# B keeps the context alive inside the cache (flush v2's fprep pattern).
+# A never caches (fresh executor per call). Selected by
+# VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE.
+# Default B: the baked executor references the ctypes attr scalars
+# (not copies); once they are GC'd every cached launch reads garbage -
+# dequant/epilogue's slot_stride attr corruption is the E1 root cause
+# (A/B/C experiment, 2026-10-07). C (destroy ctx, drop attrs) is kept
+# for reproducing the corruption.
+_LC = os.getenv("VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE", "D")
+
 
 def _binding():
     global _B, _AVAILABLE
@@ -102,7 +114,18 @@ def gdn_lq_gemv(staging, aq, cq) -> bool:
            int(staging.shape[0]), int(staging.shape[1]))
     hit = _CACHE.get(key)
     global _WS_BUF
+    if _LC == "A":
+        hit = None  # recreate the executor every call
+    if os.getenv("VLLM_ASCEND_GDN_LQ_STEPlog") and hit is None:
+        import sys as _s
+        print(f"[stepv2-miss] gemv key={key}", file=_s.stderr,
+              flush=True)
     if hit is not None:
+        if os.getenv("VLLM_ASCEND_GDN_LQ_STEPlog"):
+            import sys as _s
+            print(f"[stepv2-hit] gemv exec={hit[0]} "
+                  f"key0={key[0]:#x} idxptr={key[1]:#x}", file=_s.stderr,
+                  flush=True)
         executor = hit[0]
         ret = lib.aclnnGdnLqGemv(
             ctypes.c_void_p(int(_WS_BUF.data_ptr())),
@@ -151,9 +174,16 @@ def gdn_lq_gemv(staging, aq, cq) -> bool:
             ctypes.c_uint64(need), executor,
             ctypes.c_void_p(stream))
         assert ret == 0, f"launch ret={ret}"
-        if len(_CACHE) >= _CACHE_CAP:
-            _CACHE.clear()
-        _CACHE[key] = (executor, staging, aq, cq)
+        if _LC != "A":
+            if len(_CACHE) >= _CACHE_CAP:
+                _CACHE.clear()
+            if _LC == "B":
+                # hold the CallContext: the executor references its
+                # tensor descriptors; destroying them is the E1
+                # corruption suspect
+                _CACHE[key] = (executor, staging, aq, cq, ctx)
+            else:
+                _CACHE[key] = (executor, staging, aq, cq)
         return True
     except Exception as e:
         import sys
@@ -161,7 +191,8 @@ def gdn_lq_gemv(staging, aq, cq) -> bool:
               f"{type(e).__name__}: {e!r}", file=sys.stderr, flush=True)
         return False
     finally:
-        ctx.destroy()
+        if _LC != "B":
+            ctx.destroy()
 
 
 _WARMED = False

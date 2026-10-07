@@ -26,6 +26,18 @@ _CACHE = {}
 _CACHE_CAP = 256
 _WS_BUF = None
 
+# E1 localization experiment: executor/ctx lifecycle. C (default) is the
+# historical behavior - cache the executor, destroy the CallContext.
+# B keeps the context alive inside the cache (flush v2's fprep pattern).
+# A never caches (fresh executor per call). Selected by
+# VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE.
+# Default B: the baked executor references the ctypes attr scalars
+# (not copies); once they are GC'd every cached launch reads garbage -
+# dequant/epilogue's slot_stride attr corruption is the E1 root cause
+# (A/B/C experiment, 2026-10-07). C (destroy ctx, drop attrs) is kept
+# for reproducing the corruption.
+_LC = os.getenv("VLLM_ASCEND_GDN_LQ_STEP_LIFECYCLE", "D")
+
 
 def _binding():
     global _B, _AVAILABLE
@@ -114,7 +126,18 @@ def gdn_lq_dequant(state, idx, kn, qn, staging, aq, num_heads, num_k_heads,
            int(num_k_heads), float(scale))
     hit = _CACHE.get(key)
     global _WS_BUF
+    if _LC == "A":
+        hit = None  # recreate the executor every call
+    if os.getenv("VLLM_ASCEND_GDN_LQ_STEPlog") and hit is None:
+        import sys as _s
+        print(f"[stepv2-miss] dequant key={key}", file=_s.stderr,
+              flush=True)
     if hit is not None:
+        if os.getenv("VLLM_ASCEND_GDN_LQ_STEPlog"):
+            import sys as _s
+            print(f"[stepv2-hit] dequant exec={hit[0]} "
+                  f"key0={key[0]:#x} idxptr={key[1]:#x}", file=_s.stderr,
+                  flush=True)
         executor = hit[0]
         ret = lib.aclnnGdnLqDequant(
             ctypes.c_void_p(int(_WS_BUF.data_ptr())),
@@ -149,15 +172,20 @@ def gdn_lq_dequant(state, idx, kn, qn, staging, aq, num_heads, num_k_heads,
     except Exception:
         return False
     try:
+        # E1: keep the attr scalars alive for variant B - if the baked
+        # executor references (not copies) them, their GC invalidates
+        # every cached launch (dequant's slot_stride attr would corrupt
+        # state addressing, matching the observed corruption)
+        attrs = [ctypes.c_int64(int(num_heads)),
+                 ctypes.c_int64(int(num_k_heads)),
+                 ctypes.c_int64(int(slot_stride_bytes)),
+                 ctypes.c_double(float(scale))]
         args = [
             ctx.tensor(state, "state"),
             ctx.tensor(idx, "idx"),
             ctx.tensor(kn, "kn"),
             ctx.tensor(qn, "qn"),
-            ctypes.c_int64(int(num_heads)),
-            ctypes.c_int64(int(num_k_heads)),
-            ctypes.c_int64(int(slot_stride_bytes)),
-            ctypes.c_double(float(scale)),
+            *attrs,
             ctx.tensor(staging, "staging"),
             ctx.tensor(aq, "aq"),
         ]
@@ -179,9 +207,21 @@ def gdn_lq_dequant(state, idx, kn, qn, staging, aq, num_heads, num_k_heads,
             ctypes.c_uint64(need), executor,
             ctypes.c_void_p(stream))
         assert ret == 0, f"launch ret={ret}"
-        if len(_CACHE) >= _CACHE_CAP:
-            _CACHE.clear()
-        _CACHE[key] = (executor, state, idx, kn, qn, staging, aq)
+        if _LC != "A":
+            if len(_CACHE) >= _CACHE_CAP:
+                _CACHE.clear()
+            if _LC in ("B", "D"):
+                # keep the attr scalars alive: the baked executor
+                # references them (E1 root cause). B ALSO holds the
+                # whole CallContext; D destroys it - B deadlocks in
+                # long runs (ctx resource pinning, observed 2026-10-07
+                # at every batch size), D is the production form.
+                if _LC == "B":
+                    _CACHE[key] = (executor, state, idx, kn, qn, staging, aq, ctx, attrs)
+                else:
+                    _CACHE[key] = (executor, state, idx, kn, qn, staging, aq, attrs)
+            else:
+                _CACHE[key] = (executor, state, idx, kn, qn, staging, aq)
         return True
     except Exception as e:
         import sys
@@ -189,7 +229,8 @@ def gdn_lq_dequant(state, idx, kn, qn, staging, aq, num_heads, num_k_heads,
               f"{type(e).__name__}: {e!r}", file=sys.stderr, flush=True)
         return False
     finally:
-        ctx.destroy()
+        if _LC != "B":
+            ctx.destroy()
 
 
 _WARMED = False

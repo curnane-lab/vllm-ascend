@@ -66,8 +66,8 @@ def _create(lib, rt, runtime, dev, name, tensor_args, attrs, tensors):
     args = []
     for t, nm in tensor_args:
         args.append(ctx.tensor(t, nm))
-    for v in attrs:
-        args.append(ctypes.c_int64(int(v)))
+    attrs = [ctypes.c_int64(int(v)) for v in attrs]
+    args.extend(attrs)
     for t, nm in tensors[len(tensor_args):]:
         args.append(ctx.tensor(t, nm))
     ws_size = ctypes.c_uint64(0)
@@ -80,11 +80,14 @@ def _create(lib, rt, runtime, dev, name, tensor_args, attrs, tensors):
     need = int(ws_size.value) if ws_size.value else 1
     if _WS_BUF is None or _WS_BUF.numel() < need:
         _WS_BUF = torch.empty(need, dtype=torch.uint8, device=dev)
-    return (run, executor, ctx)
+    # keep the attr scalars alive with the executor: the baked executor
+    # references them (E1 root cause), and for fprep a recycled slot_stride
+    # attr would silently corrupt state addressing
+    return (run, executor, ctx, attrs)
 
 
 def _launch(run_executor, stream):
-    run, executor, _ctx = run_executor
+    run, executor = run_executor[0], run_executor[1]
     ret = run(ctypes.c_void_p(int(_WS_BUF.data_ptr())),
               ctypes.c_uint64(_WS_BUF.numel()), executor,
               ctypes.c_void_p(stream))
