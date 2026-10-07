@@ -105,6 +105,7 @@ def step_pools_v2_fused(pools, idx, kn, qn, v, g_log, beta, scale):
     """
     try:
         if torch.npu.is_current_stream_capturing():
+            _log_unavailable("stream capturing")
             return None
     except Exception:
         return None
@@ -185,3 +186,30 @@ def step_pools_v2(pools, idx, kn, qn, v, g_log, beta, scale, o=None):
     slot is reused _RING steps later) or None when unavailable.
     In-place window append inside pools state, same as v1."""
     return step_pools_v2_fused(pools, idx, kn, qn, v, g_log, beta, scale)
+
+
+_LOGGED_UNAVAILABLE = False
+
+
+def _log_unavailable(reason):
+    """one-line stderr notice so measurements can detect a silent
+    triton fallback in the engine log (Task 1, grok plan)."""
+    global _LOGGED_UNAVAILABLE
+    if not _LOGGED_UNAVAILABLE:
+        _LOGGED_UNAVAILABLE = True
+        import sys
+        print(f"[lq-v2] step v2 unavailable: {reason}", file=sys.stderr,
+              flush=True)
+
+
+class V2FallbackError(RuntimeError):
+    """measurement context: a step-v2 fallback is a failure, not a
+    triton number."""
+
+
+def step_pools_v2_strict(pools, idx, kn, qn, v, g_log, beta, scale):
+    o = step_pools_v2_fused(pools, idx, kn, qn, v, g_log, beta, scale)
+    if o is None:
+        raise V2FallbackError("step v2 returned None (silent triton "
+                              "fallback in production; a failure here)")
+    return o

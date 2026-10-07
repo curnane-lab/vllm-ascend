@@ -31,3 +31,6 @@
 {"scenario": "forced_all_due", "batch": 256, "ms": 33.171, "iters": 30}
 {"scenario": "window_rhythm", "batch": 256, "steps": 64, "launches": 5, "total_ms": 1003.8, "amortized_ms_per_step": 15.6838}
 {"scenario": "nothing_due", "batch": 256, "median_host_ms": 0.1501, "max_host_ms": 5.4855}
+{"scenario": "forced_all_due", "batch": 16, "ms": 4.809, "iters": 30, "v2_stats": {"get_ws": 7, "cache_hit": 1, "cache_miss": 0, "host_sync": 0, "chain_launch": 1, "skip": 0}}
+{"scenario": "forced_all_due", "batch": 64, "ms": 8.81, "iters": 30, "v2_stats": {"get_ws": 7, "cache_hit": 1, "cache_miss": 0, "host_sync": 0, "chain_launch": 1, "skip": 0}}
+{"scenario": "forced_all_due", "batch": 256, "ms": 33.166, "iters": 30, "v2_stats": {"get_ws": 7, "cache_hit": 1, "cache_miss": 0, "host_sync": 0, "chain_launch": 1, "skip": 0}}

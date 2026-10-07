@@ -62,6 +62,7 @@ def _binding():
 def _create(lib, rt, runtime, dev, name, tensor_args, attrs, tensors):
     """create an executor; the CallContext MUST stay alive while the
     executor is used (it owns the tensor descriptors)."""
+    _STATS["host_sync"] += 1  # the create path synchronizes before ctx
     ctx = rt._CallContext(runtime, dev)
     args = []
     for t, nm in tensor_args:
@@ -120,8 +121,11 @@ def _fprep(state_base, idx, ab, flags, ba, h, s_slot, key):
     stream = int(torch.npu.current_stream().npu_stream)
     hit = _CACHE.get(key)
     if hit is not None:
+        _STATS["cache_hit"] += 1
         return _launch(hit, stream)
+    _STATS["cache_miss"] += 1
     dev = idx.device
+    _STATS["get_ws"] += 1
     run_ex = _create(lib, rt, runtime, dev, "GdnLqFprep",
                      [(state_base, "state"), (idx, "idx")],
                      [h, s_slot],
@@ -214,6 +218,7 @@ def _chain7(state_base, idx, s, ab, flags, ba, q0p, kq, vq, c,
             executor = ctypes.c_void_p()
             get_ws = getattr(lib, f"aclnn{name}GetWorkspaceSize")
             run = getattr(lib, f"aclnn{name}")
+            _STATS["get_ws"] += 1
             ret = get_ws(*pre, *a, *post,
                          ctypes.byref(ws_size), ctypes.byref(executor))
             if ret != 0:
@@ -269,6 +274,22 @@ def _q0_pad(pools):
         _Q0_CACHE[key] = q0p
         hit = q0p
     return hit
+
+
+# measurement instrumentation (Task 1, grok plan): counters for cache
+# hits/misses, get_ws calls, host syncs and chain launches. Cheap
+# integer increments; read/reset via stats()/reset_stats().
+_STATS = {"get_ws": 0, "cache_hit": 0, "cache_miss": 0, "host_sync": 0,
+          "chain_launch": 0, "skip": 0}
+
+
+def stats():
+    return dict(_STATS)
+
+
+def reset_stats():
+    for k in _STATS:
+        _STATS[k] = 0
 
 
 _WINDOW = 16
@@ -492,6 +513,7 @@ def flush_pools_v2(pools, idx, step=None) -> bool:
                 st["buf_step"][w] = cur_step
                 st["buf_launch"][w] = False
             st["gen"] = gen
+            _STATS["skip"] += 1
             return True
         flags, ab, ba, s, c, kq, vq = _bufs(t, h, dev)
         q0p = _q0_pad(pools)
@@ -511,6 +533,7 @@ def flush_pools_v2(pools, idx, step=None) -> bool:
         st["buf_launch"][w] = True
         st["gen"] = gen
         st["launches"] = st.get("launches", 0) + 1
+        _STATS["chain_launch"] += 1
         if os.getenv("VLLM_ASCEND_GDN_LQ_LAUNCHLOG"):
             import sys as _s
             print(f"[lq-launch] pool={id(pools)} gen={gen} step={cur_step} "
@@ -527,3 +550,27 @@ def flush_pools_v2(pools, idx, step=None) -> bool:
         print(f"[flush-v2] exception: {type(e).__name__}: {e!r}",
               file=sys.stderr, flush=True)
         return False
+
+
+class V2FallbackError(RuntimeError):
+    """raised by the strict entries when the v2 path would silently
+    fall back (return False/None) - in a measurement, a fallback is a
+    failure, never a number."""
+
+
+def flush_pools_v2_strict(pools, idx, step=None, expect_chain=False):
+    """flush_pools_v2 that RAISES on any fallback. expect_chain=True
+    additionally requires the 8-stage chain to have actually launched
+    (use in forced/measurement contexts where a pure skip means the
+    measurement would silently measure nothing)."""
+    reset_stats()
+    ok = flush_pools_v2(pools, idx, step=step)
+    st = stats()
+    if not ok:
+        raise V2FallbackError(
+            f"flush v2 unavailable/failed: stats={st}")
+    if expect_chain and st["chain_launch"] == 0:
+        raise V2FallbackError(
+            f"expected the 8-stage chain to launch, got a pure skip: "
+            f"stats={st}")
+    return st

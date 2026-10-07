@@ -17,7 +17,9 @@ sys.path.insert(0, "/mnt/workspace/leapquant-npu")
 
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
 from vllm_ascend.ops.triton.gdn_leapquant_step import gdn_leapquant_step  # noqa: E402
-from gdn_lq_step_v2 import step_pools_v2, warm_step_v2, _bufs  # noqa: E402
+from gdn_lq_step_v2 import (  # noqa: E402
+    step_pools_v2, step_pools_v2_strict, warm_step_v2, _bufs,
+)
 from gdn_lq_dequant import gdn_lq_dequant  # noqa: E402
 from gdn_lq_gemv import gdn_lq_gemv  # noqa: E402
 from gdn_lq_epilogue import gdn_lq_epilogue  # noqa: E402
@@ -112,8 +114,7 @@ def run(b, rounds=2):
 
     def prod_once():
         kn2, qn2, vx2, g2, b2 = prod_inputs()
-        r = step_pools_v2(pools, idx, kn2, qn2, vx2, g2, b2, 1.0)
-        assert r is not None
+        step_pools_v2_strict(pools, idx, kn2, qn2, vx2, g2, b2, 1.0)
 
     prod_once()
     reset()
@@ -121,15 +122,13 @@ def run(b, rounds=2):
     t0 = time.perf_counter()
     for _ in range(ITERS):
         kn2, qn2, vx2, g2, b2 = prod_inputs()
-        r = step_pools_v2(pools, idx, kn2, qn2, vx2, g2, b2, 1.0)
-        assert r is not None
+        step_pools_v2_strict(pools, idx, kn2, qn2, vx2, g2, b2, 1.0)
     torch.npu.synchronize()
     res["prod_wall"] = ((time.perf_counter() - t0) / ITERS * 1e3,) * 2
 
     # cached-wall (inputs hoisted, executor hits)
     def cached_once():
-        r = step_pools_v2(pools, idx, kn, qn, vx, g_log, beta, 1.0)
-        assert r is not None
+        step_pools_v2_strict(pools, idx, kn, qn, vx, g_log, beta, 1.0)
 
     reset()
     torch.npu.synchronize()

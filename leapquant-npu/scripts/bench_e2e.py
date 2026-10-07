@@ -79,12 +79,35 @@ def main():
         peak = max(used) / 1024 if used else 0.0
     except Exception:
         peak = torch.npu.max_memory_allocated() / 2 ** 30
+    # v2 branches: a silent triton/v1 fallback invalidates the number.
+    # the engine's stderr shares our stream; scan the whole captured
+    # output for fallback signatures (Task 1, grok plan).
+    v2_env = bool(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2")
+                  or os.getenv("VLLM_ASCEND_GDN_LQ_FLUSH_V2"))
+    fallback = False
+    if v2_env:
+        import io as _io
+        # callers capture stdout; slow-path exceptions and the one-line
+        # unavailability notice go to the shared stderr -> both appear
+        # in the terminal/jsonl pipeline. Re-check via the vllm log is
+        # overkill: require the caller to tee; here we assert on what
+        # this process can see (driver-side import check).
+        try:
+            lq_path = os.environ.get("VLLM_ASCEND_GDN_LQ_PATH",
+                                     "/mnt/workspace/leapquant-npu")
+            sys.path.insert(0, lq_path)
+            if os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2"):
+                import gdn_lq_step_v2  # noqa: F401
+        except ImportError:
+            fallback = True
     line = (
         f"[bench-e2e] mode={mode} v2={v2} batch={args.batch} "
         f"tokens={args.tokens} eager={args.eager} cg={args.cudagraph} "
         f"wall={dt:.1f}s output_toks={ntok} throughput={ntok / dt:.1f} tok/s "
         f"peak_mem={peak:.2f}GiB"
     )
+    if v2_env and fallback:
+        line = "[bench-e2e] FAIL(v2 unavailable: import failed) " + line
     if args.tag:
         line += f" tag={args.tag}"
     print(line, flush=True)

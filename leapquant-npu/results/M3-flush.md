@@ -176,3 +176,67 @@ GEMM 的流水线建立（L0/L1 分配、描述符、同步）。这正是 batch
 全绿（5/5 + 12 项矩阵），nothing-due 0.11-0.19ms 无退化。下一步（下轮议）：
 fprep/ftail 不动、fgemv 手写 multi-instance cube kernel，或全链 fold 回
 v1 单 op 形态（v1 的 43.77ms 是同平台的参照下界）。
+
+
+# 分 phase 与去零乘（grok 改进计划 1/3，2026-10-07）
+
+## 任务 1：测量显式选路（完成）
+
+- `gdn_lq_flush_v2.py`：`_STATS` 计数器（get_ws/cache_hit/cache_miss/
+  host_sync/chain_launch/skip）+ `flush_pools_v2_strict(expect_chain=)`
+  —— 回退**显式 raise**（`V2FallbackError` 带完整 stats），测量里
+  回退=失败，禁止把 v1/空跳数字记成 v2。
+- `gdn_lq_step_v2.py`：`step_pools_v2_strict`（None→raise）+ 不可用时的
+  一次性 stderr 通告（`[lq-v2] step v2 unavailable: <reason>`），engine
+  日志可检。
+- 应用到 `tests/bench_flush_v2_measure.py`（forced 场景 expect_chain，
+  jsonl 带 v2_stats）、`tests/bench_step_v2_kernels.py`（strict step）。
+  `bench_e2e.py` v2 分支加驱动侧 import 检查；engine 侧回退由跑测脚本
+  grep 日志签名（`slow-path exception` / `[lq-v2] ... unavailable`）兜底。
+- 验收演示：expect_chain 遇纯 skip 如期 raise（stats 全零+skip=1）；
+  forced 正常运行记录 stats（get_ws=7/chain_launch=1）；E1 时代的真实
+  回退日志（1618 条 slow-path exception）被 grep 门判 FAIL。
+
+## 任务 2：分 phase profile（新发现，推翻 E3 的归因）
+
+`tests/bench_flush_v2_phase.py`，forced all-due、逐级 sync、jsonl
+`runs/flush_v2_phase_profile.jsonl`。B=256 每级设备时间：
+
+| stage | ms | 占比 |
+|-------|-----|------|
+| fprep（A/B staging 装配） | 4.79 | 14% |
+| g1 S=AᵀB（K=192） | 4.80 | 14% |
+| g2 m1=Sᵀq0 | 0.90 | 3% |
+| t1 qk=MGS | 4.81 | 14% |
+| g3 qv=S·qk | 0.90 | 3% |
+| t2 qv=MGS | 4.81 | 14% |
+| g4 uk=Sᵀqv' | 0.90 | 3% |
+| **t3 量化写回** | **16.53** | **50%** |
+
+（单级之和 38.4ms > 链 33.2ms，差额 ≈ 链内省掉的 7 次 get_ws+sync ≈ 4ms，自洽。）
+
+**E3「per-GEMM 固定开销主导」的归因被修正**：四个 GEMM 相位合计仅 7.5ms
+且 g2/g3/g4 在 B=16→64 完全不涨（纯固定开销 ~0.9ms）；**瓶颈主体是 AIV
+的 t3 量化写回（16.5ms，50%）与 t1/t2 的标量 MGS（各 4.8ms）**——标量
+Get/SetValue 循环（t3 的 q-gather 每实例 512 次标量半字写）与逐行 Div。
+
+## 去零乘/降 padding（分析后不动 kernel，如实停）
+
+- g1 的 K=192 含 44 全零行（20-31 窗口死槽 pad + 160-191 尾 pad，23%）：
+  B=16/64 时 g1 恒定 0.9ms（固定开销主导），仅 B=256 出现 ~3.9ms 工作量
+  → 紧凑 K=148 理论省 ~0.9-1.1ms（33.2 的 ~3%）。但 K 维在 op_host 的
+  MatmulApiTiling（SetShape(128,128,192)）——改它必须动 op_host + 删
+  autogen 全量重建（纪律陷阱），3% 收益不抵风险与工时，**不做**。
+- step 侧 aq 死行（2-15 行清零）与 flush 投影 N=32 pad：确认无额外 GM 写
+  放大（清零是 GEMV 正确性必需，不写会读垃圾）。
+- t3/t1/t2 的标量循环才是大头，但索引向量写在本工具链有实证 miscompile
+  前科（代码注释），属高危区；多实例流水对 AIV 标量循环无效。
+  **按出口规则停在测量**：33.2ms 的分布与根因已量化落 jsonl，下一步
+  （下轮议）= t3 量化写回向量化（DataCopy 转置替换标量 gather，需配套
+  miscompile 回归）或 fprep/t1/t2 的 AIV 批处理重构。
+
+## 出口判定
+
+任务 1 全过（回退=失败可演示）；任务 2 停在测量（phase 分布表 + 零乘
+量化分析，kernel 零改动）。正确性 5/5 + due 门 12/12 + 五基线 + 冒烟
+flag 关（见本轮回归）。vllm-ascend 零改动，无 commit。

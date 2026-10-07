@@ -29,6 +29,9 @@ sys.path.insert(0, "/mnt/workspace/leapquant-npu")
 
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
 import gdn_lq_flush_v2 as v2  # noqa: E402
+from gdn_lq_flush_v2 import (  # noqa: E402
+    flush_pools_v2_strict,
+)
 
 DEVICE = "npu"
 H, V, K = 32, 128, 128
@@ -72,18 +75,18 @@ def forced_all_due(b, iters=30):
         pools.fill[:] = v2._WINDOW
         pools.w.zero_()
         for _ in range(3):  # warm the 8 executors
-            assert v2.flush_pools_v2(pools, idx)
+            flush_pools_v2_strict(pools, idx, expect_chain=True)
         torch.npu.synchronize()
         tot = 0.0
         for _ in range(iters):
             torch.npu.synchronize()
             t0 = time.perf_counter()
-            assert v2.flush_pools_v2(pools, idx)
+            st = flush_pools_v2_strict(pools, idx, expect_chain=True)
             torch.npu.synchronize()
             tot += time.perf_counter() - t0
         ms = tot / iters * 1e3
         emit({"scenario": "forced_all_due", "batch": b, "ms": round(ms, 3),
-              "iters": iters})
+              "iters": iters, "v2_stats": st})
     finally:
         del os.environ["VLLM_ASCEND_GDN_LQ_FLUSH_V2_FORCE"]
 
@@ -100,7 +103,7 @@ def window_rhythm(b, windows=4):
         pools.decode_step(idx, *ins, 1.0)
         st = v2._mirror(pools, idx.device, b * H)
         g0 = st["gen"]
-        assert v2.flush_pools_v2(pools, idx, step=s)
+        flush_pools_v2_strict(pools, idx, step=s)
         torch.npu.synchronize()
         if st["buf_launch"][st["gen"] % 2] and st["buf_gen"][st["gen"] % 2] == st["gen"]:
             launches += 1
@@ -117,13 +120,13 @@ def nothing_due(b, iters=48):
     pools.fill.zero_()
     pools.w.zero_()
     pools.decode_step(idx, *ins, 1.0)   # fill=1
-    assert v2.flush_pools_v2(pools, idx, step=1)  # cold launch
+    flush_pools_v2_strict(pools, idx, step=1)  # cold launch
     walls = []
     for s in range(2, iters + 2):
         pools.decode_step(idx, *ins, 1.0)
         torch.npu.synchronize()
         t0 = time.perf_counter()
-        assert v2.flush_pools_v2(pools, idx, step=s)
+        flush_pools_v2_strict(pools, idx, step=s)
         walls.append(time.perf_counter() - t0)
         torch.npu.synchronize()
     walls = sorted(walls)
