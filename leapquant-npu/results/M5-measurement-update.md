@@ -163,24 +163,65 @@ Throughput includes prefill and scheduling.
 | 128 | 72.34 / 72.75 | 45.37 / 45.65 | 0.627 / 0.628 |
 
 The mode 3 ratio rises from 0.33× at N=16 to 0.63× at N=128. No pool or
-scheduler cliff was reached by N=128. The earlier pre-fix eight-request run
-(`capacity9b_nocache/`) is a failure record; its 8.5 tok/s mode 3 number is
-not comparable.
+scheduler cliff was reached by N=128. This ratio is not the fair admission
+comparison: above N=128 the shared-prefix protocol hits mode 3's
+chunked-prefill limit, and prefix-cache hits shorten mode 0's prefill. The
+rows stay as the token-exact restore result. The earlier pre-fix
+eight-request run (`capacity9b_nocache/`) is a failure record; its 8.5 tok/s
+mode 3 number is not comparable.
 
 PIECEWISE with `mamba_block_size=128` and `block_size=128` was run at N=16.
 Both modes completed and restore stayed token-exact. Throughput was
 44.46 / 46.04 tok/s for mode 0 and 14.40 / 14.35 tok/s for mode 3. This
 checks that the graph ran. It is not the unequal-page allocation matrix.
 
+## Loader gate on `57ccb62` (910C, 2026-10-08)
+
+A short mode 3 run of the symbol-skipping loader executed 672 flushes.
+Every `GetWorkspaceSize` returned 0, and the log has zero
+`[gdn-lq-flush] slow-path exception` records. Raw log:
+`results/57ccb62/loader_gate_20261008_154748/`.
+
+## 8K independent-prompt admission scan (910C, 2026-10-08)
+
+The fair comparison drops the shared prefix and the prefix cache. Each
+request is its own 8K prompt. Points N=256, 320, 384, 448, and 512 all
+completed. Aggregate: `results/57ccb62/noprefix_capacity/aggregate.json`.
+
+mode 0 stays about 30.0–30.5 tok/s and mode 3 about 23.6–23.9 tok/s, so
+the ratio stays inside 0.78–0.80×. No pool, scheduler, or `max_num_seqs`
+cliff appears. Throughput includes a full prefill of every prompt and is
+flat across this range, so the run is prefill-saturated. It does not show
+a higher mode 3 admission ceiling. The paper-scale 1.4× claim is still
+open, and raising N further on this aligned-page geometry does not test it.
+
+## Production decode check (910C, 2026-10-08)
+
+The production path has no step-versus-flush timer, so this run does not
+split Triton step time from flush v1. Mode 3 logged zero slow-path
+exceptions. On the 64-token greedy prompts, prompts 0 and 1 match mode 0
+for every token. Prompts 2 and 3 diverge in the later tokens at a near tie.
+Raw files: `results/57ccb62/decode_segment/`. This is separate from the
+768-token identical run and from the token-27 Torch-versus-mode-3 split.
+Summary of the night: `results/57ccb62/night_report.md`.
+
 ## Still open
 
-- The 8K sweep stops at N=128 without a cliff. The paper-scale 1.4× claim
-  still needs a larger N and a true unequal-page allocation matrix.
+- Unequal pages are still unmeasured. `block_size=128` with
+  `mamba_block_size=128` only shows that PIECEWISE runs. A real unequal-page
+  result needs different attention and mamba page allocations.
 - FULL graph mode remains unsupported by the Ascend GDN backend.
+- The production decode gap has no segment timer. The 0.78–0.80× ratio is
+  the Triton step plus flush v1 path. t3 remains the first v2 kernel target
+  if that benchmark line continues, with a w/p/fill and decoded-state
+  regression, then t1/t2, then fprep. It does not move this ratio.
+  Production flags stay off.
 - The token-27 evidence points at accumulated Torch quantization error.
-  A one-layer replay is optional.
+  A one-layer replay is optional. The new 64-token near-ties are prompts
+  2 and 3 only.
 - Task-level accuracy is still open. The completed AB slice is 20 prompts
   per dataset; the full five-dataset sweep is 14,634 prompts.
-- t3 remains the first kernel target if flush work continues, with a w/p/fill
-  and decoded-state regression. t1/t2 are the next AIV slice, then fprep.
-  Production flags stay off.
+- `scripts/bench_capacity.py` on `main` is still the eager shared-prefix
+  script. The run's `--block-size`, `--no-chunked-prefill`, and NPU-snapshot
+  flags live on the 910C host. Loader path selection and `smoke_qwen35.py
+  --block-size` are already on `main`.
