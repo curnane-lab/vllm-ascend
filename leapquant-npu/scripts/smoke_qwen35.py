@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--max-model-len", type=int, default=4096)
     parser.add_argument("--out", default=None, help="jsonl dump path")
     parser.add_argument("--no-prefix-caching", action="store_true")
+    parser.add_argument("--block-size", type=int, default=None)
     parser.add_argument("--max-num-seqs", type=int, default=None)
     args = parser.parse_args()
 
@@ -26,6 +27,7 @@ def main():
         limit_mm_per_prompt={"image": 0},
         enable_prefix_caching=not args.no_prefix_caching,
         max_num_seqs=args.max_num_seqs,
+        **({"block_size": args.block_size} if args.block_size else {}),
     )
     sp = SamplingParams(temperature=0.0, max_tokens=args.max_tokens)
     prompts = [
