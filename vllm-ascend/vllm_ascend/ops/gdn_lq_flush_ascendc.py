@@ -11,6 +11,7 @@ q0 is expected pre-transposed as [R, V] fp32 (row r = torch q0[:, r]).
 import ctypes
 import glob
 import os
+import sys
 
 import torch
 
@@ -24,26 +25,55 @@ _WS_BUF = None  # one shared workspace: the op's kernel takes no workspace
 # (the autogen wrapper derives ~state-size workspace per call site).
 
 
+def _flush_lib_candidates():
+    """Search every known opp install. The first file on disk is not
+    necessarily the build that exports GdnLqFlush: an older libcust_opapi.so
+    makes GetWorkspaceSize return 161001 and the e2e path falls back to
+    torch.flush."""
+    pkg = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    patterns = [
+        "/tmp/fla_npu_install/fla_npu/opp/vendors/*/op_api/lib/libcust_opapi.so",
+        "/tmp/probe_opp_v*/vendors/*/op_api/lib/libcust_opapi.so",
+        "/usr/local/Ascend/opp/vendors/*/op_api/lib/libcust_opapi.so",
+        os.path.join(pkg, "_cann_ops_custom", "**", "op_api", "lib",
+                     "libcust_opapi.so"),
+    ]
+    found = []
+    for pattern in patterns:
+        found.extend(glob.glob(pattern, recursive=True))
+    return found
+
+
+def _load_flush_lib(paths):
+    rejected = []
+    for path in paths:
+        try:
+            lib = ctypes.CDLL(path)
+        except OSError as exc:
+            rejected.append(f"{path}: {exc}")
+            continue
+        if not hasattr(lib, "aclnnGdnLqFlushGetWorkspaceSize"):
+            rejected.append(path + ": missing aclnnGdnLqFlushGetWorkspaceSize")
+            continue
+        return lib, path, rejected
+    return None, None, rejected
+
+
 def _binding():
     global _B, _AVAILABLE
     if _AVAILABLE is False:
         return None
     if _B is None:
-        cands = (glob.glob("/tmp/probe_opp_v*/vendors/custom_transformer/"
-                           "op_api/lib/libcust_opapi.so")
-                 + glob.glob("/usr/local/Ascend/opp/vendors/*/op_api/lib/"
-                             "libcust_opapi.so", recursive=True)
-                 + glob.glob("/mnt/workspace/vllm-ascend/vllm_ascend/"
-                             "_cann_ops_custom/**/op_api/lib/libcust_opapi.so",
-                             recursive=True))
-        if not cands:
+        lib, path, rejected = _load_flush_lib(_flush_lib_candidates())
+        if lib is None:
             _AVAILABLE = False
+            if rejected:
+                print("[gdn-lq-flush] no libcust_opapi.so exports "
+                      "aclnnGdnLqFlushGetWorkspaceSize: "
+                      + "; ".join(rejected),
+                      file=sys.stderr, flush=True)
             return None
-        try:
-            lib = ctypes.CDLL(cands[0])
-        except OSError:
-            _AVAILABLE = False
-            return None
+        print(f"[gdn-lq-flush] loaded {path}", file=sys.stderr, flush=True)
         import torch_npu  # noqa: F401
 
         from fla_npu.ops.ascendc import _runtime as rt
@@ -123,7 +153,13 @@ def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
         executor = ctypes.c_void_p()
         ret = lib.aclnnGdnLqFlushGetWorkspaceSize(
             *args, ctypes.byref(ws_size), ctypes.byref(executor))
-        assert ret == 0, f"get_ws ret={ret} ws={ws_size.value}"
+        assert ret == 0, (
+            f"get_ws ret={ret} ws={ws_size.value} "
+            f"state_shape={tuple(state.shape)} state_stride0={state.stride(0)} "
+            f"slot_stride_bytes={slot_stride_bytes} num_heads={num_heads} "
+            f"idx_shape={tuple(idx.shape)} idx_dtype={idx.dtype} "
+            f"q0_shape={tuple(q0_rv.shape)}"
+        )
         if os.getenv("VLLM_ASCEND_GDN_LQ_DEBUG"):
             print(
                 f"[gdn-lq-flush] new executor key_state={int(state.data_ptr()) & 0xffff} "

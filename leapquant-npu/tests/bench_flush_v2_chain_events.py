@@ -1,8 +1,8 @@
-"""In-chain device-event profile for flush v2 stages g1..t3.
+"""In-chain device-event profile for flush v2 stages fprep, g1..t3.
 
-``_chain7`` enqueues seven kernels on one stream. A device event is
-recorded before each stage and after the last stage. fprep stays outside
-this chain, matching the 2026-10-07 910C table.
+The fprep kernel is enqueued first, then the ``_chain7`` stages g1..t3.
+A device event is recorded before fprep and after every stage, so the
+fprep interval is on the same stream as t1/t2/t3.
 
 The reported interval is event-to-event time on that stream. It includes
 device idle if the host has not yet enqueued the kernel when the previous
@@ -61,6 +61,7 @@ def stage_launchers(pools, idx, batch):
     q0p = v2._q0_pad(pools)
     state_base = torch.as_strided(pools._state, (1,), (1,))
     slot_stride = pools._state.stride(0) * 4
+    key_tail = (int(idx.data_ptr()), int(pools._state.data_ptr()), batch, H)
 
     rt, runtime, lib = v2._binding()
     stream = int(torch.npu.current_stream().npu_stream)
@@ -118,7 +119,13 @@ def stage_launchers(pools, idx, batch):
 
         return launch
 
-    return [(STAGE_NAMES[index], stage_fn(index)) for index in range(len(chain))], ctx
+    def prep():
+        return v2._fprep(state_base, idx, ab, flags, ba, H, slot_stride,
+                         ("prep",) + key_tail)
+
+    return [("fprep", prep)] + [
+        (STAGE_NAMES[index], stage_fn(index)) for index in range(len(chain))
+    ], ctx
 
 
 def profile(batch, iterations, output):
