@@ -11,12 +11,14 @@ Covers grok's checklist:
 """
 
 import sys
+from pathlib import Path
 import time
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
-sys.path.insert(0, "/mnt/workspace/leapquant-npu")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
+sys.path.insert(0, str(_REPO / "leapquant-npu"))
 
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
 import gdn_lq_flush_v2 as v2  # noqa: E402
@@ -276,10 +278,34 @@ def test_fill_transitions():
     print("MATRIX fill-transitions PASS: 0/15/16 + credit + re-fire")
 
 
+def test_reset_due_gate_drops_tuple_keys():
+    """reset_due_gate(dev) must drop (device, pools) keys, not str(dev)."""
+    v2._MIRROR.clear()
+    v2._MIRROR[("npu:0", 11)] = {"fills": {1: (1, 1)}}
+    v2._MIRROR[("npu:0", 22)] = {"fills": {2: (1, 1)}}
+    v2._MIRROR[("cpu", 33)] = {"fills": {3: (1, 1)}}
+    v2.reset_due_gate("npu:0")
+    assert set(v2._MIRROR) == {("cpu", 33)}, set(v2._MIRROR)
+    v2.reset_due_gate()
+    assert v2._MIRROR == {}
+    print("MATRIX reset-due-gate PASS: device argument drops tuple keys")
+
+
+def _not_due(fill, observed, step):
+    if fill >= v2._WINDOW:
+        return step - observed != 0 and step - observed < v2._WINDOW
+    return fill + (step - observed) < v2._WINDOW
+
+
 def test_mixed_due_batch():
-    """Matrix: a batch where some heads are due and some are not still
-    launches (any due slot in view forces the chain; ftail gates the
-    per-instance writeback on device)."""
+    """One mirror record forced due at step 15 launches; the others stay under the window.
+
+    The host decision does not read pools.fill. Step 16 of this rhythm is
+    already due for every slot (fill 1 observed at step 1), so the injection
+    has to be probed at step 15, where the controlled skip just happened.
+    (WINDOW, 15) is the same-step re-fire; (WINDOW, observed_step) with the
+    original observation is the post-fold credit and does not launch.
+    """
     v2.reset_due_gate()
     pools, idx = _setup(4, None)
     kn, qn, vx, gl, bt = _inputs(4)
@@ -287,11 +313,17 @@ def test_mixed_due_batch():
     for s in range(1, 16):
         pools.decode_step(idx, kn, qn, vx, gl, bt, 1.0)
         p(pools, idx, step=s)
-    pools.fill[idx[0].item()] = 16   # force one head due early
-    pools.decode_step(idx, kn, qn, vx, gl, bt, 1.0)
-    p(pools, idx, step=16)
-    assert p.launches[-1] is True
-    print("MATRIX mixed-due PASS: any due head in view launches")
+    assert p.launches[-1] is False, "step 15 must be a controlled skip"
+    st = v2._mirror(pools, idx.device, idx.shape[0] * H)
+    injected_slot = int(idx[0].item())
+    assert injected_slot in st["fills"], sorted(st["fills"])
+    saved = dict(st["fills"])
+    for slot, (fill, observed) in saved.items():
+        assert _not_due(fill, observed, 15), (slot, fill, observed)
+    st["fills"][injected_slot] = (v2._WINDOW, 15)
+    p(pools, idx, step=15)
+    assert p.launches[-1] is True, "injected slot must force the step-15 launch"
+    print("MATRIX mixed-due PASS: one due mirror record launches at step 15")
 
 
 def test_96_steps():
@@ -365,6 +397,7 @@ if __name__ == "__main__":
     test_two_layers_same_shape()
     test_slot_reuse_epoch()
     test_fill_transitions()
+    test_reset_due_gate_drops_tuple_keys()
     test_mixed_due_batch()
     test_96_steps()
     test_shape_coverage()

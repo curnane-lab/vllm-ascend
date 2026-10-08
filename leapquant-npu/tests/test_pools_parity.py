@@ -5,10 +5,12 @@ hook before any full-model run.
 """
 
 import sys
+from pathlib import Path
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools, WINDOW  # noqa: E402
 
 DEVICE = "npu" if torch.npu.is_available() else "cpu"

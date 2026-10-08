@@ -13,6 +13,7 @@ and completion status. Usage:
 
 import argparse
 import json
+import os
 import time
 
 from vllm import LLM, SamplingParams
@@ -50,11 +51,10 @@ def main():
     ap.add_argument("--out", default="runs/m5_cap.jsonl")
     args = ap.parse_args()
 
-    import os
     os.environ["VLLM_ASCEND_GDN_LEAPQUANT"] = str(args.mode)
 
     llm = LLM(
-        model="/mnt/workspace/models/Qwen3.5-9B",
+        model=os.environ.get("LQ_MODEL_PATH", "/mnt/workspace/models/Qwen3.5-9B"),
         max_model_len=args.max_model_len,
         enforce_eager=True,
         gpu_memory_utilization=args.mem_util,

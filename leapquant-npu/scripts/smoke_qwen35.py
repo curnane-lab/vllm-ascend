@@ -8,7 +8,9 @@ from vllm import LLM, SamplingParams
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="/mnt/workspace/models/Qwen3.5-9B")
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("LQ_MODEL_PATH", "/mnt/workspace/models/Qwen3.5-9B"))
     parser.add_argument("--max-tokens", type=int, default=64)
     parser.add_argument("--max-model-len", type=int, default=4096)
     parser.add_argument("--out", default=None, help="jsonl dump path")

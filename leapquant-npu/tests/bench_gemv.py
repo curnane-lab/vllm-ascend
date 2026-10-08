@@ -9,12 +9,14 @@ this box — unrelated to the custom ops, see results/M2-D2-stepv2.md).
 """
 
 import sys
+from pathlib import Path
 import time
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
-sys.path.insert(0, "/mnt/workspace/leapquant-npu")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
+sys.path.insert(0, str(_REPO / "leapquant-npu"))
 
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
 from gdn_lq_dequant import gdn_lq_dequant, warm_cache as warm_dequant  # noqa: E402

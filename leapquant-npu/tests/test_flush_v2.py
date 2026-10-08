@@ -8,9 +8,10 @@ drifted to 1.501064 after 16 steps).
 
 Judges, all against the corrected oracle AND a direct kernel/torch
 comparison on the SAME pre-flush composite state clone:
-  - absolute error gate: kernel err <= ABS_GATE (0.055; the torch flush
-    itself scores ~0.052 from the init quantization)
-  - kernel/torch decoded-state ratio <= 1.01
+  - absolute error gate: kernel err <= ABS_GATE (0.005; the torch and
+    kernel flush both score about 0.0018 against the corrected oracle)
+  - kernel/torch decoded-state ratio is informational only; the former
+    1.01 assert was calibrated on the broken oracle
   - direct clone comparison: rel err <= 1e-2, w/p/fill equality,
     non-due slot byte-invariance, multi-window (6 windows)
 Latency is measured separately in tests/bench_flush_v2_measure.py
@@ -18,12 +19,14 @@ Latency is measured separately in tests/bench_flush_v2_measure.py
 """
 
 import sys
+from pathlib import Path
 import time
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
-sys.path.insert(0, "/mnt/workspace/leapquant-npu")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
+sys.path.insert(0, str(_REPO / "leapquant-npu"))
 
 from vllm_ascend.ops.gdn_leapquant import (  # noqa: E402
     GDNLeapQuantPools, NUM_COMP_TOKENS as NUM_COMP, _Q0_SEED,

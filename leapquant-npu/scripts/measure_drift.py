@@ -6,6 +6,7 @@ the NPU analogue of LeapQuant paper Fig. 3 (state error vs context length).
 
 import argparse
 import json
+import os
 
 import torch
 from vllm import LLM, SamplingParams
@@ -46,7 +47,7 @@ def main():
     if args.mode == "bf16":
         kwargs["mamba_ssm_cache_dtype"] = "bfloat16"
     llm = LLM(
-        model="/mnt/workspace/models/Qwen3.5-9B",
+        model=os.environ.get("LQ_MODEL_PATH", "/mnt/workspace/models/Qwen3.5-9B"),
         max_model_len=8192,
         enforce_eager=True,
         gpu_memory_utilization=0.85,

@@ -12,11 +12,13 @@ executor cache), torch.npu.synchronize, perf_counter loop, final sync.
 """
 
 import sys
+from pathlib import Path
 import time
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/leapquant-npu")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "leapquant-npu"))
 
 from gemv_probe import gdn_lq_gemv_probe  # noqa: E402
 

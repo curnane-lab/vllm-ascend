@@ -16,12 +16,14 @@ Runs ONE mode per process: the old mode faults the device context.
 """
 
 import sys
+from pathlib import Path
 import time
 
 import torch
 
-sys.path.insert(0, "/mnt/workspace/vllm-ascend")
-sys.path.insert(0, "/mnt/workspace/leapquant-npu")
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "vllm-ascend"))
+sys.path.insert(0, str(_REPO / "leapquant-npu"))
 
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
 import gdn_lq_flush_v2 as v2  # noqa: E402

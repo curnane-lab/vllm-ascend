@@ -16,8 +16,10 @@ import torch
 # package; make sure the built package is registered before the first op
 # call (mirrors vllm_ascend.utils.bootstrap_custom_op_env, without the
 # heavy vllm import — must run before aclnnGetOpExecutor registration)
-_VENDOR = ("/mnt/workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/"
-           "vendors/custom_transformer")
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_VENDOR = os.path.join(
+    _REPO, "vllm-ascend", "vllm_ascend", "_cann_ops_custom",
+    "vendors", "custom_transformer")
 if os.path.isdir(_VENDOR):
     _cur = os.environ.get("ASCEND_CUSTOM_OPP_PATH", "")
     _paths = [p for p in _cur.split(":") if p]
@@ -41,8 +43,9 @@ def _binding():
                            "op_api/lib/libcust_opapi.so")
                  + glob.glob("/usr/local/Ascend/opp/vendors/*/op_api/lib/"
                              "libcust_opapi.so", recursive=True)
-                 + glob.glob("/mnt/workspace/vllm-ascend/vllm_ascend/"
-                             "_cann_ops_custom/**/op_api/lib/libcust_opapi.so",
+                 + glob.glob(os.path.join(
+                     _REPO, "vllm-ascend", "vllm_ascend", "_cann_ops_custom",
+                     "**", "op_api", "lib", "libcust_opapi.so"),
                              recursive=True))
         if not cands:
             _AVAILABLE = False
