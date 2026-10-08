@@ -163,12 +163,12 @@ Throughput includes prefill and scheduling.
 | 128 | 72.34 / 72.75 | 45.37 / 45.65 | 0.627 / 0.628 |
 
 The mode 3 ratio rises from 0.33× at N=16 to 0.63× at N=128. No pool or
-scheduler cliff was reached by N=128. This ratio is not the fair admission
-comparison: above N=128 the shared-prefix protocol hits mode 3's
-chunked-prefill limit, and prefix-cache hits shorten mode 0's prefill. The
-rows stay as the token-exact restore result. The earlier pre-fix
-eight-request run (`capacity9b_nocache/`) is a failure record; its 8.5 tok/s
-mode 3 number is not comparable.
+scheduler cliff was reached by N=128. That 0.63× figure is not comparable
+to the independent-prompt scan below: cache hits reduce prefill work only
+for mode 0, and mode 3's chunked-prefill limitation blocks a symmetrical
+shared-prefix setup above N=128. These rows stay as the token-exact restore
+result. The earlier pre-fix eight-request run (`capacity9b_nocache/`) is a
+failure record; its 8.5 tok/s mode 3 number is not comparable.
 
 PIECEWISE with `mamba_block_size=128` and `block_size=128` was run at N=16.
 Both modes completed and restore stayed token-exact. Throughput was
@@ -177,23 +177,35 @@ checks that the graph ran. It is not the unequal-page allocation matrix.
 
 ## Loader gate on `57ccb62` (910C, 2026-10-08)
 
-A short mode 3 run of the symbol-skipping loader executed 672 flushes.
+A short mode 3 run of the symbol-skipping loader executed 672 flush calls.
 Every `GetWorkspaceSize` returned 0, and the log has zero
-`[gdn-lq-flush] slow-path exception` records. Raw log:
+`[gdn-lq-flush] slow-path exception` records. The binding logs the library
+path it selected. Raw log:
 `results/57ccb62/loader_gate_20261008_154748/`.
 
-## 8K independent-prompt admission scan (910C, 2026-10-08)
+## 8,198-token independent-prompt scan (910C, 2026-10-08)
 
-The fair comparison drops the shared prefix and the prefix cache. Each
-request is its own 8K prompt. Points N=256, 320, 384, 448, and 512 all
-completed. Aggregate: `results/57ccb62/noprefix_capacity/aggregate.json`.
+Each request is its own 8,198-token prompt, with prefix cache off.
+Aggregate: `results/57ccb62/noprefix_capacity/aggregate.json`. Throughput is
+total wall time, including prefill.
 
-mode 0 stays about 30.0–30.5 tok/s and mode 3 about 23.6–23.9 tok/s, so
-the ratio stays inside 0.78–0.80×. No pool, scheduler, or `max_num_seqs`
-cliff appears. Throughput includes a full prefill of every prompt and is
-flat across this range, so the run is prefill-saturated. It does not show
-a higher mode 3 admission ceiling. The paper-scale 1.4× claim is still
-open, and raising N further on this aligned-page geometry does not test it.
+| N | mode 0 tok/s | mode 3 tok/s | ratio |
+|---:|---:|---:|---:|
+| 256 | 29.94 | 23.63 | 0.789 |
+| 320 | 30.30 | 23.65 | 0.780 |
+| 384 | 30.03 | 23.95 | 0.797 |
+| 448 | 30.19 | 23.73 | 0.786 |
+| 512 | 30.46 | 23.92 | 0.785 |
+
+No admission or pool cliff appears through N=512. This vLLM build exposes
+no engine metric for the admitted block count, so the remaining pool
+headroom is unmeasured. The ratio stays inside 0.780–0.797 while N doubles.
+The paper-scale 1.4× claim is still open.
+
+`results/57ccb62/admission_noprefix2/` and
+`results/57ccb62/admission_final/` do not vary page sizes. The
+`mamba_block_size=128`, `block_size=128` run remains a PIECEWISE graph
+smoke.
 
 ## Production decode check (910C, 2026-10-08)
 
@@ -207,11 +219,12 @@ Summary of the night: `results/57ccb62/night_report.md`.
 
 ## Still open
 
-- Unequal pages are still unmeasured. `block_size=128` with
-  `mamba_block_size=128` only shows that PIECEWISE runs. A real unequal-page
-  result needs different attention and mamba page allocations.
+- Unequal pages are still unmeasured. `admission_noprefix2/` and
+  `admission_final/` keep one page size. A real result needs different
+  attention and mamba page allocations, plus a block-count metric this
+  vLLM build does not expose.
 - FULL graph mode remains unsupported by the Ascend GDN backend.
-- The production decode gap has no segment timer. The 0.78–0.80× ratio is
+- The production decode gap has no segment timer. The 0.780–0.797× ratio is
   the Triton step plus flush v1 path. t3 remains the first v2 kernel target
   if that benchmark line continues, with a w/p/fill and decoded-state
   regression, then t1/t2, then fprep. It does not move this ratio.
@@ -221,7 +234,9 @@ Summary of the night: `results/57ccb62/night_report.md`.
   2 and 3 only.
 - Task-level accuracy is still open. The completed AB slice is 20 prompts
   per dataset; the full five-dataset sweep is 14,634 prompts.
-- `scripts/bench_capacity.py` on `main` is still the eager shared-prefix
-  script. The run's `--block-size`, `--no-chunked-prefill`, and NPU-snapshot
-  flags live on the 910C host. Loader path selection and `smoke_qwen35.py
-  --block-size` are already on `main`.
+- `scripts/bench_capacity_graph.py` is the overnight driver. It accepts
+  `--block-size`, `--no-chunked-prefill`, and an external NPU snapshot.
+  That file is on the 910C host and is not in this tree.
+  `scripts/bench_capacity.py` remains the eager shared-prefix script.
+  Loader path selection and `smoke_qwen35.py --block-size` are already on
+  `main`.
