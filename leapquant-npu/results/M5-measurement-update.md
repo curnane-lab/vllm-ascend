@@ -146,11 +146,13 @@ the mode 3 log has zero `[gdn-lq-flush] slow-path exception` records.
 ## 9B shared-prefix 8K capacity sweep (910C, 2026-10-08)
 
 After that run selected the library that exports the symbol, a second sweep
-ran on two idle 910C chips with identical settings. Protocol: one shared 8,198-token prefix, unique suffixes,
-32 greedy decode tokens, one round per point. Raw files and aggregates:
-`results/cb6242e/capacity9b_sweep_0930/` and
-`results/cb6242e/capacity9b_sweep_dev11/`. All completed rows have
-token-exact prefix-cache restore. Throughput includes prefill and scheduling.
+ran on two idle 910C chips with identical settings. Protocol: one shared
+8,198-token prefix, unique suffixes, 32 greedy decode tokens, one round per
+point. Aggregates:
+`results/cb6242e/capacity9b_sweep_0930/aggregate.json` and
+`results/cb6242e/capacity9b_sweep_dev11/aggregate.json`. Every completed row
+has `restore_divergence_index=null` (token-exact prefix-cache restore).
+Throughput includes prefill and scheduling.
 
 | N | mode 0 tok/s (chip9 / chip11) | mode 3 tok/s (chip9 / chip11) | ratio |
 |---:|---:|---:|---:|
