@@ -217,6 +217,31 @@ Raw files: `results/57ccb62/decode_segment/`. This is separate from the
 768-token identical run and from the token-27 Torch-versus-mode-3 split.
 Summary of the night: `results/57ccb62/night_report.md`.
 
+## Direct-readout step (910C, commit base `7967d96`)
+
+`VLLM_ASCEND_GDN_LQ_DIRECT_READOUT=1` skips the full `V×K` state. The
+checkpoint is reduced in blocks of 16 value rows, and each live window
+term is a length-K dot followed by a length-V accumulate. Both this path
+and the materializing step pass `tests/test_step_triton.py`. The reported
+relative error is 0.004242, inside that test's `2e-2` gate.
+
+The first A/B uses one fixed trajectory, resets the pools, and times 96
+steps plus flush. Shape: B=8, H=32, T=96, 50 iterations.
+
+| path | median wall |
+|---|---:|
+| materializing step | 177.771 ms |
+| direct-readout | 178.268 ms |
+
+Direct-readout is 0.50 ms slower on that wall, 0.28%. The medians have no
+reported spread, so the gap says this shape did not get faster. Raw files:
+`results/7967d96/step_mode_bench_dense.jsonl`,
+`results/7967d96/step_mode_bench_direct.jsonl`, and
+`results/7967d96/step_mode_bench.md`. The kernel change and
+`scripts/bench_step_mode.py` are on the 910C host and are not in this
+tree. Leave the flag off. The wall includes flush, and B=8 is not the
+N=256–512 end-to-end batch.
+
 ## Still open
 
 - Unequal pages are still unmeasured. `admission_noprefix2/` and
@@ -224,8 +249,11 @@ Summary of the night: `results/57ccb62/night_report.md`.
   attention and mamba page allocations, plus a block-count metric this
   vLLM build does not expose.
 - FULL graph mode remains unsupported by the Ascend GDN backend.
-- The production decode gap has no segment timer. The 0.780–0.797× ratio is
-  the Triton step plus flush v1 path. t3 remains the first v2 kernel target
+- The 0.780–0.797× end-to-end ratio is still unattributed. Direct-readout
+  did not speed the B=8 step-plus-flush wall. The next measurement is the
+  prefill split: reconstruct, quantize, Triton step, and flush v1 on one
+  8,198-token run. A larger-batch step-only timing is optional and does
+  not come before that split. t3 remains the first v2 kernel target
   if that benchmark line continues, with a w/p/fill and decoded-state
   regression, then t1/t2, then fprep. It does not move this ratio.
   Production flags stay off.
