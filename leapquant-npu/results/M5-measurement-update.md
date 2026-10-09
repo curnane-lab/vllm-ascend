@@ -627,8 +627,20 @@ B=2 engine average of 0.344 ms per layer-step sits between the
 nothing-due and any-due rows, which is what a mix of those calls looks
 like. It is not a constant to reuse at a larger batch.
 
+A follow-up on the same chip held `B` fixed and raised the allocated
+pool `S` from 16 to 512 (`ITERS=20`, logs `e2/B2_S512.log` and
+`e2/B64_S512.log`). The cost did not change. The bill is the length of
+`idx`, not the allocated pool. The pasted summary gives that comparison
+and not the raw milliseconds. One line,
+`0.14 ms + 131 µs × B`, is 0.402 ms at `B=2` against the measured
+0.400 ms. The same line is 8.52 ms against 8.416, 33.68 against 33.45,
+and 67.21 against 66.87, high by about 0.5–1.3%. The 200 µs per slot at
+`B=2` is that 0.14 ms fixed term spread over two slots, on top of the
+131 µs slope.
+
 `gdn.py` calls `_lq_flush` on every decode step, and `idx` is the
-current decode batch, not the whole KV allocation. E5's window flushes
+current decode batch, not the whole KV allocation. The `S` sweep is
+the measurement behind that sentence. E5's window flushes
 once per 16 lockstep steps, so it pays the any-due bill once per
 window. That is the cheap schedule for this kernel. In a staggered
 batch about `B/16` slots are due on every step, and E2 says that call
@@ -710,8 +722,9 @@ bar than 0.31. Production flags stay off.
   B=256 window near 0.34. E6 and the allocator stay stopped. Next is a
   fused direct step that does not materialize `S`, and a flush whose
   cost follows the due slots rather than the whole `idx`. E2 already
-  separates nothing-due (0.01–0.03 ms) from any-due (131 µs per slot
-  for `B≥64`). The B=2 engine gap remains 1.935 s step increment,
+  separates nothing-due (0.01–0.03 ms) from any-due (about
+  `0.14 ms + 131 µs × B` for `B≥64`). Raising the allocated pool from
+  16 to 512 at fixed `B` did not change that bill. The B=2 engine gap remains 1.935 s step increment,
   6.341 s flush region, 0.729 s prefill, and 3.295 s unattributed.
   That 0.344 ms flush average is a B=2 mix, not a larger-batch
   constant. The old direct-readout kernel stays out. Production flags
