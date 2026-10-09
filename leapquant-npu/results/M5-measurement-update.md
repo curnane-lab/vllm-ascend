@@ -239,12 +239,67 @@ Raw files: `results/7967d96/step_mode_bench_dense.jsonl`,
 `results/7967d96/step_mode_bench.md`. The kernel and the script are on the
 910C host and are not in this tree. Leave the flag off.
 
+## Static pool budget on vllm-ascend 0.27.1 (910C, 2026-10-09)
+
+This run is a port onto official vllm 0.27.1 + vllm-ascend 0.27.1rc1
+(`3b3188623`), CANN 9.1.0, torch 2.10.0 / torch_npu 2.10.0.post4,
+triton-ascend 3.2.2. Device: Ascend910_9382, 64GB. Weights:
+`/mnt/weight/Qwen3.5-9B`. The patch lives in that container's
+`/vllm-workspace/vllm-ascend` tree. It is not in this repository. The
+binding replaces `fla_npu` with a local ctypes runtime.
+
+Startup log only, no generation. Same `max_model_len=8192`,
+`gpu_memory_utilization=0.85`, prefix caching on, eager.
+
+| geometry | attn block | mamba page | GPU KV tokens | concurrency @8192 | vs mode 0 | outputs |
+|---|---:|---:|---:|---:|---:|---|
+| mode 0 dense | 1024 | 4,243,456 | 595,675 | 72.71× | 1.00× | matches |
+| mode 3 pad, production default | 512 | 2,146,304 | 749,940 | 91.55× | 1.26× | passes |
+| mode 3 compact | 256 | 1,097,728 | 848,949 | 103.63× | 1.425× | cold start broken |
+| mode 3 block 256 + pad page | 256 | 2,146,304 | 434,176 | 53.00× | 0.73× | passes, fewer tokens |
+
+91.55 / 72.71 = 1.26. 103.63 / 72.71 = 1.425. 53.00 / 72.71 = 0.73. The
+1.425× row is void: compact pages overwrite attention V. The old
+0.93–1.0× band was the vendored fork's 384-vs-640 block account, not this
+page geometry.
+
+Compact stays broken with prefix caching off (divergence at token 0 / 2).
+Mode 0 restore, mode 3 pad restore, and block-256-plus-pad restore are 4/4.
+Forcing block 256 is not the failure. The shared KV tensor is
+`[conv 49,152 B | K | V]`. The ssm view is a dense slice of stride
+1,048,576 B from the end of conv, and it stays clear of V only while
+
+```text
+page >= 256 * 4096 + 49,152 + 1,048,576 = 2,146,304 B
+```
+
+The compact page is 1,097,728 B, so high slot ids land in V. That is a
+layout collision, not a restore bug and not a tunable page size. On this
+stack the padded 1.26× concurrency is the structural maximum. A separate
+mamba tensor would be required to chase the void 1.425× figure.
+
+Functional checks on the same port, weights read-only:
+
+- mode 1, 48 tokens: 3/4, prompt 3 diverges at token 36.
+- mode 2 matches mode 1 bitwise.
+- mode 3, 48 tokens: 4/4 against mode 0, zero `[gdn-lq-flush] slow-path`,
+  library path logged.
+- 768 tokens, mode 0 vs mode 3: divergences at tokens 101 and 132, ratio
+  0.77×. This is a different stack from the vendored-fork 768-token
+  identical run.
+- 64-token top-2 gaps: mode 0 vs mode 3 identical on all 4 prompts. Literal
+  gap 0.0000 ties on prompts 1 and 3 did not flip. The vendored-fork
+  prompt 2/3 late split was not reproduced here.
+
+`VLLM_ASCEND_GDN_LQ_COMPACT_PAGE` stays off. `VLLM_ASCEND_GDN_LQ_STEP_V2`
+stays off.
+
 ## Still open
 
-- Unequal pages are still unmeasured. `admission_noprefix2/` and
-  `admission_final/` keep one page size. A real result needs different
-  attention and mamba page allocations, plus a block-count metric this
-  vLLM build does not expose.
+- On the 0.27.1 shared KV layout, a compact mamba page cannot be correct.
+  The padded geometry already measures 1.26× concurrency at a fixed 8192
+  denominator. Reaching the void 1.425× number requires a separate mamba
+  allocation, not another page-size flag or a larger N.
 - FULL graph mode remains unsupported by the Ascend GDN backend.
 - The 0.780–0.797× end-to-end ratio is still unattributed. The B=8
   direct-readout timing includes input generation and a flush call on
