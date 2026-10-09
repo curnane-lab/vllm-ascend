@@ -733,7 +733,9 @@ match alone is not a second measurement. Direct-Triton step time is
 puts that at 1.23–1.39× the materializing Triton step. Against the E5
 eager dense window, one step at B=256 is `(59.15/16) / 2.411 = 1.53×`
 (the report says 1.55×). That is a step ratio. The eager dense kernel
-is still not the production fused dense kernel.
+is still not the production fused dense kernel. A later run on the
+same host did not reproduce 0.170–2.411 ms. The step-kill section
+uses the times from that run.
 
 A lockstep window estimate, not a rerun of E5, is `16 × step +` the
 flush already measured inside the E5 `M` window:
@@ -1054,12 +1056,11 @@ before-value of this B=256 row.
 which is 3.70×. Per step that is 1.00 ms against 3.70 ms. The
 lockstep estimate that replaces the eager step with the direct-Triton
 step and keeps this flush is `16 × 2.411 + 24.33 = 62.91` ms, and
-`15.98 / 62.91 = 0.254`. That estimate was not run as a paired window.
-The direct-Triton piece alone, 38.58 ms, is already larger than the
-whole production window. Zeroing the flush on paper leaves
-`15.98 / 38.58 = 0.414`. Clearing 1.10 against this `D_op` would
-require the whole LeapQuant window to come in under
-`15.98 / 1.10 = 14.5` ms. E6 and E7b stay stopped.
+`15.98 / 62.91 = 0.254`. That estimate was not run as a paired window,
+and its 2.411 ms step was not reproduced later. Clearing 1.10 against
+this `D_op` would require the whole LeapQuant window to come in under
+`15.98 / 1.10 = 14.5` ms. The step-kill section is the measurement
+against that line. E6 and E7b stay stopped.
 
 Two more build facts from this pass. `ninja` piped to a grep for
 `error` is not a compile check: the `OPS_LOG` text matches, and
@@ -1073,28 +1074,103 @@ device with 507035, "UB address not aligned". That is why
 scalar `GetValue` or a reduce. This 507035 is the alignment fault.
 It is not the step-v2 IndexCheck reported above.
 
+## Step-kernel kill line (910C, 2026-10-09)
+
+The line agreed from the production window: at B=256, R≥1.10 needs the
+lockstep LeapQuant window at or under 14.5 ms. A flush at the
+unmeasured 50 µs/instance bound is about 8.6 ms (`171 × 50` µs), which
+leaves about 0.37 ms/step. The host used 0.4 ms/step as that kill
+line. A direct step with no path to it stops the operator work: no
+multi-head step, no further flush polish, no E5.
+
+The same host retimed the direct step. Back-to-back amortization
+matched the per-call figure, so the times are not a launch gap. The
+§15 row of 0.170 / 0.575 / 1.197 / 2.411 ms was not reproduced.
+
+| B | Triton direct | AscendC direct | 16 × AscendC | D_op window |
+|---:|---:|---:|---:|---:|
+| 16 | 2.573 | 0.299 | 4.78 | 1.247 |
+| 64 | 3.788 | 1.074 | 17.18 | 3.537 |
+| 128 | 5.278 | 2.134 | 34.14 | 8.176 |
+| 256 | 8.728 | 4.253 | 68.05 | 15.98 |
+
+The AscendC column is the existing direct-algebra step. At B=256,
+`4.253 / 171 = 24.9` µs on the slowest block, and `4.253 / 0.4 = 10.6`.
+The 16-step AscendC total divided by the production window is 3.8× at
+B=16, 4.9× at B=64, 4.2× at B=128, and 4.3× at B=256.
+The Triton column is slower at every B. No correctness figure is
+attached to either column in this run.
+
+The reduce probe reused the flush `dbg_mode` path. Modes 11, 12, and
+13 time a `[128,128]` row sum as `wall(mode) − wall(4)`. Modes 21, 22,
+and 23 read the same shapes back through the `s_k` slot and compare
+them with a same-seed reference. The kernel, the driver, the binding,
+and both bench scripts stay on that host. They are not in this tree.
+
+| shape | µs per matvec | check |
+|---|---:|---|
+| 12/22, row `Mul`+`Add`, one-repeat `WholeReduceSum` (`CodesDots16`) | 7.6 | passes, fp32-level against the reconstruct reference |
+| 11/21, pair-add, `WholeReduceSum(64, repeat=128)` | 1.0 | fails, max abs about 30 against mode 22 |
+| 13/23, strided halving, `WholeReduceSum(8)` with a repeat | 1.4 | fails, max abs about 32 against mode 22 |
+
+Both multi-repeat widths fail with `dstRepStride=1`. The fast shapes
+are not a usable floor. The host identifies this with the step
+kernel's earlier mis-scattered reduce. The shape that passes is the
+one already in the step, at 7.6 µs. Two codes matvecs are 15.2 µs per
+instance. On the B=256 slowest block that is `171 × 15.2` µs `= 2.60`
+ms per step, and `16 × 2.60 = 41.6` ms, before the window term and
+before the flush. Those matvecs alone are 2.9× the 14.5 ms budget. The measured 24.9 µs step is that 15.2 µs plus the
+rest of the instance.
+
+A correct multi-repeat at the 1.0 µs timing would be `2 × 1.0 × 171`
+µs `= 0.34` ms of matvec per step. The paste's ~0.45 ms is higher
+than that product. Sixteen steps of 0.34 ms are 5.5 ms, which would
+leave 9.0 ms of the 14.5 ms budget for the rest of the step and for
+the flush. The measured B=256 flush is 24.33 ms, so that path is
+closed by the flush as well. It is closed first by the wrong results.
+
+The remaining route the host names is an fp32 `TransDataTo5HD`
+transpose plus a scalar `Axpy`, estimated at ~0.33 µs per matvec and
+a ~0.45 ms step floor. `0.33` µs `× 2 × 171 = 0.11` ms, so the
+0.45 ms floor is not that product. The host's stop reason is the one
+that matters here: the parameters are undocumented, the fast
+multi-repeat reduce has already shown that a quick primitive can time
+well and compute wrong, and a success would still sit on the 0.4 ms
+line with the window dots, the loads, and the conversion unaccounted
+for. That route was not implemented.
+
+After the probe was built into the flush kernel, flush parity passed,
+E2 bench passed, and `dbg_mode` 0 was unchanged. Mode 0 read 4.551 ms
+and 6.122 ms, the head1 wall and the B=64 all-due wall from the
+de-scalarized binary (`6.127` ms there). The 6.12 ms figure is that
+B=64 call, 43 instances at 142 µs. It is not the B=256 flush, which
+stays 24.33 ms. E6 and the allocator stay stopped.
+
+Two conditions are what the host would need before reopening this
+line. A multi-repeat `WholeReduceSum`, or the fp32 transpose, has to
+match the single-repeat reference and then be timed inside the step.
+The production dense window has to be retimed if that upstream kernel
+changes. Neither was done here.
+
 ## Still open
 
-- The operator gate is still open, now against the production dense
-  op. Paired `D_op / M` is 0.040–0.085 from B=16 to B=256. At B=256,
-  `D_op` is 15.98 ms and `M` is 187.0 ms, of which the de-scalarized
-  flush is 24.33 ms and the eager materializing step is 162.7 ms.
-  The flush itself moved from about 195 µs to 142 µs per due instance
-  on the slowest block, 1.375× on the measured all-due column at
-  B=64 and above. Pass 0+1 is 59.3 µs and pass 3+4a is 21.0 µs.
-  Pass 2 is still 36.6 µs. The direct-Triton step plus this flush is
-  an estimate, `38.58 + 24.33 = 62.91` ms, and `15.98 / 62.91 = 0.254`.
-  The direct step alone is larger than the production window, so a
-  faster flush does not clear 1.10 by itself. The eager-`D` scale
-  (40 µs fold → about R=1.30) stays an eager-`D` scale. E6 and the
-  allocator stay stopped. The B=2 engine gap remains 1.935 s step
-  increment, 6.341 s flush region, 0.729 s prefill, and 3.295 s
-  unattributed. That 0.344 ms flush average is a B=2 mix, not a
+- The operator line is stopped. At B=256 the production window is
+  15.98 ms, and R≥1.10 needs the LeapQuant window at or under 14.5 ms.
+  The AscendC direct step measured on the later run is 4.253 ms, 68.0 ms
+  across 16 lockstep steps. The codes matvec that actually matches the
+  reference is 7.6 µs, 2.60 ms per step on the slowest block, 41.6 ms
+  across 16 steps, before the window term and before the flush.
+  Multi-repeat `WholeReduceSum` returns values about 30 away from that
+  reference, so its 1.0 µs timing is not a floor. The §15 direct-Triton
+  row of 0.170–2.411 ms was not reproduced; the later Triton direct row
+  is 2.573–8.728 ms. No multi-head step, no further flush polish, and
+  no E5. E6 and the allocator stay stopped. The B=2 engine gap remains
+  1.935 s step increment, 6.341 s flush region, 0.729 s prefill, and
+  3.295 s unattributed. That 0.344 ms flush average is a B=2 mix, not a
   larger-batch constant. The old direct-readout kernel stays out.
-  Production flags stay off. The kernel patch, `dbg_mode`, and the
-  two bench scripts are on the host and are not in this tree. The
-  vendored-fork 0.780–0.797× scan is a different stack and is not
-  re-opened here.
+  Production flags stay off. The probe kernel and benches are on the
+  host and are not in this tree. The vendored-fork 0.780–0.797× scan
+  is a different stack and is not re-opened here.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
