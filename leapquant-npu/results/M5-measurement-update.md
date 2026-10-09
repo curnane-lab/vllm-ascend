@@ -274,9 +274,14 @@ page >= 256 * 4096 + 49,152 + 1,048,576 = 2,146,304 B
 ```
 
 The compact page is 1,097,728 B, so high slot ids land in V. That is a
-layout collision, not a restore bug and not a tunable page size. On this
-stack the padded 1.26× concurrency is the structural maximum. A separate
-mamba tensor would be required to chase the void 1.425× figure.
+layout collision, not a restore bug and not a tunable page size. The
+1.26× figure is the startup KV-token budget under prefix-cache align
+(KVCacheManager page account plus the vLLM concurrency formula), not a
+live served concurrency. Among the geometries measured on this shared
+layout, the padded page is the structural maximum. A separate mamba
+tensor would be required to go past it. After that split the overhead
+has to be counted again; do not cite the void 1.425× row. The
+no-prefix-cache startup budget and the live 96-way ramp are below.
 
 Functional checks on the same port, weights read-only:
 
@@ -300,37 +305,125 @@ Parity on the same container, four chips, six tests:
 | `test_flush_ascendc.py` | pass |
 | `test_flush_strided.py` | smoke pass |
 | `test_step_ascendc.py` | pass; 96-step output rel ≤ 0.0095, end-of-window state ≤ 0.0102 |
-| `test_step_v2.py` | pass; `w`/`p`/`fill` bit-exact, end-of-window state ≤ 0.0104 |
+| `test_step_v2.py` | pass on one pool; `w`/`p`/`fill` bit-exact there, end-of-window state ≤ 0.0104 (overall mean-abs, not per-head relative L2) |
 
-The reported step-v2 3-op walls are 0.408 / 0.612 / 1.752 ms at B=16/64/256.
-Those are this container's numbers. They do not replace the vendored-fork
-M2 table. The harness edits that make the tests import
+The reported step-v2 times 0.408 / 0.612 / 1.752 ms at B=16/64/256 are a
+step-plus-reset loop wall on this container. The loop includes
+`fill`/`w.zero_()`. They are not pure 3-op kernel times, and they do not
+replace the vendored-fork M2 table. The bit-exact `w`/`p`/`fill` row is
+the single-pool test. It does not cover the 24-pool alternation below.
+The harness edits that make the tests import
 `gdn_lq_aclnn_runtime` instead of `fla_npu`, the `libcust_opapi.so`
 symlink, and the mirror-package rename stay on that host.
 
 `VLLM_ASCEND_GDN_LQ_COMPACT_PAGE` stays off. `VLLM_ASCEND_GDN_LQ_STEP_V2`
 stays off. Flush v2's seven-stage chain is still not wired into `gdn.py`.
+The container's `patches/vllm-ascend-0271/` tree is not in this repository.
+
+## Production timing on the 0.27.1 port (eager, B=2, 2×768 tokens)
+
+`VLLM_ASCEND_GDN_LQ_TIMER=1` is an env-gated NPU-event timer added to
+`gdn.py` on that container. The timer is not in this tree. Wall: mode 0
+41.9 s, mode 3 54.2 s, ratio 0.773×, matching the untuned 0.77× baseline.
+Timer overhead is approximately symmetric between the two modes.
+
+Averages are per layer-step and already include B=2. The extrapolation is
+768 tokens × 24 GDN layers = 18,432 layer-steps. Prefill counts are call
+counts, not layer-steps.
+
+| region | avg | extrapolated |
+|---|---:|---:|
+| dense decode recur (mode 0) | 0.103 ms / layer-step | 1.90 s |
+| lq step, Triton (mode 3) | 0.208 ms / layer-step | 3.83 s |
+| lq flush v1, AscendC (mode 3) | 0.344 ms / layer-step | 6.35 s |
+| mode 3 decode total | 0.552 ms / layer-step (5.4× dense) | 10.18 s |
+| prefill quantize | 10.72 ms × 48 calls | 0.51 s |
+| prefill reconstruct | 4.46 ms × 48 calls | 0.21 s |
+
+The wall gap is 12.3 s. Device decode accounts for step extra
+(3.83 − 1.90 = 1.93 s) plus flush v1 6.35 s. Prefill adds 0.72 s.
+The rest, about 3.3 s, is host and launch: mode 3 adds two GQA
+`repeat_interleave`s and one flush launch per layer-step. Flush v1 is
+6.35 / 12.3 = 51% of the gap. The step extra is about 16%, prefill about
+6%, host/launch about 27%. The first production cost on this run is
+flush v1 itself. Flush v2's t3 does not move this ratio until that cost
+is on the v1 path. Raw logs stay on the container.
+
+## Live 96-way ramp (no prefix cache, eager, two chips)
+
+96 requests, 8000 prompt tokens plus 256 decode tokens. Both sides
+admitted all 96 with zero preemption. Startup concurrency on this
+no-cache page geometry is mode 0 92.55× and mode 3 106.00×, which is
+1.145× (+14.5%). That geometry is not the align-mode 1.26× budget above.
+
+| | wall | generated tok/s | peak running |
+|---|---:|---:|---:|
+| mode 0 | 72.8 s | 247.9 | ~92 |
+| mode 3 | 134.6 s | 134.1 | 96 |
+| ratio | 0.54× | | |
+
+tok/s × wall is about 18,050 output tokens. That product is what the
+run reported; it is not 96 × 256. The +14.5% no-cache budget, and the
++26% align budget, do not become throughput when decode is heavy. Triton
+step plus flush v1 grows with batch and consumes the admission gain.
+The load where the budget can pay is admission-bound with light decode,
+the same direction as TurboQuant PR #14715. A follow-up, only if that
+claim is still wanted, is N above 106 so mode 0 queues first, under
+align, with a lighter decode. Do not quote 0.54× as the capacity number,
+and do not quote 1.26× as served concurrency.
+
+## Step v2, 24 pools (container test, flag stays off)
+
+`tests/test_step_v2_multipool.py` is on the container, not in this tree.
+Log: `/tmp/opencode/parity/test_step_v2_multipool_chip2.log`. Phase A is
+a pure-Torch 24-pool reference. Phase B replays the same seed through
+the v2 fused entry and AscendC flush.
+
+1152 fused calls across 24 same-shape, different-address pools,
+alternating layers: 0 executor fallbacks. The old E1 cache-miss class
+did not reproduce on this runtime. The window-end checkpoint matches
+Torch at step 16 (0.98014408…). AscendC flush due-scan and fold are
+correct, so the device window bytes are intact.
+
+Torch typed views of `fill` / `p` / `w` stay frozen at the step-0 values
+(fill=1, p=0.99972, w last element 1) through step 15, then agree at
+step 16. The Torch reference advances every step: fill goes 1, 2, 3, …,
+16, then back to 1, and p leaves 0.99972 on step 1. Production `gdn.py`
+does not read these views, so the current end-to-end path stays correct.
+A host due-gate, including flush v2, or any diagnostic that trusts the
+view, would be wrong. Zero fallbacks is not a reason to wire step v2.
+`VLLM_ASCEND_GDN_LQ_STEP_V2` stays off. The E1 gate 389≥279 is still open.
+
+Two constraints the test had to keep: Torch advanced indexing after the
+v2 custom op hits IndexCheck / aclnnMul 507035, so the v2 warmup runs
+only before Phase B. A slot index that changes every step flakes even in
+pure Torch, so the test keeps slots stable for the generation and
+recycles windows with `init_from_dense`.
 
 ## Still open
 
 - On the 0.27.1 shared KV layout, a compact mamba page cannot be correct.
-  The padded geometry already measures 1.26× concurrency at a fixed 8192
-  denominator. Reaching the void 1.425× number requires a separate mamba
-  allocation, not another page-size flag or a larger N.
+  The padded 1.26× number is a startup KV-token budget under align, not
+  served concurrency. The no-cache startup budget on the ramp host is
+  1.145× (92.55× vs 106.00×). The live 96-way decode-heavy ramp is 0.54×
+  throughput. Going past the padded page needs a separate mamba tensor
+  and a separate block-id space, on the order of 24 × 1.05 GB. That work
+  is unscheduled. Do not cite 1.425× after the split, and do not expect a
+  larger N to produce 1.4× on this layout.
 - FULL graph mode remains unsupported by the Ascend GDN backend.
-- The 0.780–0.797× end-to-end ratio is still unattributed. The B=8
-  direct-readout timing includes input generation and a flush call on
-  every step, and it does not check outputs. The next measurement is the
-  prefill split: reconstruct, quantize, Triton step, and flush v1 on one
-  8,198-token run. A step-only timing, with inputs prepared outside the
-  timer, waits on a direct-readout that matches the materializing formula.
-  t3 remains the first v2 kernel target
-  if that benchmark line continues, with a w/p/fill and decoded-state
-  regression, then t1/t2, then fprep. It does not move this ratio.
+- The 0.27.1 eager gap on one 768-token, B=2 run is attributed: flush v1
+  is 6.35 s of the 12.3 s gap (51%). If kernel work continues, the target
+  is flush v1, not flush-v2 t3. The vendored-fork 0.780–0.797× scan is a
+  different stack and is not re-opened here. Direct-readout still waits
+  on a kernel that matches the materializing formula, then alignment, one
+  op, a step-only timer with inputs outside the loop, then production
+  decode. The B=8 bench remains a mixed wall and is not kernel proof.
   Production flags stay off.
 - The token-27 evidence points at accumulated Torch quantization error.
-  A one-layer replay is optional. The new 64-token near-ties are prompts
-  2 and 3 only.
+  A one-layer replay is optional. On the vendored fork, the 64-token
+  near-ties are prompts 2 and 3 only. The 0.27.1 64-token probe is 4/4
+  and did not reproduce that split. The port's 768-token flips at 101
+  and 132 stay a near-tie accumulation note.
 - Task-level accuracy is still open. The completed AB slice is 20 prompts
   per dataset; the full five-dataset sweep is 14,634 prompts.
 - `scripts/bench_capacity_graph.py` is the overnight driver. It accepts
