@@ -291,8 +291,25 @@ Functional checks on the same port, weights read-only:
   gap 0.0000 ties on prompts 1 and 3 did not flip. The vendored-fork
   prompt 2/3 late split was not reproduced here.
 
+Parity on the same container, four chips, six tests:
+
+| check | result |
+|---|---|
+| `test_pools_parity.py` | pass |
+| `test_step_triton.py` | pass |
+| `test_flush_ascendc.py` | pass |
+| `test_flush_strided.py` | smoke pass |
+| `test_step_ascendc.py` | pass; 96-step output rel ≤ 0.0095, end-of-window state ≤ 0.0102 |
+| `test_step_v2.py` | pass; `w`/`p`/`fill` bit-exact, end-of-window state ≤ 0.0104 |
+
+The reported step-v2 3-op walls are 0.408 / 0.612 / 1.752 ms at B=16/64/256.
+Those are this container's numbers. They do not replace the vendored-fork
+M2 table. The harness edits that make the tests import
+`gdn_lq_aclnn_runtime` instead of `fla_npu`, the `libcust_opapi.so`
+symlink, and the mirror-package rename stay on that host.
+
 `VLLM_ASCEND_GDN_LQ_COMPACT_PAGE` stays off. `VLLM_ASCEND_GDN_LQ_STEP_V2`
-stays off.
+stays off. Flush v2's seven-stage chain is still not wired into `gdn.py`.
 
 ## Still open
 
