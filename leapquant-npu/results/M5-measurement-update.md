@@ -617,10 +617,14 @@ due kept their bytes; due slots folded (`w=0`, `p=1`, `fill` left at
 | 256 | 0.022 ms | 33.43 ms | 33.45 ms | 131 µs |
 | 512 | 0.033 ms | 66.85 ms | 66.87 ms | 131 µs |
 
-Nothing-due returns in 0.012–0.033 ms. Any positive due count costs the
-same as every slot being due, to 0.03 ms. For `B≥64` that price is
-131 µs per slot in the call, 4.1 µs per slot-head. `B=2` is 200 µs per
-slot and is not on that line. A fresh `idx` allocation on the
+Nothing-due returns in 0.012–0.033 ms. On this due matrix a count of
+about 1/16 costs the same as every slot being due, to 0.03 ms. For
+`B≥64` the all-due column is 131 µs per slot in the call, 4.1 µs if
+that column is also divided by 32 heads. `B=2` is 200 µs per slot and
+is not on that line. Those quotients describe this matrix. A later
+placement of one due sequence against four moves the same `B=64` wall
+from 6.26 ms to 8.21 ms, so the 1/16 row matched all-due because that
+pattern filled the slowest block. A fresh `idx` allocation on the
 nothing-due path costs 0.222 ms against 0.017 ms at `B=2`; at `B≥256`
 the report says the pointer stays put and the penalty drops. The
 B=2 engine average of 0.344 ms per layer-step sits between the
@@ -641,13 +645,11 @@ and 67.21 against 66.87, high by about 0.5–1.3%. The 200 µs per slot at
 `gdn.py` calls `_lq_flush` on every decode step, and `idx` is the
 current decode batch, not the whole KV allocation. The `S` sweep is
 the measurement behind that sentence. E5's window flushes
-once per 16 lockstep steps, so it pays the any-due bill once per
-window. That is the cheap schedule for this kernel. In a staggered
-batch about `B/16` slots are due on every step, and E2 says that call
-still costs the all-due price. At `B=256` that is 33.4 ms of flush on
-every step, about 534 ms across 16 steps, against an eager dense window
-of 59 ms. An engine trace with staggered fill is still required before
-quoting 534 ms as a serving number. The lockstep share is not that
+once per 16 lockstep steps, so it pays one due call per window. Reading
+this table as "any due pattern bills the all-due wall" made a staggered
+batch look like 33.4 ms of flush on every step at `B=256`, about 534 ms
+across 16 steps. The bisect below retires that reading: the wall is the
+due count on the slowest block. The 534 ms product is not a serving
 number.
 
 E3 checked the direct algebra on a frozen checkpoint, both Torch
@@ -709,11 +711,11 @@ codes, scales, and the window once and does not build `S` is what can
 expose that cut. This fail does not measure that kernel.
 
 Stop here for the engine and the allocator. E6 and E7b stay unstarted.
-The next operator measurement needs both of these, and neither is
-sufficient alone: a fused direct step, and a flush whose any-due call
-does not bill every slot named in `idx`. The production dense kernel is
-faster than this eager `D`, so a later pass against it has a higher
-bar than 0.31. Production flags stay off.
+The fused direct step is reported on the host. The flush piece that
+still keeps the lockstep estimate under 1.10 is the fold on the slowest
+block, about 195 µs per due instance, recorded in the bisect below.
+The production dense kernel is faster than this eager `D`, so a later
+pass against it has a higher bar than 0.31. Production flags stay off.
 
 ## Fused Triton direct step, and the any-due floor (910C, 2026-10-09)
 
@@ -765,40 +767,153 @@ The same host then split one due head from four due heads at B=64
 B=64 all-due remains 8.416 ms. One due head is already 6.258 ms, about
 48× a 131 µs per-slot line. Four spread heads cost the same as one
 head. Four heads at the tail cost 8.212 ms, so placement still moves
-about 2 ms. A price per due head does not describe this.
-
-Holding the due pattern at one head and varying `B` gives 0.209 ms at
-B=2, 1.962 ms at B=16, and 6.258 ms at B=64. Divided by `B × 32`
-instances that is 3.3, 3.8, and 3.1 µs. All-due divided the same way is
-6.3 µs at B=2 (`0.400 ms / 64`), 4.11 µs at B=64 (`8.416 ms / 2048`),
-and 4.08 µs at B=512 (`66.87 ms / 16384`). One head at B=2 is
-0.209 / 0.400 of all-due. One head at B=64 is 6.258 / 8.416 of all-due.
-The leading term follows the number of instances in the call once any
-head is due. It does not follow the due count, and the two totals are
-not equal. Nothing-due at B=64 is 0.011 ms, which is 5.4 ns per
-instance. That division is this one row. The B=2 nothing-due call is
-0.017 ms, 0.27 µs per instance, so the 5 ns figure is not the
-nothing-due law at every batch.
+about 2 ms. Dividing those walls by `B × 32` gave 3.1–3.8 µs per
+instance in the call. That denominator counts idle blocks. The bisect
+below replaces it.
 
 `trace_head1.json` sums the `GdnLqFlush` device kernel to 31.303 ms
 over 5 launches, 6.261 ms each. That matches the 6.258 ms wall. The
 6.26 ms is kernel time. The trace's Computing bucket is 33.36 ms, and
 its Free time is 245 ms of host idle in the capture, not a per-call
-submit cost. The source of the per-instance time is still open.
-`msprof` AIC counters are not in this run.
+submit cost. Nothing-due at B=64 is 0.011 ms. Divided by every instance
+in that one call it is 5.4 ns. The B=2 nothing-due call is 0.017 ms,
+0.27 µs per instance, so the 5 ns figure is not a nothing-due law.
 
-The kernel's scan loads 4 bytes of `fill` per instance
-(`DataCopyPad` of 4, then `PIPE_ALL` once per group of 32) and calls
-`ProcessDue` only for heads whose fill is `L`. Those 4-byte loads also
-run when nothing is due, and that path is the 0.011 ms call, so the
-loads by themselves are not a 3 µs round trip. `fill` for successive
-heads is `HEAD_BYTES` apart, 32 KiB, so one 128-byte contiguous read
-per batch row does not cover the 32 heads. A wider fill read and a
-split between scan and fold are proposals. They are not a measured fix.
-The per-due rewrite stays frozen. B=256 all-due remains the measured
-33.45 ms, which is 8192 × 4.1 µs. A one-head point at B=256 was not
-measured. Scaling the B=64 one-head rate would be 8192 × 3.1 µs =
-25.4 ms, still the same order as all-due and not one sixteenth of it.
+## Flush fold bisect (910C, 2026-10-09)
+
+`msprof` on `bench_flush_due_matrix`, `B=64`, 20 iterations,
+PipeUtilization, `collect launch`. The kernel is `AI_VECTOR_CORE`, 48
+blocks. The counters that move are the `aiv_*` columns. The `aic_*`
+columns stay 0. Nothing-due duration is 12.7 µs, busy 10.4 µs (mte2
+3.8, scalar 2.9, vector about 0). Calls with dues take 8.41–8.42 ms.
+The four-due-batch call is busy for 531 µs, 94% idle: that idle is the
+average across the 48 blocks, one hot block against idle blocks. The
+all-due call is busy for 8348 µs, 99% busy, about 194 µs of busy time
+per fold on a full block. MTE2 on the slow path is 14–25 µs. The
+4-byte `DataCopyPad` L2-miss account of this wall is false. The time
+is in the vector and scalar pipes.
+
+The same host added a third attribute, `dbg_mode`, default 0, a tiling
+field, and the env `GDN_LQ_FLUSH_DBG`. The executor cache key includes
+the mode. `ProcessDue` returns at the phase named by the mode.
+`scripts/bench_flush_dbg.py` times the modes and does not recheck
+correctness. The attribute, the script, the sweep log, the `msprof`
+dump, and the kernel backup stay on that host. They are not in this
+tree. After that build, E2 bench and the AscendC flush parity check
+passed again with `dbg_mode` left at 0. Keeping the attribute upstream
+is undecided.
+
+Three build facts, each hit once on that host. `build_aclnn.sh` rebuilds
+the host side. The device kernel that runs is the configure-time copy
+under `csrc/build/binary/ascend910_93/src/<op>/op_kernel/`, and a
+`gen/<op>_ascend910_93_0.done` marker skips it. The first sweep, every
+mode at 8.41 ms, was that stale binary and is void. Forcing the rebuild
+is deleting the marker and ninja-building the
+`GdnLqFlush-gdn_lq_flush-0.sh` rule with the CANN environment. Adding
+the attribute without regenerating `binary/.../src/gdn_lq_flush/GdnLqFlush.py`
+made opc report E80003: the new value landed in `kernel_name`. The host
+patched `_build_args`, the `check_op_params` decorator, and the three
+signatures in that generated driver. A later edit of a `gdn_lq` kernel
+refreshes the `binary/src` copy and the generated driver and deletes
+the marker, or wipes `binary/` and reconfigures.
+
+Bisect at `B=64`, event median, milliseconds. `head1` is one due
+sequence: 32 head instances, all on block 0. `head4` is four due
+sequences, 43 instances on the slowest block. `spread4` keeps every
+block at or under 32. `dueall` is 43 on every block. Mode 10 returns
+at the `ProcessDue` entry. Mode 0 and mode 9 are the full kernel.
+
+| mode | stops after | head1 | head4 | spread4 | dueall |
+|---:|---|---:|---:|---:|---:|
+| 10 | entry, no fold | 0.0096 | 0.0092 | 0.0095 | 0.010 |
+| 1 | `p` read, MTE2 and a barrier | 0.0146 | 0.0189 | — | — |
+| 2 | nine GM reads, 29 KB | 0.0224 | 0.0296 | — | — |
+| 3 | casts, the `w` loop, `SyncV2S` | 0.036 | 0.047 | — | — |
+| 4 | pass 0+1, S rebuild and qk | 3.193 | 4.289 | — | — |
+| 5 | `Mgs4` of qk | 3.256 | 4.373 | — | — |
+| 6 | pass 2 and `Mgs4` of qv | 4.430 | 5.951 | — | — |
+| 7 | pass 3 and pass 4a | 5.480 | 7.362 | — | — |
+| 8 | pass 4b quantize, no writeback | 6.243 | 8.387 | — | — |
+| 0/9 | full, with writeback | 6.253 | 8.400 | 6.256 | 8.412 |
+
+Mode 10 on `dueall` is 0.010 ms. The stale-binary 8.41 ms at that mode
+is void. `head1` matches `spread4` because both put about 32 dues on
+the slowest block. `8.400 / 6.253 = 1.343` and `43 / 32 = 1.344`.
+`6.253 / 32 = 195.4` µs and `8.412 / 43 = 195.6` µs. `43 × 195` µs is
+8.39 ms against the measured 8.412. At `B=2`, all-due leaves 2
+instances on the slowest block, and `2 × 195` µs is 0.39 ms against
+the measured 0.400. At `B=256`, all-due is 8192 instances, 171 on the
+slowest block, and `171 × 195` µs is 33.3 ms against the measured
+33.45. The earlier one-due-sequence point at `B=16`, 1.962 ms, is 11
+instances at 178 µs if that block held 11, about 9% under 195 µs. The
+195 µs line is the `B=64` and `B=256` all-due rate. It is a close
+description of `B=16`, not an exact one.
+
+Head1 phase gaps divided by 32, and the same gaps on head4 divided by
+43 for pass 0+1:
+
+| phase | head1 | share of 195 µs |
+|---|---:|---:|
+| pass 0+1, S rebuild | 98.7 µs | 51% |
+| pass 2 and `Mgs4`(qv) | 36.7 µs | 19% |
+| pass 3 and pass 4a | 32.8 µs | 17% |
+| pass 4b quantize | 23.8 µs | 12% |
+| `Mgs4`(qk), the reads, casts, writeback | 3.4 µs | 2% |
+
+Pass 0+1 on head4 is `(4.289 − 0.047) / 43 = 98.7` µs, the same rate.
+The paste rounded the last row to about 2.5 µs. The head1 remainder
+after the four large phases is 3.4 µs. The PipeUtilization reading on
+the slow path is about 10.8K vector instructions of 128 elements and
+159 µs of vector-pipe busy time, about one thirteenth of that pipe's
+peak. That is the counter. Pass 0+1 in
+`gdn_lq_flush.cpp` is the `v` loop that loads `sv`, `q`, `ubuf`, and
+`q0` with scalar `GetValue` and then issues `Muls` and `Add` for that
+row. The kernel already marks those `GetValue`s as S-pipe reads that
+need `SyncV2S`. The phase split plus the MTE2 counter put the wall on
+that fold. On the all-due call the vector pipe is busy for 159 µs and
+the same reading puts it at about one thirteenth of its peak, which is
+the room a scalar `GetValue` in front of each row's `Muls` would leave.
+An instruction trace that names the stalled opcode is not in this run.
+
+The scan is the 0.010 ms mode-10 call. `Process` loads 4 bytes of
+`fill` per instance (`DataCopyPad` of 4) and one `PIPE_ALL` per
+`SCAN=32` group, then calls `ProcessDue` only when `fill >= L`. Those
+loads also run when nothing is due. Successive heads are `HEAD_BYTES`
+apart, 32768 bytes, so one 128-byte contiguous read of a batch row
+does not cover 32 heads. The wider fill read, and a split that only
+reorders scan and fold, are retired. Scan and launch are already
+microseconds.
+
+A fold at 20–40 µs is a target. Nothing at that rate has been timed.
+Scaling the measured `B=256` lockstep estimate (direct-Triton step
+`16 × 2.411 = 38.576` ms, flush 33.44 ms, eager `D` 59.15 ms,
+`R = 0.821`) by `t / 195` on the flush term:
+
+| fold | flush | window | R vs eager D |
+|---:|---:|---:|---:|
+| 195 µs, measured | 33.44 | 72.02 | 0.82 |
+| 96 µs, pass 0+1 removed and the rest kept | 16.5 | 55.1 | 1.07 |
+| 89 µs | 15.3 | 53.8 | 1.10 |
+| 40 µs | 6.86 | 45.4 | 1.30 |
+| 20 µs | 3.43 | 42.0 | 1.41 |
+
+Clearing 1.10 against this eager `D` takes the whole fold to about
+89 µs or under. Removing only pass 0+1 leaves about 96 µs and
+`R ≈ 1.07`, which misses 1.10. The production fused dense kernel is
+faster than this eager `D`, so 1.10 here is not that bar. A paired E5
+of the fused direct step plus a retimed fold is still required. E6 and
+E7b stay stopped.
+
+One sequence is 32 contiguous instances (`inst = b * H + h`, `H = 32`).
+At `B=256` a block holds about 171 instances, so those 32 heads sit on
+one block unless the sequence straddles a boundary. A staggered step
+whose slowest block holds one such sequence is `32 × 195` µs, 6.2 ms,
+and several due sequences on that block cost more. Striping the 32
+heads across blocks would be a different schedule, about 11 dues per
+block and 2.1 ms, and this kernel does not stripe them. Neither
+product is an engine trace, and neither is a serving number. The
+retired 534 ms figure is the one that billed the all-due wall on every
+step.
 
 ## Still open
 
@@ -806,17 +921,19 @@ measured. Scaling the B=64 one-head rate would be 8192 × 3.1 µs =
   host is 0.170–2.411 ms at B=16–256 and about 1.53× the eager dense
   step at B=256. The lockstep estimate that adds the current flush is
   R=0.82–0.86, under the 1.10 bar, and it is not a paired E5 rerun.
-  One due head costs 3.1–3.8 µs per instance across B=2/16/64, and
-  all-due sits at 4.1–6.3 µs per instance. The 6.258 ms wall at B=64 is
-  device kernel time (31.303 ms over 5 launches). A per-due price is
-  the wrong model. What those microseconds are inside the kernel is
-  still open, and the per-due rewrite stays frozen. E6 and the
-  allocator stay stopped. The B=2 engine gap remains 1.935 s step increment,
-  6.341 s flush region, 0.729 s prefill, and 3.295 s unattributed.
-  That 0.344 ms flush average is a B=2 mix, not a larger-batch
-  constant. The old direct-readout kernel stays out. Production flags
-  stay off. The vendored-fork 0.780–0.797× scan is a different stack
-  and is not re-opened here.
+  The flush wall is the due count on the slowest of 48 AIV blocks
+  times about 195 µs, and that 195 µs is fold math: pass 0+1 is 98.7 µs,
+  then 36.7, 32.8, and 23.8 µs. The 4-byte fill load is the 0.010 ms
+  scan. A 20–40 µs fold is a target, not a measurement. Removing only
+  pass 0+1 leaves about 96 µs and scales the B=256 estimate to about
+  R=1.07, short of 1.10. The whole fold has to reach about 89 µs to
+  clear 1.10 against this eager D. The production fused dense kernel
+  is a higher bar. E6 and the allocator stay stopped. The B=2 engine
+  gap remains 1.935 s step increment, 6.341 s flush region, 0.729 s
+  prefill, and 3.295 s unattributed. That 0.344 ms flush average is a
+  B=2 mix, not a larger-batch constant. The old direct-readout kernel
+  stays out. Production flags stay off. The vendored-fork 0.780–0.797×
+  scan is a different stack and is not re-opened here.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
