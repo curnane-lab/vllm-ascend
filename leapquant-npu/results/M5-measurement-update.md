@@ -763,22 +763,42 @@ The same host then split one due head from four due heads at B=64
 | B=2, all due | 0.400 ms |
 
 B=64 all-due remains 8.416 ms. One due head is already 6.258 ms, about
-48× a 131 µs per-slot line and far above 4.1 µs per head. Four spread
-heads cost the same as one head. Four heads placed at the tail cost
-8.212 ms, so placement still moves about 2 ms, and the due count does
-not. A per-due price does not describe this. The any-due floor grows
-with `B` (0.40 ms at B=2, 6.26 ms for one head at B=64). These two
-points are not a proportionality to `B × H`. The per-due rewrite stays
-frozen. The open suspects are the due-path sync and the output-queue
-structure. They are not a finding.
+48× a 131 µs per-slot line. Four spread heads cost the same as one
+head. Four heads at the tail cost 8.212 ms, so placement still moves
+about 2 ms. A price per due head does not describe this.
 
-`torch_npu` profiler traces for due0, one due head, and all-due, five
-iterations each at B=64, are on the host under
-`results/repro_0271/e2/trace_*.json`. A name filter on the averaged
-table did not see the flush kernel; the custom op is not registered
-under that name. Parsing the trace events, or `msprof`, is still open.
-Until one of those names the time, the 6.258 ms has no kernel-level
-attribution.
+Holding the due pattern at one head and varying `B` gives 0.209 ms at
+B=2, 1.962 ms at B=16, and 6.258 ms at B=64. Divided by `B × 32`
+instances that is 3.3, 3.8, and 3.1 µs. All-due divided the same way is
+6.3 µs at B=2 (`0.400 ms / 64`), 4.11 µs at B=64 (`8.416 ms / 2048`),
+and 4.08 µs at B=512 (`66.87 ms / 16384`). One head at B=2 is
+0.209 / 0.400 of all-due. One head at B=64 is 6.258 / 8.416 of all-due.
+The leading term follows the number of instances in the call once any
+head is due. It does not follow the due count, and the two totals are
+not equal. Nothing-due at B=64 is 0.011 ms, which is 5.4 ns per
+instance. That division is this one row. The B=2 nothing-due call is
+0.017 ms, 0.27 µs per instance, so the 5 ns figure is not the
+nothing-due law at every batch.
+
+`trace_head1.json` sums the `GdnLqFlush` device kernel to 31.303 ms
+over 5 launches, 6.261 ms each. That matches the 6.258 ms wall. The
+6.26 ms is kernel time. The trace's Computing bucket is 33.36 ms, and
+its Free time is 245 ms of host idle in the capture, not a per-call
+submit cost. The source of the per-instance time is still open.
+`msprof` AIC counters are not in this run.
+
+The kernel's scan loads 4 bytes of `fill` per instance
+(`DataCopyPad` of 4, then `PIPE_ALL` once per group of 32) and calls
+`ProcessDue` only for heads whose fill is `L`. Those 4-byte loads also
+run when nothing is due, and that path is the 0.011 ms call, so the
+loads by themselves are not a 3 µs round trip. `fill` for successive
+heads is `HEAD_BYTES` apart, 32 KiB, so one 128-byte contiguous read
+per batch row does not cover the 32 heads. A wider fill read and a
+split between scan and fold are proposals. They are not a measured fix.
+The per-due rewrite stays frozen. B=256 all-due remains the measured
+33.45 ms, which is 8192 × 4.1 µs. A one-head point at B=256 was not
+measured. Scaling the B=64 one-head rate would be 8192 × 3.1 µs =
+25.4 ms, still the same order as all-due and not one sixteenth of it.
 
 ## Still open
 
@@ -786,9 +806,12 @@ attribution.
   host is 0.170–2.411 ms at B=16–256 and about 1.53× the eager dense
   step at B=256. The lockstep estimate that adds the current flush is
   R=0.82–0.86, under the 1.10 bar, and it is not a paired E5 rerun.
-  One due head at B=64 already costs 6.258 ms, so a per-due price is
-  the wrong model and that rewrite stays frozen until the profiler
-  names the time. E6 and the allocator stay stopped. The B=2 engine gap remains 1.935 s step increment,
+  One due head costs 3.1–3.8 µs per instance across B=2/16/64, and
+  all-due sits at 4.1–6.3 µs per instance. The 6.258 ms wall at B=64 is
+  device kernel time (31.303 ms over 5 launches). A per-due price is
+  the wrong model. What those microseconds are inside the kernel is
+  still open, and the per-due rewrite stays frozen. E6 and the
+  allocator stay stopped. The B=2 engine gap remains 1.935 s step increment,
   6.341 s flush region, 0.729 s prefill, and 3.295 s unattributed.
   That 0.344 ms flush average is a B=2 mix, not a larger-batch
   constant. The old direct-readout kernel stays out. Production flags
