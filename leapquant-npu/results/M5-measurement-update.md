@@ -711,11 +711,11 @@ codes, scales, and the window once and does not build `S` is what can
 expose that cut. This fail does not measure that kernel.
 
 Stop here for the engine and the allocator. E6 and E7b stay unstarted.
-The fused direct step is reported on the host. The flush piece that
-still keeps the lockstep estimate under 1.10 is the fold on the slowest
-block, about 195 µs per due instance, recorded in the bisect below.
-The production dense kernel is faster than this eager `D`, so a later
-pass against it has a higher bar than 0.31. Production flags stay off.
+The fused direct step is reported on the host. The fold bisect below
+puts the pre-change flush at about 195 µs per due instance on the
+slowest block. A later host pass cut that to about 142 µs and paired
+the window against the production dense op. That pairing fails, and it
+is recorded after the bisect. Production flags stay off.
 
 ## Fused Triton direct step, and the any-due floor (910C, 2026-10-09)
 
@@ -899,10 +899,10 @@ Scaling the measured `B=256` lockstep estimate (direct-Triton step
 
 Clearing 1.10 against this eager `D` takes the whole fold to about
 89 µs or under. Removing only pass 0+1 leaves about 96 µs and
-`R ≈ 1.07`, which misses 1.10. The production fused dense kernel is
-faster than this eager `D`, so 1.10 here is not that bar. A paired E5
-of the fused direct step plus a retimed fold is still required. E6 and
-E7b stay stopped.
+`R ≈ 1.07`, which misses 1.10. This table is the eager-`D` scale.
+The production dense op, measured in the next section, takes 15.98 ms
+for the B=256 window, and the retimed flush on that pairing is 24.33 ms.
+The 1.10 column does not carry over to that op.
 
 One sequence is 32 contiguous instances (`inst = b * H + h`, `H = 32`).
 At `B=256` a block holds about 171 instances, so those 32 heads sit on
@@ -915,25 +915,186 @@ product is an engine trace, and neither is a serving number. The
 retired 534 ms figure is the one that billed the all-due wall on every
 step.
 
+## De-scalarized flush, and the production dense window (910C, 2026-10-09)
+
+The same host edited `GdnLqFlush` and kept the edits that passed the
+parity gate. The kernel snapshot, `scripts/bench_flush_dbg.py`, and
+`scripts/bench_window_vs_dense_op.py` stay on that host. They are not
+in this tree. `dbg_mode` stayed at 0. The host's recommendation is to
+land the attribute and both scripts with the kernel patch. E2 bench
+passed four times, including its correctness checks. The AscendC flush
+parity check passed with reported max 0.01021, the same gate as the
+pre-change run. The parity suite was 6/7. `test_step_v2_multipool`
+failed on the w/p/fill visibility assertion. The host says the 10:51
+log has the same signature, which is the executor bookkeeping issue
+already recorded above, so this round does not add a regression. An
+e2e smoke of mode 3 was 4 prompts in 3.9 s against a 4.0 s baseline.
+At B=2 the flush is a small share of that smoke. It is not an e2e win.
+
+The adopted fold edits, as the host describes them:
+
+1. Pass 0+1 uses `Axpy` for the window and compensator terms, and for
+   the qk accumulation. The host's phase timer went from 99.8 µs to
+   65.3 µs per instance. `Axpy` is `dst += src × scalar`. This build
+   left that op enabled. The host puts the fused rounding within 1 ulp
+   of `Muls` plus `Add`, inside the relative-diff gate.
+2. Pass 0+1 overlaps two rows: the next row's scalar reads sit under
+   the current row's vector issues. 65.3 µs went to 59.2 µs per
+   instance, a 9% cut.
+3. Pass 2 gives each dot its own staging row. The host reports that
+   this removed a write-after-read on the shared halving buffer. The
+   final pass-2 rate below did not move.
+4. Pass 3 accumulates with `Axpy(uk_r, srow, qv[r,v])`. Pass 4a applies
+   `E = S − Σ c·uk` as an in-place `Axpy` with a negative scalar. The
+   host's timer for pass 3+4a went from 32.8 µs to 20.9 µs, a 36% cut.
+5. Pass 2 and pass 4b issue one V-to-S sync per 8 rows instead of per
+   row, 64 syncs down to 32 per instance. The final pass-2 and pass-4b
+   rates below did not move.
+
+Final phase profile at B=64, `head1`, 32 instances on the slowest
+block. The full call is 4.551 ms, which is 142.2 µs per instance.
+The host's per-phase rates, in µs per instance:
+
+| phase | µs |
+|---|---:|
+| scan | 0.32 |
+| `p` read | 0.15 |
+| GM reads | 0.65 |
+| pass 0+1 | 59.3 |
+| `Mgs4`(qk) | 1.9 |
+| pass 2 and `Mgs4`(qv) | 36.6 |
+| pass 3 and pass 4a | 21.0 |
+| pass 4b | 23.2 |
+| writeback | 0.4 |
+
+Those nine rows sum to 143.5 µs. The full-wall rate is 142.2 µs. The
+pre-change head1 wall was 6.253 ms, and `6.253 / 4.551 = 1.374`.
+Against the pre-change phase split, pass 0+1 moved from 98.7 µs to
+59.3 µs and pass 3+4a from 32.8 µs to 21.0 µs. Pass 2 stayed at
+36.6 µs (was 36.7) and pass 4b at 23.2 µs (was 23.8). The 99.8 µs
+starting point in the iter list is the host's phase timer, 1 µs above
+the 98.7 µs recorded from the earlier head1 gap.
+
+E2 on the new binary. Nothing-due stays in the 0.01–0.03 ms band:
+0.011, 0.021, and 0.032 ms at B=64, 256, and 512. Newly measured due
+times, with the recorded all-due time beside them:
+
+| B | due ≈ 1/16 | all-due | recorded all-due |
+|---:|---:|---:|---:|
+| 2 | 0.292 | 0.298 | 0.400 |
+| 64 | 6.120 | 6.127 | 8.416 |
+| 256 | 24.32 | 24.33 | 33.45 |
+| 512 | 48.64 | 48.65 | 66.87 |
+
+On this matrix the two due columns still match each other. The paste's
+before-value at B=2 all-due is 0.403 ms against the recorded 0.400, and
+at B=256 it is 33.68 ms, the old fit `0.14 ms + 131 µs × B`, against
+the measured 33.45. The B=512 before-value in the paste is 66.87 ms on
+the one-sixteenth column. Ratios against the recorded all-due column
+are `0.400 / 0.298 = 1.34` at B=2 and 1.375 at B=64, 256, and 512.
+`6.127 ms / 43` instances is 142.5 µs. At B=256 the slowest block holds
+171 instances, and `171 × 142.4` µs is 24.35 ms against the measured
+24.33. The 142 µs line replaces the 195 µs line for this binary. One
+sequence still occupies one block, so the same untraced staggered
+placement is `32 × 142` µs, 4.55 ms on the slowest block. That is still
+not a serving number.
+
+The host's msprof difference across modes 4, 5, 6, and 8, taken before
+the edit, reports about 98% idle on each phase, with 87 µs of vector
+busy and 51 µs of scalar busy against a 5.15 ms wall. A launch whose
+only hot block is one of 48 is already about 98% idle as a chip
+average. The earlier all-due capture was 99% busy when every block
+worked. The paste does not say whether 87 µs and 51 µs are the hot
+core or that average. The wall-clock experiments are the evidence for
+the dependency chain. Three pass-2 shapes (shared tmp plus a reduce,
+private staging plus a reduce, a halving tree) cost the same wall, and
+the final pass 2 is still 36.6 µs. Overlapping two rows hid part of
+the scalar delay and won 9%. Replacing the `Muls`/`Add` tmp chain with
+`Axpy` won about 35% on pass 0+1 and 36% on pass 3+4a. Further ISA
+work is unscheduled: a reduce-port GEMM the host bounds near 50 µs per
+instance, a MIX/Cube pair of small GEMMs, or an 8-wide broadcast
+multiply across the plane.
+
+The production dense window was paired on this host. `D` is
+`torch.ops._C_ascend.npu_recurrent_gated_delta_rule`, which the host
+calls the mode0 path, registered through `enable_custom_op()`. This
+checkout's `gdn.py` imports `recurrent_gated_delta_rule` from
+`fla_npu.ops.ascendc`. The two names were not checked against each
+other here. The op's state argument is a plain contiguous fp32 tensor.
+The host says a pools buffer must not be passed in, because that
+layout interleaves codes and `kbuf`. The `D` arm uses its own dense
+tensor and starts from `Sd0`. Query and key are `[T, Hk, K]` bf16
+after l2norm, `g` is `[T, Hv]` fp32 log-decay, `beta` is `[T, Hv]`
+bf16, `actual_seq_lengths` is `[0, len, …]`, and
+`num_accepted_tokens` has length `B`. Four steps of this op against
+the eager dense state differ by relative 1.47e-3. Those digits match
+the earlier author-gate rows, so this check does not reconfirm those
+rows. `M` is still the eager materializing step plus one flush per 16
+lockstep steps, now on the de-scalarized flush.
+
+| B | D_op ms/window | M ms/window | flush in M | R = D_op/M |
+|---:|---:|---:|---:|---:|
+| 16 | 1.247 | 31.31 | 1.58 | 0.040 |
+| 64 | 3.537 | 63.14 | 6.13 | 0.056 |
+| 128 | 8.176 | 103.0 | 12.24 | 0.079 |
+| 256 | 15.98 | 187.0 | 24.33 | 0.085 |
+
+The 1.10 bar fails. `1.247 / 31.31` rounds to 0.040. At B=256 the flush is
+`24.33 / 187.0 = 13%` of `M`, and the other 162.7 ms is the eager
+materializing step, 87% of that window. The flush column is the new
+E2 all-due time and is 1.375× under the flush column of the eager E5
+table (`33.44 / 24.33`). The `M` window only moved from 188.23 ms to
+187.0 ms, so the non-flush remainder rose from 154.8 ms to 162.7 ms
+across the two runs. The host quotes an eager-`D` ratio of 0.315 at
+B=256 on this run. The paired eager E5 already on file is 0.314 at
+B=256. The 0.285 figure is the old B=128 eager ratio, not the
+before-value of this B=256 row.
+
+`D_op` at B=256 is 15.98 ms against the earlier eager `D` of 59.15 ms,
+which is 3.70×. Per step that is 1.00 ms against 3.70 ms. The
+lockstep estimate that replaces the eager step with the direct-Triton
+step and keeps this flush is `16 × 2.411 + 24.33 = 62.91` ms, and
+`15.98 / 62.91 = 0.254`. That estimate was not run as a paired window.
+The direct-Triton piece alone, 38.58 ms, is already larger than the
+whole production window. Zeroing the flush on paper leaves
+`15.98 / 38.58 = 0.414`. Clearing 1.10 against this `D_op` would
+require the whole LeapQuant window to come in under
+`15.98 / 1.10 = 14.5` ms. E6 and E7b stay stopped.
+
+Two more build facts from this pass. `ninja` piped to a grep for
+`error` is not a compile check: the `OPS_LOG` text matches, and
+`build_aclnn.sh` still packages the old object. The mtime of
+`binary/…/bin/gdn_lq_flush/*.o` is the check that the device binary
+changed. Three timings that showed no movement were stale objects.
+Vector operands have to be 32-byte aligned. A halving tree can stop
+at 8 lanes, which is 32 bytes. Four, two, or one lane faults on
+device with 507035, "UB address not aligned". That is why
+`ReduceMaxToEight` stops at 8 lanes. The tail from 8 to 1 stays a
+scalar `GetValue` or a reduce. This 507035 is the alignment fault.
+It is not the step-v2 IndexCheck reported above.
+
 ## Still open
 
-- The operator gate is still open. A fused Triton direct step on the
-  host is 0.170–2.411 ms at B=16–256 and about 1.53× the eager dense
-  step at B=256. The lockstep estimate that adds the current flush is
-  R=0.82–0.86, under the 1.10 bar, and it is not a paired E5 rerun.
-  The flush wall is the due count on the slowest of 48 AIV blocks
-  times about 195 µs, and that 195 µs is fold math: pass 0+1 is 98.7 µs,
-  then 36.7, 32.8, and 23.8 µs. The 4-byte fill load is the 0.010 ms
-  scan. A 20–40 µs fold is a target, not a measurement. Removing only
-  pass 0+1 leaves about 96 µs and scales the B=256 estimate to about
-  R=1.07, short of 1.10. The whole fold has to reach about 89 µs to
-  clear 1.10 against this eager D. The production fused dense kernel
-  is a higher bar. E6 and the allocator stay stopped. The B=2 engine
-  gap remains 1.935 s step increment, 6.341 s flush region, 0.729 s
-  prefill, and 3.295 s unattributed. That 0.344 ms flush average is a
-  B=2 mix, not a larger-batch constant. The old direct-readout kernel
-  stays out. Production flags stay off. The vendored-fork 0.780–0.797×
-  scan is a different stack and is not re-opened here.
+- The operator gate is still open, now against the production dense
+  op. Paired `D_op / M` is 0.040–0.085 from B=16 to B=256. At B=256,
+  `D_op` is 15.98 ms and `M` is 187.0 ms, of which the de-scalarized
+  flush is 24.33 ms and the eager materializing step is 162.7 ms.
+  The flush itself moved from about 195 µs to 142 µs per due instance
+  on the slowest block, 1.375× on the measured all-due column at
+  B=64 and above. Pass 0+1 is 59.3 µs and pass 3+4a is 21.0 µs.
+  Pass 2 is still 36.6 µs. The direct-Triton step plus this flush is
+  an estimate, `38.58 + 24.33 = 62.91` ms, and `15.98 / 62.91 = 0.254`.
+  The direct step alone is larger than the production window, so a
+  faster flush does not clear 1.10 by itself. The eager-`D` scale
+  (40 µs fold → about R=1.30) stays an eager-`D` scale. E6 and the
+  allocator stay stopped. The B=2 engine gap remains 1.935 s step
+  increment, 6.341 s flush region, 0.729 s prefill, and 3.295 s
+  unattributed. That 0.344 ms flush average is a B=2 mix, not a
+  larger-batch constant. The old direct-readout kernel stays out.
+  Production flags stay off. The kernel patch, `dbg_mode`, and the
+  two bench scripts are on the host and are not in this tree. The
+  vendored-fork 0.780–0.797× scan is a different stack and is not
+  re-opened here.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
