@@ -219,28 +219,25 @@ Summary of the night: `results/57ccb62/night_report.md`.
 
 ## Direct-readout step (910C, commit base `7967d96`)
 
-`VLLM_ASCEND_GDN_LQ_DIRECT_READOUT=1` skips the full `V×K` state. The
-checkpoint is reduced in blocks of 16 value rows, and each live window
-term is a length-K dot followed by a length-V accumulate. Both this path
-and the materializing step pass `tests/test_step_triton.py`. The reported
-relative error is 0.004242, inside that test's `2e-2` gate.
+`VLLM_ASCEND_GDN_LQ_DIRECT_READOUT=1` is the opt-in path. The host kernel
+listing does not match the materializing step: the compensator terms are
+absent, `s_v` is divided by 127 a second time, the 16-row partials are not
+scattered back onto the value axis, and the shared epilogue reads `w`
+without loading it on that path. `tests/test_step_triton.py` never sets
+the flag, so its 0.004242 relative error is the materializing kernel
+against Torch, inside the `2e-2` gate. It is not a direct-readout result.
 
-The first A/B uses one fixed trajectory, resets the pools, and times 96
-steps plus flush. Shape: B=8, H=32, T=96, 50 iterations.
-
-| path | median wall |
-|---|---:|
-| materializing step | 177.771 ms |
-| direct-readout | 178.268 ms |
-
-Direct-readout is 0.50 ms slower on that wall, 0.28%. The medians have no
-reported spread, so the gap says this shape did not get faster. Raw files:
-`results/7967d96/step_mode_bench_dense.jsonl`,
+`scripts/bench_step_mode.py` sets the flag, then times a Python loop of 96
+steps. Each iteration draws new inputs, normalizes them, runs the step,
+and calls AscendC flush, including on steps whose window is not full.
+Shape: B=8, H=32, T=96, 50 iterations. Pools are reset between iterations.
+The reported medians are 177.771 ms (materializing) and 178.268 ms
+(direct), a 0.50 ms gap, 0.28%. That gap is on the whole loop. Input
+generation sits inside the timer, and the script does not compare outputs.
+Raw files: `results/7967d96/step_mode_bench_dense.jsonl`,
 `results/7967d96/step_mode_bench_direct.jsonl`, and
-`results/7967d96/step_mode_bench.md`. The kernel change and
-`scripts/bench_step_mode.py` are on the 910C host and are not in this
-tree. Leave the flag off. The wall includes flush, and B=8 is not the
-N=256–512 end-to-end batch.
+`results/7967d96/step_mode_bench.md`. The kernel and the script are on the
+910C host and are not in this tree. Leave the flag off.
 
 ## Still open
 
@@ -249,11 +246,13 @@ N=256–512 end-to-end batch.
   attention and mamba page allocations, plus a block-count metric this
   vLLM build does not expose.
 - FULL graph mode remains unsupported by the Ascend GDN backend.
-- The 0.780–0.797× end-to-end ratio is still unattributed. Direct-readout
-  did not speed the B=8 step-plus-flush wall. The next measurement is the
+- The 0.780–0.797× end-to-end ratio is still unattributed. The B=8
+  direct-readout timing includes input generation and a flush call on
+  every step, and it does not check outputs. The next measurement is the
   prefill split: reconstruct, quantize, Triton step, and flush v1 on one
-  8,198-token run. A larger-batch step-only timing is optional and does
-  not come before that split. t3 remains the first v2 kernel target
+  8,198-token run. A step-only timing, with inputs prepared outside the
+  timer, waits on a direct-readout that matches the materializing formula.
+  t3 remains the first v2 kernel target
   if that benchmark line continues, with a w/p/fill and decoded-state
   regression, then t1/t2, then fprep. It does not move this ratio.
   Production flags stay off.
