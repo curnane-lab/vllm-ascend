@@ -277,11 +277,14 @@ The compact page is 1,097,728 B, so high slot ids land in V. That is a
 layout collision, not a restore bug and not a tunable page size. The
 1.26× figure is the startup KV-token budget under prefix-cache align
 (KVCacheManager page account plus the vLLM concurrency formula), not a
-live served concurrency. Among the geometries measured on this shared
-layout, the padded page is the structural maximum. A separate mamba
-tensor would be required to go past it. After that split the overhead
-has to be counted again; do not cite the void 1.425× row. The
-no-prefix-cache startup budget and the live 96-way ramp are below.
+live served concurrency. Among the shared-layout geometries that were
+measured and that kept outputs correct, the padded page is the largest.
+That is a page-correctness bound. It does not close a serving
+measurement, and a later ramp can still lose the budget to execution
+cost. A separate mamba tensor would be required to go past this page.
+After that split the overhead has to be counted again; the void 1.425×
+row stays void. The no-prefix-cache startup budget and the live 96-way
+ramp are below.
 
 Functional checks on the same port, weights read-only:
 
@@ -291,7 +294,8 @@ Functional checks on the same port, weights read-only:
   library path logged.
 - 768 tokens, mode 0 vs mode 3: divergences at tokens 101 and 132, ratio
   0.77×. This is a different stack from the vendored-fork 768-token
-  identical run.
+  identical run. The flips are compatible with accumulated quantization
+  error. An implementation difference on this port is not ruled out.
 - 64-token top-2 gaps: mode 0 vs mode 3 identical on all 4 prompts. Literal
   gap 0.0000 ties on prompts 1 and 3 did not flip. The vendored-fork
   prompt 2/3 late split was not reproduced here.
@@ -340,21 +344,54 @@ counts, not layer-steps.
 | prefill quantize | 10.72 ms × 48 calls | 0.51 s |
 | prefill reconstruct | 4.46 ms × 48 calls | 0.21 s |
 
-The wall gap is 12.3 s. Device decode accounts for step extra
-(3.83 − 1.90 = 1.93 s) plus flush v1 6.35 s. Prefill adds 0.72 s.
-The rest, about 3.3 s, is host and launch: mode 3 adds two GQA
-`repeat_interleave`s and one flush launch per layer-step. Flush v1 is
-6.35 / 12.3 = 51% of the gap. The step extra is about 16%, prefill about
-6%, host/launch about 27%. The first production cost on this run is
-flush v1 itself. Flush v2's t3 does not move this ratio until that cost
-is on the v1 path. Raw logs stay on the container.
+The wall gap is 54.2 − 41.9 = 12.3 s. Recomputed from the reported
+averages over 18,432 layer-steps, step is only the increment over dense:
+
+| slice | extra vs dense | share of 12.3 s |
+|---|---:|---:|
+| step `(0.208 − 0.103) × 18432` | 1.935 s | 15.7% |
+| flush `0.344 × 18432` | 6.341 s | 51.6% |
+| prefill `10.72×48 + 4.46×48` ms | 0.729 s | 5.9% |
+| unattributed residual | 3.295 s | 26.8% |
+
+The full 3.83 s step extrapolation includes the 1.90 s dense already
+spent on the same layer-steps. The 3.295 s remainder is an unattributed
+residual. Mode 3 does add two GQA `repeat_interleave`s and one flush
+launch per layer-step, and that host path has no timer of its own.
+An NPU-event interval can include the device waiting for the next host
+submit, so these averages are interval times, not isolated kernel times.
+
+The timer reports every 4096 regions. The written record has the
+averages only, not the per-region counts, and it does not confirm that
+the last partial bucket was included. B=2 ran inside each call, so the
+18,432 count is not multiplied by 2 again. Raw logs stay on the container.
+
+The flush timer region is the largest measured slice of the gap. Removing
+the entire reported 6.35 s would leave mode 3 at 54.2 − 6.35 = 47.85 s,
+which is 41.9 / 47.85 ≈ 0.876× dense. Flush is the first target, and
+flush alone does not pass dense on this run.
+
+The 0.344 ms average also mixes every call. It does not separate a
+nothing-due launch, a partial fold, an all-due fold, or a cold bind.
+The next split, on a synchronized window, records for nothing-due: call
+count, host submit time, device time; for mixed and all-due: due-slot
+count, call count, device time; for the window: 16-step total, fold
+count, and a state check. A controlled upper bound calls flush only when
+a slot is known due. Production still has to cover async requests, slot
+recycle, and restore, so a global step modulo is not that bound.
+Flush v2 t3 stays a candidate on the experimental chain. It is not the
+next production target. The order on this gap is the flush v1 call path,
+then the step increment, then the unattributed residual.
 
 ## Live 96-way ramp (no prefix cache, eager, two chips)
 
-96 requests, 8000 prompt tokens plus 256 decode tokens. Both sides
-admitted all 96 with zero preemption. Startup concurrency on this
-no-cache page geometry is mode 0 92.55× and mode 3 106.00×, which is
-1.145× (+14.5%). That geometry is not the align-mode 1.26× budget above.
+96 requests were submitted as 8000 prompt tokens plus 256 decode
+tokens. The pasted note does not record `max_model_len` or the tokenized
+prompt length. If the run kept `max_model_len=8192`, then 8000 + 256 =
+8256 exceeds that cap, and the real prompt length is unknown. Startup
+concurrency on this no-cache page geometry is mode 0 92.55× and mode 3
+106.00×, which is 1.145× (+14.5%). That geometry is separate from the
+align-mode 1.26× budget above.
 
 | | wall | generated tok/s | peak running |
 |---|---:|---:|---:|
@@ -362,15 +399,27 @@ no-cache page geometry is mode 0 92.55× and mode 3 106.00×, which is
 | mode 3 | 134.6 s | 134.1 | 96 |
 | ratio | 0.54× | | |
 
-tok/s × wall is about 18,050 output tokens. That product is what the
-run reported; it is not 96 × 256. The +14.5% no-cache budget, and the
-+26% align budget, do not become throughput when decode is heavy. Triton
-step plus flush v1 grows with batch and consumes the admission gain.
-The load where the budget can pay is admission-bound with light decode,
-the same direction as TurboQuant PR #14715. A follow-up, only if that
-claim is still wanted, is N above 106 so mode 0 queues first, under
-align, with a lighter decode. Do not quote 0.54× as the capacity number,
-and do not quote 1.26× as served concurrency.
+Both runs report zero preemption and that all 96 requests were admitted.
+Admission is not simultaneous residency. Mode 0's peak running count is
+about 92, so some requests can be waiting. Zero preemption does not
+establish an empty queue.
+
+96 × 256 = 24,576 output tokens. tok/s × wall is 247.9 × 72.8 ≈ 18,047
+on mode 0 and 134.1 × 134.6 ≈ 18,050 on mode 3. The two products agree
+with each other and disagree with 24,576. The note does not say whether
+that gap is early EOS, a different time denominator, or a different
+completion count. Until the completed token count is in the log, 0.54×
+is the ratio of the reported rates on this decode-heavy submission, not
+a 256-token-per-request result.
+
+On this submission the budget did not show up as throughput. Whether the
+budget pays under an admission-bound, light-decode load is still a
+hypothesis. Short generations can lose it to prefill reconstruct and
+quantize. The next capacity points, if that hypothesis is tested, use
+one cache and page configuration, sit between the two admission
+boundaries, and record waiting, running, TTFT, TPOT, completions, and
+output tokens. N above 106 is one such point, not a requirement.
+1.26× stays the align startup budget. 0.54× stays this ramp's rate ratio.
 
 ## Step v2, 24 pools (container test, flag stays off)
 
@@ -380,50 +429,89 @@ a pure-Torch 24-pool reference. Phase B replays the same seed through
 the v2 fused entry and AscendC flush.
 
 1152 fused calls across 24 same-shape, different-address pools,
-alternating layers: 0 executor fallbacks. The old E1 cache-miss class
-did not reproduce on this runtime. The window-end checkpoint matches
-Torch at step 16 (0.98014408…). AscendC flush due-scan and fold are
-correct, so the device window bytes are intact.
+alternating layers, reported 0 executor fallbacks. Zero fallbacks means
+those calls did not take the fallback path. It does not show that the
+executor bound the address of the pool being written. A successful call
+on the wrong address also reports no fallback. The old E1 failure is
+not shown to be fixed.
 
-Torch typed views of `fill` / `p` / `w` stay frozen at the step-0 values
-(fill=1, p=0.99972, w last element 1) through step 15, then agree at
-step 16. The Torch reference advances every step: fill goes 1, 2, 3, …,
-16, then back to 1, and p leaves 0.99972 on step 1. Production `gdn.py`
-does not read these views, so the current end-to-end path stays correct.
-A host due-gate, including flush v2, or any diagnostic that trusts the
-view, would be wrong. Zero fallbacks is not a reason to wire step v2.
-`VLLM_ASCEND_GDN_LQ_STEP_V2` stays off. The E1 gate 389≥279 is still open.
+One window-end checkpoint scalar matches Torch at step 16
+(0.98014408…). That scalar does not cover every head, every pool, or
+the rest of the window. Torch typed views of `fill` / `p` / `w` stay
+at the step-0 values (fill=1, p=0.99972, w last element 1) through
+step 15, then agree at step 16. The Torch reference advances every
+step: fill goes 1, 2, 3, …, 16, then back to 1, and p leaves 0.99972
+on step 1. The same run reports that AscendC flush due-scan and fold
+fired. Those two observations disagree. Open causes include a missing
+stream sync, a stale snapshot or typed view, a different storage,
+offset, or executor address, an aliasing or out-of-bounds write, and a
+compiler or runtime fault. The record does not pick one. Calling it a
+bookkeeping-visibility bug would skip that list.
 
-Two constraints the test had to keep: Torch advanced indexing after the
-v2 custom op hits IndexCheck / aclnnMul 507035, so the v2 warmup runs
-only before Phase B. A slot index that changes every step flakes even in
-pure Torch, so the test keeps slots stable for the generation and
-recycles windows with `init_from_dense`.
+Production `gdn.py` does not read these views. That limits how the
+current end-to-end path can observe the disagreement. It does not make
+the disagreement diagnostic-only, because a host due-gate or a later
+recycle that trusts the view would follow the frozen values, and an
+address mismatch would still be a state bug. `.long()` on a tensor that
+is already int64 does not allocate; a fresh address is `data_ptr()`
+after an explicit clone, not the dtype cast by itself.
+
+After the v2 custom op, ordinary Torch advanced indexing hits IndexCheck
+/ aclnnMul 507035. That is a separate blocker. The two-phase test keeps
+the v2 warmup out of Phase A so the reference can run. It does not make
+that runtime combination an acceptable production constraint. A slot
+index that changes every step also flakes in pure Torch, so this test
+kept slots stable and recycled windows with `init_from_dense`.
+
+`VLLM_ASCEND_GDN_LQ_STEP_V2` stays off. The E1 gate 389≥279 is still
+open. The reproduction note for an upstream issue is a draft on the
+container. It has not been filed. The next localization, before any
+wiring, is: write a distinct sentinel into each pool and print storage
+pointer, offset, stride, and the address passed to aclnn; after an
+explicit sync, copy the whole backing buffer to CPU and decode
+`fill`/`p`/`w` from byte offsets; read the same address with a small
+device kernel; compare device readback, CPU bytes, and the Torch view;
+then repeat A/B/A with the executor cache off and on.
 
 ## Still open
 
-- On the 0.27.1 shared KV layout, a compact mamba page cannot be correct.
-  The padded 1.26× number is a startup KV-token budget under align, not
-  served concurrency. The no-cache startup budget on the ramp host is
-  1.145× (92.55× vs 106.00×). The live 96-way decode-heavy ramp is 0.54×
-  throughput. Going past the padded page needs a separate mamba tensor
-  and a separate block-id space, on the order of 24 × 1.05 GB. That work
-  is unscheduled. Do not cite 1.425× after the split, and do not expect a
-  larger N to produce 1.4× on this layout.
+- Next on the 0.27.1 eager gap: record the timer's per-region counts,
+  including the last partial 4096-bucket, and split flush v1 into
+  nothing-due, mixed-due, and all-due on a synchronized window. The
+  flush timer region is 6.341 s of the 12.3 s gap (51.6%). The step
+  increment is 1.935 s (15.7%). The remaining 3.295 s (26.8%) is
+  unattributed. Zeroing the measured flush time leaves about 0.876×
+  dense, so flush is necessary and not sufficient. Flush v2 t3 stays a
+  candidate on the experimental chain only. Direct-readout still waits
+  on a kernel that matches the materializing formula. The B=8 bench
+  remains a mixed wall. Production flags stay off. The vendored-fork
+  0.780–0.797× scan is a different stack and is not re-opened here.
+- Next on step v2: the 24-pool run narrowed the failure to a
+  state-read/write disagreement. Observation error and address binding
+  are still open, and 0 fallbacks does not close the old E1 fault.
+  Locate it with sentinels, a CPU byte copy, a device readback, and
+  cache-off versus cache-on A/B/A. Wiring stays off. A separate mamba
+  pool stays deferred until this and the flush split have answers.
+- The 96-way rate ratio is 0.54× on the reported tok/s. Completed output
+  tokens are about 18,050 per side against a nominal 24,576, and the
+  pasted note does not record `max_model_len` or the tokenized length.
+  The next capacity points use one cache and page configuration, record
+  waiting, running, TTFT, TPOT, completions, and output tokens, and sit
+  between the two admission boundaries. "Admission-bound plus light
+  decode" is a hypothesis. The align 1.26× figure remains a startup
+  budget. The compact 1.425× row stays void. The padded page is the
+  largest correct shared-layout page in the measured set; that bound
+  does not replace the serving check.
+- The container `patches/vllm-ascend-0271/` tree is an uncommitted
+  74-file diff on that host. It is not a reviewable delivery in this
+  repository. The multi-pool issue text is a draft, not a filed issue.
 - FULL graph mode remains unsupported by the Ascend GDN backend.
-- The 0.27.1 eager gap on one 768-token, B=2 run is attributed: flush v1
-  is 6.35 s of the 12.3 s gap (51%). If kernel work continues, the target
-  is flush v1, not flush-v2 t3. The vendored-fork 0.780–0.797× scan is a
-  different stack and is not re-opened here. Direct-readout still waits
-  on a kernel that matches the materializing formula, then alignment, one
-  op, a step-only timer with inputs outside the loop, then production
-  decode. The B=8 bench remains a mixed wall and is not kernel proof.
-  Production flags stay off.
-- The token-27 evidence points at accumulated Torch quantization error.
-  A one-layer replay is optional. On the vendored fork, the 64-token
-  near-ties are prompts 2 and 3 only. The 0.27.1 64-token probe is 4/4
-  and did not reproduce that split. The port's 768-token flips at 101
-  and 132 stay a near-tie accumulation note.
+- The token-27 evidence on the vendored fork points at accumulated Torch
+  quantization error. A one-layer replay is optional. On that fork the
+  64-token near-ties are prompts 2 and 3 only. The 0.27.1 64-token probe
+  is 4/4. The port's 768-token flips at 101 and 132 are compatible with
+  that quantization trajectory. An implementation difference is not
+  ruled out.
 - Task-level accuracy is still open. The completed AB slice is 20 prompts
   per dataset; the full five-dataset sweep is 14,634 prompts.
 - `scripts/bench_capacity_graph.py` is the overnight driver. It accepts
