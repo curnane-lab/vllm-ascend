@@ -715,16 +715,80 @@ does not bill every slot named in `idx`. The production dense kernel is
 faster than this eager `D`, so a later pass against it has a higher
 bar than 0.31. Production flags stay off.
 
+## Fused Triton direct step, and the any-due floor (910C, 2026-10-09)
+
+`ops/triton/gdn_leapquant_step_direct.py` and
+`tests/test_step_triton_direct.py` are on the container. They are not
+in this tree. The kernel reads codes in one pass for the two matvecs
+and applies the window as `O(L(V+K))`. It does not build `S`.
+
+The reported 96-step author-gate errors are relative L2 1.47e-3 and
+max-abs over the head max 5.85e-3, with writeback matching the
+materializing step. Those two errors are the same digits as the earlier
+eager-direct F0 row. The Triton log is the source for this kernel; the
+match alone is not a second measurement. Direct-Triton step time is
+0.170 / 0.575 / 1.197 / 2.411 ms at B=16 / 64 / 128 / 256. The report
+puts that at 1.23–1.39× the materializing Triton step. Against the E5
+eager dense window, one step at B=256 is `(59.15/16) / 2.411 = 1.53×`
+(the report says 1.55×). That is a step ratio. The eager dense kernel
+is still not the production fused dense kernel.
+
+A lockstep window estimate, not a rerun of E5, is `16 × step +` the
+flush already measured inside the E5 `M` window:
+
+| B | 16 × direct step | flush | estimated window | eager D | R |
+|---:|---:|---:|---:|---:|---:|
+| 16 | 2.720 | 2.17 | 4.890 | 4.20 | 0.859 |
+| 64 | 9.200 | 8.42 | 17.620 | 14.94 | 0.848 |
+| 128 | 19.152 | 16.83 | 35.982 | 29.76 | 0.827 |
+| 256 | 38.576 | 33.44 | 72.016 | 59.15 | 0.821 |
+
+`R` is 0.82–0.86. The 1.10 bar is not met, and this table was not
+measured as a paired window. Flush is 44% of the B=16 estimate, 48% at
+B=64, and 46% at B=128 and B=256. The direct step is the other half.
+Dropping the flush term on paper would put B=256 at `59.15/38.576 =
+1.53`, which is why the flush call is now the piece that keeps the
+estimate under 1. A formal E5 rerun is still required before that
+sentence becomes a result. E6 and E7b stay stopped.
+
+The same host then split one due head from four due heads at B=64
+(`ITERS` not restated; due0 matches the earlier nothing-due row):
+
+| pattern | time |
+|---|---:|
+| due 0 | 0.011 ms |
+| one due head | 6.258 ms |
+| four due heads, spread | 6.263 ms |
+| four due heads, at the tail | 8.212 ms |
+| B=2, all due | 0.400 ms |
+
+B=64 all-due remains 8.416 ms. One due head is already 6.258 ms, about
+48× a 131 µs per-slot line and far above 4.1 µs per head. Four spread
+heads cost the same as one head. Four heads placed at the tail cost
+8.212 ms, so placement still moves about 2 ms, and the due count does
+not. A per-due price does not describe this. The any-due floor grows
+with `B` (0.40 ms at B=2, 6.26 ms for one head at B=64). These two
+points are not a proportionality to `B × H`. The per-due rewrite stays
+frozen. The open suspects are the due-path sync and the output-queue
+structure. They are not a finding.
+
+`torch_npu` profiler traces for due0, one due head, and all-due, five
+iterations each at B=64, are on the host under
+`results/repro_0271/e2/trace_*.json`. A name filter on the averaged
+table did not see the flush kernel; the custom op is not registered
+under that name. Parsing the trace events, or `msprof`, is still open.
+Until one of those names the time, the 6.258 ms has no kernel-level
+attribution.
+
 ## Still open
 
-- The eager operator gate failed. Lockstep `R_kernel` is 0.13–0.31
-  against eager dense, and an eager direct step still leaves the
-  B=256 window near 0.34. E6 and the allocator stay stopped. Next is a
-  fused direct step that does not materialize `S`, and a flush whose
-  cost follows the due slots rather than the whole `idx`. E2 already
-  separates nothing-due (0.01–0.03 ms) from any-due (about
-  `0.14 ms + 131 µs × B` for `B≥64`). Raising the allocated pool from
-  16 to 512 at fixed `B` did not change that bill. The B=2 engine gap remains 1.935 s step increment,
+- The operator gate is still open. A fused Triton direct step on the
+  host is 0.170–2.411 ms at B=16–256 and about 1.53× the eager dense
+  step at B=256. The lockstep estimate that adds the current flush is
+  R=0.82–0.86, under the 1.10 bar, and it is not a paired E5 rerun.
+  One due head at B=64 already costs 6.258 ms, so a per-due price is
+  the wrong model and that rewrite stays frozen until the profiler
+  names the time. E6 and the allocator stay stopped. The B=2 engine gap remains 1.935 s step increment,
   6.341 s flush region, 0.729 s prefill, and 3.295 s unattributed.
   That 0.344 ms flush average is a B=2 mix, not a larger-batch
   constant. The old direct-readout kernel stays out. Production flags
