@@ -368,8 +368,9 @@ the last partial bucket was included. B=2 ran inside each call, so the
 
 The flush timer region is the largest measured slice of the gap. Removing
 the entire reported 6.35 s would leave mode 3 at 54.2 − 6.35 = 47.85 s,
-which is 41.9 / 47.85 ≈ 0.876× dense. Flush is the first target, and
-flush alone does not pass dense on this run.
+which is 41.9 / 47.85 ≈ 0.876× dense. On this B=2 wall, flush alone does
+not pass dense. That 0.876× figure stays on this wall. It is not an input
+to a high-batch capacity model.
 
 The 0.344 ms average also mixes every call. It does not separate a
 nothing-due launch, a partial fold, an all-due fold, or a cold bind.
@@ -379,9 +380,9 @@ count, call count, device time; for the window: 16-step total, fold
 count, and a state check. A controlled upper bound calls flush only when
 a slot is known due. Production still has to cover async requests, slot
 recycle, and restore, so a global step modulo is not that bound.
-Flush v2 t3 stays a candidate on the experimental chain. It is not the
-next production target. The order on this gap is the flush v1 call path,
-then the step increment, then the unattributed residual.
+Flush v2 t3 stays a candidate on the experimental chain. Whether a
+replacement is worth shipping is the full-window cost in the operator
+gate below, not a further pass of vector-only tuning.
 
 ## Live 96-way ramp (no prefix cache, eager, two chips)
 
@@ -420,6 +421,8 @@ one cache and page configuration, sit between the two admission
 boundaries, and record waiting, running, TTFT, TPOT, completions, and
 output tokens. N above 106 is one such point, not a requirement.
 1.26× stays the align startup budget. 0.54× stays this ramp's rate ratio.
+Multiplying that rate ratio by 1.145 or 1.26 counts concurrency twice.
+The break-even that replaces that product is in the section below.
 
 ## Step v2, 24 pools (container test, flag stays off)
 
@@ -473,35 +476,150 @@ explicit sync, copy the whole backing buffer to CPU and decode
 device kernel; compare device readback, CPU bytes, and the Torch view;
 then repeat A/B/A with the executor cache off and on.
 
+## What the measured slowdown does not decide
+
+Every completed load on this port and on the vendored fork is slower
+than dense: 0.78–0.80× on the fork's independent 8K scan, 0.77× on the
+0.27.1 eager B=2 run, 0.54× on the 96-way ramp. That shows this NPU
+implementation is slower. It does not show that LeapQuant has no gain
+on a 910C. The slow path is the one the paper speeds up, and this tree
+still computes it by rebuilding the state. The author baseline is
+NVlabs/kda PR #10 at `48f02e6`. Its B200 times are a structure
+reference. They are not a 910C target.
+
+`gdn_leapquant_step.py` builds a full `S[128,128]`, adds the rank-4
+compensator as outer products and up to 16 window outer products, then
+computes `S·k` and `S·q`. It does not store `S` back to HBM, so the
+traffic cut is real. A rank-1 term written as `S += u kᵀ` then `y = Sx`
+touches `V×K` elements. The same term as `y += u (kᵀ x)` is a dot and a
+vector update, `O(V+K)`. The int8 checkpoint matvec remains either way.
+Register pressure and spill are not in a profile, so the source does not
+prove the rebuilt `S` spills. The earlier direct-readout listing omitted
+the compensator loads, divided `s_v` by 127 a second time, and did not
+match this formula. Its B=8 timing does not test this direction. The
+author step baseline at batch 256 is 0.0449 ms per layer, L2-cold, on
+B200.
+
+Production flush v1 is `KERNEL_TYPE_AIV_ONLY`. The rebuild, subspace
+iteration, orthogonalization, and residual run on the vector core, with
+row loops, `GetValue`/`SetValue`, and `SyncV2S()`. The author flush at
+the same batch, also on B200, is 0.2465 ms all-due, 0.005 ms
+nothing-due, and 0.031 ms at about 1/16 due. A synchronized window that
+folds once every 16 steps would amortize as
+`0.0449 + 0.2465/16 ≈ 0.0603` ms. Async requests need a mixed-due
+measurement. That formula does not replace it. On the NPU the open
+split is still nothing-due launch, scan, bind, and submit versus the
+real fold. The fold does not have to stay a vector-only kernel. A
+replacement can take pieces from the v2 chain. The decision is the
+full-window cost against same-machine dense.
+
+The B=2 eager wall cannot host the paper's decode claim. Dense GDN on
+that run is `1.90/41.9 ≈ 4.5%` of the wall. If every other cost stayed
+fixed, deleting that 1.90 s would leave `41.9/40.0 = 1.0475×`. Extra
+reconstruct, quantize, or launch cost turns that into a loss. Matching
+dense there is an integration check. The paper's pure-decode comparison
+uses CUDA graphs. At batch 512 and 4K context on one B200 it reports
+1.22–1.37× decode throughput (Figure 8). The separate "up to 1.4×"
+figure is concurrent requests for Qwen3.5-9B on one B200, with prefix
+caching and about one checkpoint per 1K cached tokens. Kernel speedup,
+decode throughput, and admission capacity are three numbers. The 96-way
+ramp is also slower, so the gap is wider than small batch alone. The
+fork rows at N=256–512 count requests, not the batch that ran on each
+decode step. A comparable run records that batch and the pure-decode
+time.
+
+The paper keeps a high-precision window too. It allocates that window
+once per active request, about 8 KiB per head, and the persistent prefix
+checkpoint is only the compressed boundary. This slot packs all three
+into one head block: checkpoint 19,456 B, window plus metadata 8,264 B
+(`_LAYOUT_END − _OFF_KBUF`), allocation 32,768 B. Across 32 heads the
+checkpoint payload is 622,592 B and the allocated slot is 1,048,576 B.
+The page line is `4,243,456/1024 = 4144` B/token in mode 0 and
+`2,146,304/512 = 4192` B/token in mode 3 pad, so that line does not get
+cheaper when the page and the block shrink together. That identity does
+not account for the KVCacheManager +26%. Attention bytes, group layout,
+padding, and the free-byte budget are still unlisted. Matching the paper
+means a fixed checkpoint interval, a compressed persistent state, an
+active window allocated on its own, and an allocator that sees the
+smaller bytes. A page-size switch does not do that. The compact page
+stays off.
+
+A GPU that stays busy is not a throughput curve. A larger batch can
+raise weight reuse, or it can already be saturated. The 0.54× ramp ratio
+already includes the batch, the scheduler, prefill, and the generated
+length that the run actually had. It is not multiplied by 1.145 or by
+1.26. For a steady pure decode the useful ratio is
+
+```text
+R = (B_lq / T_lq(B_lq)) / (B_dense / T_dense(B_dense))
+```
+
+If the runnable batch grows by `c`, break-even is
+`T_lq(cB) ≤ c · T_dense(B)`. That curve is not measured. Comparing the
+B=2 counterfactual 0.876× with `1/1.145 ≈ 0.873` or with `1/1.26 ≈ 0.794`
+mixes two regimes, and the inequality runs the other way inside that
+invalid product: 0.876 is larger than both. The evidence that stands is
+narrower. Every measured load is slower. The startup budget has not
+become a serving gain. Whether a larger batch compensates is unmeasured.
+There is no positive serving result yet.
+
+The speed gap and the numerical contract are separate. Torch
+`_quantize` rounds `u` and `q` to fp16 and then forms the residual from
+those rounded values. Flush v1 forms the residual from fp32 `uk` and
+fp32 `qv`, and casts both to fp16 only at the store (`CAST_RINT`). The
+two checkpoints differ. That is not, by itself, a failing kernel. The
+parity already recorded is an aggregate error. The author flush criterion
+is per head, on the decoded state: at most 1.01× the reference error
+when that error is at least `1e-4` of mean `|S|`, otherwise at most
+`1e-3` of mean `|S|`. Their published table lets several fp16
+intermediate choices pass that flush bound. Rounding the decoded state
+to fp16 fails their step bound (1.66× the tolerance). Rounding the state
+to bf16 fails both. This tree has not run that criterion, including
+rank-deficient, tiny, and hot-row heads. A short token-exact trace does
+not establish near-FP32 task scores. A later divergence does not, by
+itself, fail them either.
+
+Three gates, in order:
+
+| gate | question | what it unlocks |
+|---|---|---|
+| operator | A formula-correct direct readout plus flush, amortized over a full window, faster than same-machine dense from a small batch through 256/512 | production performance wiring |
+| engine | At the same actual batch, preprocess, binding, and graph execution still leave that operator gain | a real capacity boundary |
+| serving | Under a fixed memory budget and the accuracy bar, compressed checkpoints raise useful serving throughput | an end-to-end claim |
+
+The allocator rewrite waits on the operator gate. If a direct readout
+and a fold that actually run on the matrix unit still lose to dense
+after that measurement, that result is the 910C bound. Production flags
+stay off. The old direct-readout kernel stays out of the tree.
+
 ## Still open
 
-- Next on the 0.27.1 eager gap: record the timer's per-region counts,
-  including the last partial 4096-bucket, and split flush v1 into
-  nothing-due, mixed-due, and all-due on a synchronized window. The
-  flush timer region is 6.341 s of the 12.3 s gap (51.6%). The step
-  increment is 1.935 s (15.7%). The remaining 3.295 s (26.8%) is
-  unattributed. Zeroing the measured flush time leaves about 0.876×
-  dense, so flush is necessary and not sufficient. Flush v2 t3 stays a
-  candidate on the experimental chain only. Direct-readout still waits
-  on a kernel that matches the materializing formula. The B=8 bench
-  remains a mixed wall. Production flags stay off. The vendored-fork
+- Operator gate first. The missing compute is a direct readout of the
+  checkpoint, the rank-4 term, and the window, plus a flush whose
+  full-window cost beats same-machine dense. The nothing-due versus
+  due split, including per-region timer counts and the last partial
+  4096-bucket, is part of that flush measurement. The B=2 gap remains
+  1.935 s step increment, 6.341 s flush region, 0.729 s prefill, and
+  3.295 s unattributed. Zeroing the measured flush time on that wall
+  leaves about 0.876×, which does not pass dense and does not transfer
+  to a capacity model. The old direct-readout kernel stays out. The B=8
+  bench remains a mixed wall. Production flags stay off. The vendored-fork
   0.780–0.797× scan is a different stack and is not re-opened here.
-- Next on step v2: the 24-pool run narrowed the failure to a
-  state-read/write disagreement. Observation error and address binding
-  are still open, and 0 fallbacks does not close the old E1 fault.
-  Locate it with sentinels, a CPU byte copy, a device readback, and
-  cache-off versus cache-on A/B/A. Wiring stays off. A separate mamba
-  pool stays deferred until this and the flush split have answers.
+- Step v2 wiring stays off. The 24-pool run is a state-read/write
+  disagreement. Observation error and address binding are still open,
+  and 0 fallbacks does not close the old E1 fault. Locate it with
+  sentinels, a CPU byte copy, a device readback, and cache-off versus
+  cache-on A/B/A. A separate mamba pool and the checkpoint/window split
+  wait on the operator gate.
 - The 96-way rate ratio is 0.54× on the reported tok/s. Completed output
   tokens are about 18,050 per side against a nominal 24,576, and the
   pasted note does not record `max_model_len` or the tokenized length.
-  The next capacity points use one cache and page configuration, record
-  waiting, running, TTFT, TPOT, completions, and output tokens, and sit
-  between the two admission boundaries. "Admission-bound plus light
-  decode" is a hypothesis. The align 1.26× figure remains a startup
-  budget. The compact 1.425× row stays void. The padded page is the
-  largest correct shared-layout page in the measured set; that bound
-  does not replace the serving check.
+  That ratio is not multiplied by the startup budget. A later pure-decode
+  curve records the batch that ran and `T(B)` on both sides. The align
+  1.26× figure remains a startup budget. The compact 1.425× row stays
+  void. Page/block bytes per token are 4144 and 4192, so that one line
+  does not explain the +26%. The padded page is the largest correct
+  shared-layout page in the measured set.
 - The container `patches/vllm-ascend-0271/` tree is an uncommitted
   74-file diff on that host. It is not a reviewable delivery in this
   repository. The multi-pool issue text is a draft, not a filed issue.
