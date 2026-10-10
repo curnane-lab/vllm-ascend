@@ -1388,6 +1388,45 @@ quantized state. A one-layer roundtrip is not a task score. A
 no-prefix long decode stays on the dense kernel. This route does not
 reopen E5, E6, or the allocator.
 
+## Next experiments
+
+Quantized execution stays stopped. E5, E6, the allocator, a multi-head
+step, further flush polish, and a MIX kernel stay unstarted. Production
+flags stay off. The compact page stays off. The 1.10 bar for a later
+quantized window is still `15.98 / 1.10 = 14.53` ms on the same
+machine, recomputed if the dense op changes.
+
+One measurement decides the capacity route. It uses the dense path
+only. LeapQuant stays off. Both loads record `max_model_len`, the
+tokenized lengths, the block size, the batch that actually ran, and
+whether prefix cache is on.
+
+| load | setup |
+|---|---|
+| A | prefix cache on, a long shared prefix, enough requests to fill the cache |
+| B | prefix cache off, the same model, a pure decode |
+
+At steady state, after warmup, split occupied HBM into FA KV, live
+GDN fp32 state, and cached GDN snapshots. Record how many snapshots
+exist and whether a snapshot is one per sequence or one per cache
+block. The kill line is on load A: if the cached GDN snapshots are
+under 15% of occupied HBM, stop. A perfect replacement of that slice
+by the 19,456 B checkpoint frees at most about
+`0.15 × (1 − 19456/65536) = 11%` of occupied HBM, and load B has no
+such slice. That is not a serving-capacity project. If the slice is
+at or above 15%, the follow-up is an encode at a flushed boundary and
+a decode back to fp32, on a real layer state, a zero state, and a hot
+row, then a short dense resume against the original fp32 trajectory.
+The checkpoint store is a separate allocation. The live page stride
+does not change. The roundtrip time is reported per layer. A one-layer
+error is not a task score.
+
+A cube flush is not part of this round. MIX in one kernel does not
+launch. An AIC-only flush, or separate kernels on one stream, is the
+only shape that can be timed later, and only when its all-due call is
+correct and under 8 ms. A paired window waits until a design's step
+and flush already sum to at most 14.53 ms on paper.
+
 ## Still open
 
 - The operator line is stopped. At B=256 the production window is
