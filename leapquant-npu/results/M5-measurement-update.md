@@ -1146,11 +1146,75 @@ de-scalarized binary (`6.127` ms there). The 6.12 ms figure is that
 B=64 call, 43 instances at 142 µs. It is not the B=256 flush, which
 stays 24.33 ms. E6 and the allocator stay stopped.
 
-Two conditions are what the host would need before reopening this
-line. A multi-repeat `WholeReduceSum`, or the fp32 transpose, has to
-match the single-repeat reference and then be timed inside the step.
-The production dense window has to be retimed if that upstream kernel
-changes. Neither was done here.
+The 7.6 µs figure is the cost of the shape that passed. It is not a
+hardware floor. The 0.4 ms/step line is the budget left after an
+unmeasured 50 µs flush: `14.5 − 8.6 = 5.9` ms for 16 steps, about
+0.37 ms/step, which the host rounded to 0.4. A free flush would leave
+`14.5 / 16 = 0.91` ms/step. A flush that stays at 24.33 ms is already
+over 14.5 ms, so no step time clears the bar. The current step
+organization stays stopped. The official reduce below is the one
+untested path that could change the 7.6 µs number.
+
+`16 × 4.253 + 24.33 = 92.38` ms. `15.98 / 92.38 = 0.173`. That sum
+stitches the AscendC step column to the paired flush. It is not a
+paired window, and this run did not attach a correctness check to the
+step column. The 0.085 ratio is the eager materializing window, not
+this step.
+
+## Official dense reduce, not yet probed (vllm-ascend `3b3188623`)
+
+The production op's kernel entry is marked
+`KERNEL_TYPE_AIV_ONLY`. Missing a cube unit does not by itself
+explain a gap against that op. This tree's earlier cube GEMV probe
+and the MIX launch failure are a different path. The `.cpp` selects
+the kernel header with `__CCE_AICORE__`:
+
+- `__CCE_AICORE__ == 310` builds `arch35/recurrent_gated_delta_rule.h`.
+  For K=128 it adds the two vector registers of a row and reduces
+  that register, one row at a time, then stores the first element.
+- Any other core builds `recurrent_gated_delta_rule.h`. For K=128 and
+  a tile of at most 255 rows it folds the two halves with one
+  multi-row `Add` into `src[64]`, so the source and the destination
+  of that `Add` do not overlap, barriers on `PIPE_V`, and issues one
+  `WholeReduceSum` of 64 lanes with `repeatTime` equal to the row
+  count, destination repeat stride 1, and source repeat stride
+  `alignK / 8`.
+
+The second header is the one quoted as the production fast path. The
+first is what a 310 build actually runs. Which header the 15.98 ms
+binary contains is not known. This checkout's `gdn.py` imports
+`fla_npu.ops.ascendc.recurrent_gated_delta_rule`, while the timed op
+was `torch.ops._C_ascend.npu_recurrent_gated_delta_rule`. The step
+kernel in this tree, `CodesDots16`, already folds each K=128 row to
+64 lanes and then issues `repeatTime=1`. Its comment records that a
+repeated `WholeReduceSum` mis-scattered sums and that the
+`dstRepStride` unit depends on the architecture. The failed probe
+shapes are not in this tree, so the max-abs of about 30 is not yet
+identified with that overlap, nor with a stride mismatch against a
+packed reference.
+
+The next measurement is one probe, on the header this chip compiles,
+and it stops again if that reduce is wrong or is not faster than
+7.6 µs per matvec. The loaded library's hash is the identity of the
+binary. An object mtime only says a rebuild happened.
+
+1. Record the loaded library hash and which of the two headers that
+   build selected.
+2. Compile that header's K=128 reduce for the same tile height, and
+   compare it with the single-repeat reference on the layout the
+   header consumes. The inputs cover random values, zeros, tiny
+   values, a large row, and cancellation. A wrong result or a time
+   that does not beat 7.6 µs ends the probe.
+3. Only after that passes, put int8 decode and the scale in front of
+   the same layout.
+4. Only if that stays near the dense matvec, time both readouts and
+   then the compensator and the window, per head, on the binary that
+   passed.
+
+Rebalancing heads across blocks can change a mixed-due wall. An
+all-due call already occupies every block, so it does not change the
+fold. The fp32 transpose route stays unbuilt. E6 and the allocator
+stay stopped.
 
 ## Still open
 
@@ -1161,8 +1225,13 @@ changes. Neither was done here.
   reference is 7.6 µs, 2.60 ms per step on the slowest block, 41.6 ms
   across 16 steps, before the window term and before the flush.
   Multi-repeat `WholeReduceSum` returns values about 30 away from that
-  reference, so its 1.0 µs timing is not a floor. The §15 direct-Triton
-  row of 0.170–2.411 ms was not reproduced; the later Triton direct row
+  reference, so its 1.0 µs timing is not a floor. The 7.6 µs shape is
+  the one that passed, not a hardware floor. vllm-ascend `3b3188623`
+  has two AIV-only dense headers, and the one this chip compiles has
+  not been extracted and timed. The current step organization stays
+  stopped until that probe beats 7.6 µs and matches the single-repeat
+  reference. The §15 direct-Triton row of 0.170–2.411 ms was not
+  reproduced; the later Triton direct row
   is 2.573–8.728 ms. No multi-head step, no further flush polish, and
   no E5. E6 and the allocator stay stopped. The B=2 engine gap remains
   1.935 s step increment, 6.341 s flush region, 0.729 s prefill, and
