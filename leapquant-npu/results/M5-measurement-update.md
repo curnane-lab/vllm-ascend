@@ -1377,40 +1377,208 @@ the FA KV and the live GDN state, is not measured. Attention bytes
 are still unlisted. Until that split is known, 3.37× is not a
 concurrency claim, and the 1.26× startup budget is not this design.
 
-The first measurement is that split, on a prefix-cached load and on a
-no-cache decode. If the cached GDN snapshots are a small slice, this
-route stops. If they are not, a later roundtrip encodes a real layer
-state at a flushed boundary and decodes it back, including a zero
-state, a hot row, and a resumed generation. Storage for those
-checkpoints is separate from the live page. The live page stride stays
-legal. The compact page stays off. Restoring a checkpoint is a
-quantized state. A one-layer roundtrip is not a task score. A
-no-prefix long decode stays on the dense kernel. This route does not
-reopen E5, E6, or the allocator.
+The first measurement of that split is the section below. It stops
+the capacity line for the two loads that were run. It does not reopen
+E5, E6, or the allocator.
+
+## Memory split on the dense path (910C, 2026-10-10)
+
+Dense path only. LeapQuant off, eager, `max_model_len=8192`,
+`gpu_memory_utilization=0.85`, in-process scheduler. Qwen3.5-9B. The
+host script is `scripts/exp1_mem_split.py`. The raw
+`logs/exp1_mem_split_{A,B}.json` files are on that host. They are not
+in this tree. The layout probe that followed is
+`results/migration_v2/R0/r0c_memory_ledger.json` on the same host,
+also not in this tree.
+
+Two loads, 64 requests, 256 decode tokens each, steady batch 64.
+
+| | A, prefix cache on, align | B, prefix cache off |
+|---|---|---|
+| prompts | shared prefix 3584 tokens, suffix about 180 (3743–3768) | 300–349 tokens, no share |
+| block table | 996 total, 263 in use | 996 total, 257 in use |
+| cached-map entries | 6 | 0 |
+| NPU allocated / reserved | 49.21 / 50.53 GiB | 49.21 / 50.57 GiB |
+
+The worker sees 48 cache tensors: 24 GDN layers, each a conv bf16
+view `[996,3,8192]` and an ssm fp32 view `[996,32,128,128]`. The
+views sum to 47.78 GiB. Unique storage is 8 regions, 31.49 GiB
+(`8 × 996 × 4,243,456`). Each storage holds one FA layer and three
+GDN layers. A block is 4,243,456 B. That equals one 49,152 B span
+plus two 2 MiB regions. The host text also lists a conv head and a
+pad as two 49,152 B spans; those two plus two 2 MiB regions are
+49,152 B over the block. The ssm view and the FA K view start at the
+same address and match byte for byte on a live block. That overlap is
+the hybrid layout: the 2 MiB region is KV when the block belongs to
+FA, and the fp32 state when it belongs to a mamba group. The managers
+do not share block ids. One sampled request had FA block 1 and mamba
+group-1 block 2. The 263 in-use ids close as
+`64 × (1 FA + 3 mamba) + 6 cached + 1`.
+
+A cached entry is one block id at a 1024-token boundary, held by a
+mamba group and shared across requests. It is not one copy per
+sequence. The six entries are the shared prefix's boundary blocks.
+Load B has none.
+
+The pool fraction is `6 / 996 = 0.602%`. Counting each of those six
+ids once in every storage gives
+`6 × 8 × 4,243,456 = 0.190` GiB, 0.39% of the 49.21 GiB allocation.
+The paste's 24.8 MiB is one page times six
+(`6 × 4,243,456 = 24.28` MiB). The review below does not treat either
+multiply as a measured byte span. Load B has no cached ids. The entry
+count does not start the allocator. The 1.26× startup budget stays a
+startup budget.
+
+The paste's later cap, pool occupancy times a 1.2% GDN share, is the
+49,152 B span (`49,152 / 4,243,456 = 1.16%`). That span is the conv
+tail, not the fp32 state. On a mamba block the state region is 2 MiB,
+49% of the block. That correction does not reopen this load. Six
+block ids remain 0.60% of the table. A load of many independent long
+prefixes is not measured, and it is not capped at 1.2%. The allocator
+stays stopped. The compact page stays off.
+
+## migration v2 round 1 (910C, 2026-10-10)
+
+The host ran the first package in `migration-v2-plan.md`: R0, R1 A–C,
+and the Cube codes readout. Scripts named there
+(`r0c_layout_probe.py`, `r0c_alias_probe3.py`,
+`bench_codes_readout.py`) are on the host. They are not in this tree.
+No paired window was run.
+
+Identity, from the host manifest: vLLM `6e448d0e`, vllm-ascend
+`3b3188623` with five dirty files, opapi `ab760fc5`, CANN 9.1.0, 910C
+with 37 cores. After the R1 guard edit the flush device image's first
+16 hex digits are `38479a7c`. This tree's flush source still has
+`NORM_EPS = 1e-30`. The 24.33 ms flush is the earlier binary, not
+this image.
+
+Servable batch, prefix cache off, prompt 4094 tokens, 256 output
+tokens. B=16 and B=64 stayed resident. B=128 stayed at about 124–128
+over 64 s and is the servable target. B=256 capped near 124 and waited;
+it is not an end-to-end batch. It stays the operator diagnostic point.
+An 8K servable batch was not in this run. The historical B=128 dense
+window is 8.176 ms, and `8.176 / 1.10 = 7.433` ms. That number is not
+a new pairing.
+
+R1 A, on legal amplitudes. Zeros through the production path rebuild
+to zero. Random and cancellation stay finite; the host parity is
+0.01021 max relative, with its 2.4% codes-edge allowance. The host
+moved the MGS floor from `1e-30` to `1e-20` and floored the absolute
+sum before the scale square root, then reran parity. Scales of
+`1e-24` are NaN on 256 of 256 heads, and `1e-30` on 36 of 256. The
+host places that in the rebuild, upstream of the two guards. The two
+iterations are spent. Amplitudes around 0.1–10 are the ones this
+parity covers. R1 B: the int8 to fp16 to fp32 path is inside that
+parity, `s_k` relative 1.5e-5, and the typed view matches the R0 byte
+check. The debug-probe NaN stays the probe, as in the mode 25
+readback. R1 C: two pools, A/B/A, pass. Re-flushing A mismatches
+0.22% of codes and the median `s_k` relative error is 2.5e-4, the
+same requantization noise as the parity. A and B differ on 99.4% of
+the compared state. The storages differ. A reversed `idx` flushes.
+R1 D, the 24-pool 96-step recycle, was not run.
+
+R2 timed one Cube readout: int8 codes, fp32 `s_k`, real `kn`/`qn`,
+exact int8 to fp16, hi/lo packed `k|q`, batched fp16 matrix multiply,
+then the merge. The wall is both readouts for the step. Per-head
+relative L2 against the fp32 reference:
+
+| B | ms / step | µs / instance | max rel L2 | 3e-3 gate |
+|---:|---:|---:|---:|---|
+| 16 | 0.367 | 0.716 | 3.7e-4 | pass |
+| 128 | 0.322 | 0.079 | 3.9e-4 | pass |
+| 256 | 0.677 | 0.083 | 4.0e-4 | pass |
+
+`0.367 / 512 = 0.717` µs, `0.322 / 4096 = 0.079` µs, and
+`0.677 / 8192 = 0.083` µs. The B=16 wall is above B=128, so the small
+batch is not on the per-instance line. The Vector row was not
+re-timed. The 0.98 µs add-fold, the 6.25 µs decode probe, the 7.58 µs
+mode 16 step, and the untimed 2.9 µs / 0.50 ms assembly stay what
+they were. A sum of the Cube wall with a 0.44 ms residual is not a
+step.
+
+The readout is part of the step. At B=256 the free-flush ceiling is
+`14.527 / 16 = 0.908` ms/step. The measured 0.677 ms is under that
+ceiling, so this piece alone does not trip the plan's kill. It is
+over the 0.40 ms step target. `16 × 0.677 = 10.832` ms, and
+`14.527 − 10.832 = 3.695` ms is what remains for the compensator, the
+window, the writeback, and every flush call. Comparing 10.832 ms with
+the 8.127 ms column puts the readout in the non-step bucket. The
+flush on the books is 24.33 ms on the earlier binary. R3 and R4 stay
+closed. A B=128 reading of the old 7.433 ms gate leaves
+`7.433 − 16 × 0.322 = 2.281` ms for that same remainder, and it is
+not a paired dense window.
+
+## Round-1 review (2026-10-10)
+
+The host paste is not a raw-log replay. `main` at `55df388` has
+neither the R0–R2 scripts nor the json. Three readings change.
+
+The Cube readout stays a candidate. It does not open R3 or R4. B=256
+missed the 0.40 ms step target and did not cross the free-flush kill.
+`16 × 0.677 = 10.832`, and `14.527 − 10.832 = 3.695` ms remains for
+the compensator, the window, the writeback, temporary tensors, the
+launches, and every flush call. The 8.127 ms column is the remainder
+after a 0.40 ms step. It does not cap the readout. At the historical
+B=128 gate, `16 × 0.322 = 5.152` and `7.433 − 5.152 = 2.281` ms
+remains for that same list. If the rest of the step were 0.10 ms,
+`7.433 − 16 × (0.322 + 0.10) = 0.681` ms would be left for the flush
+and the other window costs. That 0.10 ms is an illustration, not a
+measurement. The untimed 2.9 µs, 0.50 ms, and 0.44 ms figures stay
+out of the comparison. The batch that stayed up was about 124–128, so
+this note does not treat 128 as a fixed resident batch. The next
+dense pairing uses the batch that actually holds.
+
+R1 A–C is a partial pass. `1e-24` is a normal fp32 value. Its square
+underflows. The NaN is not yet pinned to subnormal inputs, and the
+first non-finite intermediate is not recorded. Initialization, decay,
+and cancellation can all produce a small state, so O(0.1–10) is not
+a proven legal range. The 0.01021 max relative parity, and the codes
+edge allowance, are not the per-head reconstruction gate on one
+checkpoint plus one window. Re-flushing A and seeing requantization
+noise does not prove the bind. The missing check is a frozen input,
+repeated, with A's non-target bytes unchanged across the call to B.
+Requantization error is a separate column. The two epsilon edits are
+spent. The next record is the failure boundary, not another floor.
+R2 still lacks the query readout's error, the max absolute error, a
+cancellation case, and the accumulate and output dtypes. A plain fp16
+path that meets the contract can stay. A hi/lo split waits on a case
+that fails without it.
+
+The memory ledger is not closed. A block described as a 49,152 B head,
+two 2 MiB regions, and a 49,152 B pad sums to 4,292,608 B, which is
+49,152 B over the 4,243,456 B block. One 49,152 B span plus two 2 MiB
+regions does sum. The offsets are not in this tree. The live fp32
+state of 64 requests, if every layer owns a private matrix, is
+`64 × 24 × 32 × 128 × 128 × 4 = 3` GiB. The paste's 1.09–1.12 GiB is
+257–263 block ids times one page. Those two quantities cannot be the
+same footprint. A group block id applied to every layer in the group
+is `6 × 8 × 4,243,456 = 0.190` GiB for the six cached ids, which is
+the eight-storage multiply already written above. That multiply is a
+candidate, not a measured byte span. Cold state payload, padding, and
+reclaimable bytes are still separate. The 1.2% cap stays withdrawn.
+Six cached-map entries against 257–263 in-use ids, and zero on the
+no-cache load, still do not justify the allocator. They also do not
+prove a 0.39% HBM fraction.
 
 ## Next experiments
 
-The current AIV organization stays stopped. Its measured window is
-still the paired dense op at 15.98 ms against the 24.33 ms flush, and
-the untimed 26.4 ms assembly is not a pass. E5, E6, step v2 wiring,
-the production quant flags, the compact page, and the allocator stay
-off. MIX in one kernel still does not launch.
+The next package is three steps, in order.
 
-The next round is the gated GPU-path plan in
-`leapquant-npu/results/migration-v2-plan.md`. It authorizes R0–R2
-only: identify the binary that actually runs, the batch the engine can
-hold, and any memory ledger that already exists; close the zeros
-residue, the NaN readback, and the cross-pool bind; then time two real
-codes readouts, Vector and a separate Cube matmul. R3 and R4 start
-only after a candidate is correct and still inside the window budget.
-The B=256 bar in that plan is `15.98 / 1.10 = 14.527` ms for the whole
-window. A step average of 0.908 ms already misses it when everything
-else is free. A component sum is not that window.
+1. Land the five dirty files, the device image, and the real
+   `blockDim` so the source matches the binary. Close the ledger from
+   a group block id to a storage byte range.
+2. Add the missing R1 and R2 evidence. Pair dense at the batch that
+   stays resident. A peak of 124–128 does not certify B=128.
+3. Only after those two, time a sequential step that is the Cube
+   readout plus the rest of the step, including the casts, the
+   temporary global memory, and the launches. Then screen a new
+   matrix flush against the remainder that step actually leaves.
+   Overlap of the cube and vector cores counts only on that timeline.
 
-The capacity count in the section above is now R0c and R8 of that
-plan. This tree has no `exp1_mem_split` ledger. A missing file is a
-gap. The 15% HBM screen stays the reason to stop a capacity project,
-and it is not a reason to start the allocator in this round.
+R1 D is due before a full-window acceptance. E5, E6, production
+wiring, MIX, the allocator, and the compact page stay off. The
+servable question is the remainder at about B=128. It is not a
+serving sweep.
 
 ## Still open
 
@@ -1439,16 +1607,14 @@ and it is not a reason to start the allocator in this round.
   Production flags stay off. The probe kernel and benches are on the
   host and are not in this tree. The vendored-fork 0.780–0.797× scan
   is a different stack and is not re-opened here.
-- A dense-live path with compressed prefix checkpoints is unmeasured.
-  The 19,456 B checkpoint is 3.37× one 64 KiB fp32 head. That ratio is
-  not the 4144 or 4192 B/token page line and not the 1.26× startup
-  budget. The live state in that design stays fp32. The next count is
-  FA KV against live GDN state against cached GDN snapshots, on a
-  prefix-cached load and on a no-cache decode. This tree has no such
-  ledger yet. A separate checkpoint pool and a cube flush wait on that
-  split and on the migration plan. MIX in one kernel still does not
-  launch. A separate Cube matmul for the codes readout is R2 of that
-  plan, and it is not this flush.
+- The dense-path split counted 6 cached-map entries on the shared
+  prefix and 0 with the cache off, against 263 and 257 in-use ids.
+  The byte fraction is not closed. A private state for 64 requests is
+  3 GiB, and 257–263 pages are about 1.1 GB decimal. The 1.2% cap is
+  withdrawn. The allocator stays stopped. The 19,456 B checkpoint is
+  still 3.37× one 64 KiB head, not the page line, and not the 1.26×
+  startup budget. MIX in one kernel still does not launch. The Cube
+  readout at 0.677 ms/step is not a window. R1 A–C is a partial pass.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
