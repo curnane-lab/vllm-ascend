@@ -1388,6 +1388,30 @@ quantized state. A one-layer roundtrip is not a task score. A
 no-prefix long decode stays on the dense kernel. This route does not
 reopen E5, E6, or the allocator.
 
+## Next experiments
+
+The current AIV organization stays stopped. Its measured window is
+still the paired dense op at 15.98 ms against the 24.33 ms flush, and
+the untimed 26.4 ms assembly is not a pass. E5, E6, step v2 wiring,
+the production quant flags, the compact page, and the allocator stay
+off. MIX in one kernel still does not launch.
+
+The next round is the gated GPU-path plan in
+`leapquant-npu/results/migration-v2-plan.md`. It authorizes R0–R2
+only: identify the binary that actually runs, the batch the engine can
+hold, and any memory ledger that already exists; close the zeros
+residue, the NaN readback, and the cross-pool bind; then time two real
+codes readouts, Vector and a separate Cube matmul. R3 and R4 start
+only after a candidate is correct and still inside the window budget.
+The B=256 bar in that plan is `15.98 / 1.10 = 14.527` ms for the whole
+window. A step average of 0.908 ms already misses it when everything
+else is free. A component sum is not that window.
+
+The capacity count in the section above is now R0c and R8 of that
+plan. This tree has no `exp1_mem_split` ledger. A missing file is a
+gap. The 15% HBM screen stays the reason to stop a capacity project,
+and it is not a reason to start the allocator in this round.
+
 ## Still open
 
 - The operator line is stopped. At B=256 the production window is
@@ -1420,9 +1444,11 @@ reopen E5, E6, or the allocator.
   not the 4144 or 4192 B/token page line and not the 1.26× startup
   budget. The live state in that design stays fp32. The next count is
   FA KV against live GDN state against cached GDN snapshots, on a
-  prefix-cached load and on a no-cache decode. No separate pool and no
-  cube flush until that split says the snapshots are large. MIX in one
-  kernel still does not launch.
+  prefix-cached load and on a no-cache decode. This tree has no such
+  ledger yet. A separate checkpoint pool and a cube flush wait on that
+  split and on the migration plan. MIX in one kernel still does not
+  launch. A separate Cube matmul for the codes readout is R2 of that
+  plan, and it is not this flush.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
