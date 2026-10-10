@@ -1113,8 +1113,13 @@ and both bench scripts stay on that host. They are not in this tree.
 | 11/21, pair-add, `WholeReduceSum(64, repeat=128)` | 1.0 | fails, max abs about 30 against mode 22 |
 | 13/23, strided halving, `WholeReduceSum(8)` with a repeat | 1.4 | fails, max abs about 32 against mode 22 |
 
-Both multi-repeat widths fail with `dstRepStride=1`. The fast shapes
-are not a usable floor. The host identifies this with the step
+Both multi-repeat widths fail against mode 22, with max abs about
+30 and 32. The host first read that as a broken multi-repeat
+primitive. The production-header probe below reran the K=128 fold
+with the production argument order and 64-row tiles. That form passed.
+The 1.0 µs row in this table is a 128-row call with the stride
+arguments in the wrong slots, and it is not a usable measurement of
+the primitive. The host identifies the old failure with the step
 kernel's earlier mis-scattered reduce. The shape that passes is the
 one already in the step, at 7.6 µs. Two codes matvecs are 15.2 µs per
 instance. On the B=256 slowest block that is `171 × 15.2` µs `= 2.60`
@@ -1146,11 +1151,242 @@ de-scalarized binary (`6.127` ms there). The 6.12 ms figure is that
 B=64 call, 43 instances at 142 µs. It is not the B=256 flush, which
 stays 24.33 ms. E6 and the allocator stay stopped.
 
-Two conditions are what the host would need before reopening this
-line. A multi-repeat `WholeReduceSum`, or the fp32 transpose, has to
-match the single-repeat reference and then be timed inside the step.
-The production dense window has to be retimed if that upstream kernel
-changes. Neither was done here.
+The 7.6 µs figure is the cost of the shape that passed. It is not a
+hardware floor. The 0.4 ms/step line is the budget left after an
+unmeasured 50 µs flush: `14.5 − 8.6 = 5.9` ms for 16 steps, about
+0.37 ms/step, which the host rounded to 0.4. A free flush would leave
+`14.5 / 16 = 0.91` ms/step. A flush that stays at 24.33 ms is already
+over 14.5 ms, so no step time clears the bar. The current step
+organization stays stopped. The official reduce below is the one
+untested path that could change the 7.6 µs number.
+
+`16 × 4.253 + 24.33 = 92.38` ms. `15.98 / 92.38 = 0.173`. That sum
+stitches the AscendC step column to the paired flush. It is not a
+paired window, and this run did not attach a correctness check to the
+step column. The 0.085 ratio is the eager materializing window, not
+this step.
+
+## Official dense reduce, not yet probed (vllm-ascend `3b3188623`)
+
+The production op's kernel entry is marked
+`KERNEL_TYPE_AIV_ONLY`. Missing a cube unit does not by itself
+explain a gap against that op. This tree's earlier cube GEMV probe
+and the MIX launch failure are a different path. The `.cpp` selects
+the kernel header with `__CCE_AICORE__`:
+
+- `__CCE_AICORE__ == 310` builds `arch35/recurrent_gated_delta_rule.h`.
+  For K=128 it adds the two vector registers of a row and reduces
+  that register, one row at a time, then stores the first element.
+- Any other core builds `recurrent_gated_delta_rule.h`. For K=128 and
+  a tile of at most 255 rows it folds the two halves with one
+  multi-row `Add` into `src[64]`, so the source and the destination
+  of that `Add` do not overlap, barriers on `PIPE_V`, and issues one
+  `WholeReduceSum` of 64 lanes with `repeatTime` equal to the row
+  count, destination repeat stride 1, and source repeat stride
+  `alignK / 8`.
+
+The second header is the one quoted as the production fast path. The
+first is what a 310 build actually runs. Which header the 15.98 ms
+binary contains is not known. This checkout's `gdn.py` imports
+`fla_npu.ops.ascendc.recurrent_gated_delta_rule`, while the timed op
+was `torch.ops._C_ascend.npu_recurrent_gated_delta_rule`. The step
+kernel in this tree, `CodesDots16`, already folds each K=128 row to
+64 lanes and then issues `repeatTime=1`. Its comment records that a
+repeated `WholeReduceSum` mis-scattered sums and that the
+`dstRepStride` unit depends on the architecture. The failed probe
+shapes are not in this tree, so the max-abs of about 30 is not yet
+identified with that overlap, nor with a stride mismatch against a
+packed reference.
+
+The next measurement is one probe, on the header this chip compiles,
+and it stops again if that reduce is wrong or is not faster than
+7.6 µs per matvec. The loaded library's hash is the identity of the
+binary. An object mtime only says a rebuild happened. A paired
+16-step window is not part of this probe.
+
+Zeroing the two codes matvecs does not enter the budget below. They
+are 15.2 µs of the measured 24.9 µs instance, from the flush-debug
+probe identified with `CodesDots16`, not from a split of the 4.253 ms
+trace. `4.253 − 2.60 = 1.65` ms/step for everything else, and
+`16 × 1.65 = 26.4` ms. That is already over the 14.5 ms window,
+before flush and before whatever of the 15.2 µs remains. If the
+in-step dots are cheaper than the probe, this remainder is larger.
+Splicing a faster reduce into the current step leaves that remainder.
+
+`15.98 / 1.10 = 14.53` ms is the whole lockstep window, step and
+flush together:
+
+| step | 16 × step | flush has to be under |
+|---:|---:|---:|
+| 0.30 ms | 4.80 | 9.73 ms |
+| 0.40 ms | 6.40 | 8.13 ms |
+| 0.50 ms | 8.00 | 6.53 ms |
+| 0.80 ms | 12.80 | 1.73 ms |
+
+The 0.80 ms row needs a flush under 1.73 ms, which is about 10 µs per
+instance on the slowest block. Pass 4b alone is 23.2 µs, so that row
+is not a target. The rows that still meet an 8.6 ms flush, the
+unmeasured 50 µs bound, need the step at about 0.37 ms or under.
+Today's 4.253 ms step and 24.33 ms flush are outside every row. Both
+have to move. Fusing those two kernels into one launch keeps both
+costs.
+
+The codes term can fold `(s_k ⊙ x) / 127` into `x` before the matvec,
+and apply `p` and `s_v` to the result. The compensator and the window
+stay; they are not removed by sharing one codes tile across the key
+and query readouts. GQA here is 16 key heads and 32 value heads. The
+dense kernel indexes `head_i / (NV / NK)` inside the head loop.
+Dropping the host `repeat_interleave` removes that expand. It is not
+a 2× cut of the matvec. The first version that gets timed stays fp32.
+The cube path and a hi/lo split wait. MIX still does not launch.
+
+1. Record the loaded library hash and which of the two headers that
+   build selected.
+2. Compile that header's K=128 reduce for the same tile height, and
+   compare it with the single-repeat reference on the layout the
+   header consumes. The inputs cover random values, zeros, tiny
+   values, a large row, and cancellation. A wrong result or a time
+   that does not beat 7.6 µs ends the probe. Nothing else starts.
+3. Only after that passes, a new direct step may load each codes tile
+   once, decode it, run both readouts, and keep the compensator and
+   the window. It has to come in near the 0.3–0.5 ms rows. A kernel
+   whose non-matvec part is still ~1.65 ms does not.
+4. A flush rewrite is the same header applied to the fold's
+   reductions, not a merge of the current kernels. It has to come in
+   under the flush column of whichever step row is real. Nothing-due
+   is already 0.01–0.03 ms, so skipping the scan does not move these
+   rows. One head stays on one block. Splitting that head's value
+   tiles across blocks means the fold cannot run in the same kernel.
+
+Rebalancing heads across blocks can change a mixed-due wall. An
+all-due call already occupies every block, so it does not change the
+fold. The fp32 transpose route stays unbuilt. E6 and the allocator
+stay stopped. A host binary is not reviewable from this tree until
+its source and the loaded library hash are recorded with the timing.
+
+## Production fold probe (910C, 2026-10-10)
+
+The host ran the K=128 reduce from the header this chip compiles.
+ascend910_93 took `recurrent_gated_delta_rule.h`, not `arch35/`. The
+entry is still `KERNEL_TYPE_AIV_ONLY`. The loaded `libcust_opapi.so`
+starts `ab760fc5`. An earlier citation of that library started
+`5cfdb993`; this is a later build. The recurrent kernel objects the
+host names are `d3d0ef13` and `17258834`, VectorCore. The probe
+source and the two benches stay on that host. They are not in this
+tree.
+
+`ReduceSumAddFoldK128` adds the two halves into `src[64]`, then one
+`WholeReduceSum(dst, src[64], 64, rows, 1, 1, 16)`. The seven
+arguments are destination, source, mask, repeat, destination repeat
+stride, source block stride, source repeat stride. The host reads the
+tiling as `vStep ≈ 64` when `dv = 128`, so production calls this with
+64 rows and does a second call for the other half of V. The source
+allows up to 255 rows. A probe call with 128 rows wrote 16 results.
+That call is outside the production tile.
+
+On the flush debug path, mode 14 times and mode 24 reads back. Two
+tiles of 64 rows:
+
+| shape | µs per `[128,128]` | check |
+|---|---:|---|
+| row `Mul`+`Add`, one-repeat `WholeReduceSum` | 7.44 | reference |
+| production add-fold, two tiles of 64 | 0.98 | five families pass |
+
+`7.44 / 0.98 = 7.6`. The families are random, zeros, tiny, a large
+row, and cancellation. Under zeros, 10 of 256 heads show about 0.025
+in 7 lanes. The host calls that about 1e-3 relative and suspects a
+visibility race from the vector pipe into the reduce. It is not
+root-caused. `0.98` µs over 128 rows is 7.7 ns/row. The row-wise form
+is the extra instructions per row. After this probe, flush parity
+passed, E2 bench passed, and mode 0 read 4.546 ms and 6.116 ms, the
+same head1 and B=64 all-due walls as the de-scalarized binary.
+
+Mode 15 is decode, scale, and the fold, with the casts in a row loop:
+6.25 µs. `6.25 − 0.98 = 5.27` µs of those casts. A cast of 2048
+elements is 32 repeats, inside the 255 limit, and the host estimates
+that replacing the row loop would bring decode plus the matvec to
+about 1.3 µs. That cast was not run. The same estimate applied to the
+flush pass 0+1 cast loop is about 5 µs per instance, also not run.
+Mode 25 read the decode path back and got NaN. Mode 24 on the same
+path did not. Gate 3 has a speed and no passing correctness check.
+
+Mode 16 times the two readouts, the compensator dots, a folded window
+tile, and the output assembly, with `kn = 1` and `qn = 0.5`. It is
+7.58 µs per instance. On the B=256 slowest block that is
+`171 × 7.58` µs `= 1.30` ms/step, and `16 × 1.30 = 20.7` ms before
+the flush. The paste's 2.9 µs, and the 0.50 ms/step that follows from
+`2.9 × 171`, subtract an unmeasured cast rewrite from this 7.58 µs.
+`7.58 − (6.25 − 1.3) = 2.63` µs, not 2.9. Neither 2.63 nor 2.9 was
+timed. Mode 16 is a timing case, not a correctness pass.
+
+The host's optimistic assembly, using the unmeasured cast and a flush
+that has not been rewritten:
+
+| piece | figure | what it is |
+|---|---:|---|
+| step, 0.50 ms, ×16 | 8.0 ms | 2.9 µs/instance, not timed |
+| flush, 108 µs/instance | 18.4 ms | pass 2 cut by 32.7 µs and casts by 5, not timed |
+| sum | 26.4 ms | |
+| budget | 14.5 ms | |
+
+`142 − 32.7 − 5 = 104` µs, about 4 µs under the 108 µs in that table.
+`108 × 171 = 18.5` ms. `15.98 / 26.4 = 0.61`. The measured mode 16
+plus the measured flush is `20.7 + 24.33 = 45.0` ms,
+`15.98 / 45.0 = 0.355`. Pass 0+1, pass 3, and pass 4b are 59.3, 21.0,
+and 23.2 µs. Those three are 104 µs with nothing else left, and
+`104 × 171 = 17.8` ms of flush. The add-fold does not apply to that
+scalar chain, to the pass 3 layout, or to the pass 4b max tree. The
+0.50 ms step is also over the 0.37 ms step budget that an 8.6 ms
+flush would leave. The production step is 15.98/16 = 1.00 ms.
+Comparing an untimed 0.50 ms readout with that 1.00 ms leaves the
+flush still in the window.
+
+The operator line stays stopped. E5, E6, and the allocator stay
+stopped. The host's reopen list is the zeros race, the chunked cast,
+and a retile if the upstream dense kernel moves to a cube or MIX
+path. None of those is a measured window under 14.5 ms.
+
+## Dense live state, compressed prefix checkpoints
+
+The quantized execution line stays stopped. A later implementation
+that wants the 1.10 bar still has to time a same-machine lockstep
+window at or under `15.98 / 1.10 = 14.53` ms. One split of that
+budget is a step at or under 0.40 ms and an all-due flush at or under
+8.0 ms (`16 × 0.40 + 8.0 = 14.4`). Those are targets. The only number
+that counts is the paired window, and it is recomputed if the dense
+op changes. A cube flush is not the next kernel. On this toolchain a
+MIX kernel does not launch, including an empty one. An AIC-only flush
+or a stream of separate kernels is the shape that can be tried, and
+only after it is correct and under 8 ms.
+
+The separate question is prefix-cache capacity with live decode left
+on the dense op. A cached boundary can store the checkpoint alone:
+int8 codes, fp16 compensator tokens, and the fp32 scales, 19,456 B
+per head. The fp32 state of one head is 64 KiB, and
+`65536 / 19456 = 3.37`. That ratio is the checkpoint against one
+dense head. It is not the page line. Mode 0 is `4,243,456/1024 =
+4144` B/token and mode 3 pad is `2,146,304/512 = 4192` B/token.
+Shrinking the page and the block together did not change that line.
+The live request in this design keeps the fp32 state and calls the
+dense kernel, so the resident decode state does not shrink. The
+savings are the cached copies that are not the active state. The
+paper's capacity number is about one such checkpoint per 1K cached
+tokens, with the high-precision window allocated once per active
+request. How many of those copies this server actually holds, next to
+the FA KV and the live GDN state, is not measured. Attention bytes
+are still unlisted. Until that split is known, 3.37× is not a
+concurrency claim, and the 1.26× startup budget is not this design.
+
+The first measurement is that split, on a prefix-cached load and on a
+no-cache decode. If the cached GDN snapshots are a small slice, this
+route stops. If they are not, a later roundtrip encodes a real layer
+state at a flushed boundary and decodes it back, including a zero
+state, a hot row, and a resumed generation. Storage for those
+checkpoints is separate from the live page. The live page stride stays
+legal. The compact page stays off. Restoring a checkpoint is a
+quantized state. A one-layer roundtrip is not a task score. A
+no-prefix long decode stays on the dense kernel. This route does not
+reopen E5, E6, or the allocator.
 
 ## Still open
 
@@ -1160,17 +1396,33 @@ changes. Neither was done here.
   across 16 lockstep steps. The codes matvec that actually matches the
   reference is 7.6 µs, 2.60 ms per step on the slowest block, 41.6 ms
   across 16 steps, before the window term and before the flush.
-  Multi-repeat `WholeReduceSum` returns values about 30 away from that
-  reference, so its 1.0 µs timing is not a floor. The §15 direct-Triton
-  row of 0.170–2.411 ms was not reproduced; the later Triton direct row
-  is 2.573–8.728 ms. No multi-head step, no further flush polish, and
-  no E5. E6 and the allocator stay stopped. The B=2 engine gap remains
+  The production-header probe on ascend910_93 passed the add-fold at
+  0.98 µs per `[128,128]`, 7.6× the 7.44 µs row-wise form, on five
+  input families. The earlier 1.0 µs failure was a 128-row call with
+  the stride arguments in the wrong slots. Zeros still show a stale
+  ~0.025 on 10 of 256 heads. The full step math that was timed is
+  7.58 µs per instance, 1.30 ms/step, 20.7 ms across 16 steps, before
+  flush. The 0.50 ms step and the 18.4 ms flush in the optimistic
+  assembly were not timed. That sum is 26.4 ms against 14.5 ms,
+  R≈0.61. The decode readback was NaN, so the chunked-cast estimate
+  inside the 0.50 ms figure has no passing correctness check.
+  The §15 direct-Triton row of 0.170–2.411 ms was not reproduced; the
+  later Triton direct row is 2.573–8.728 ms. No multi-head step, no
+  further flush polish, and no E5. E6 and the allocator stay stopped. The B=2 engine gap remains
   1.935 s step increment, 6.341 s flush region, 0.729 s prefill, and
   3.295 s unattributed. That 0.344 ms flush average is a B=2 mix, not a
   larger-batch constant. The old direct-readout kernel stays out.
   Production flags stay off. The probe kernel and benches are on the
   host and are not in this tree. The vendored-fork 0.780–0.797× scan
   is a different stack and is not re-opened here.
+- A dense-live path with compressed prefix checkpoints is unmeasured.
+  The 19,456 B checkpoint is 3.37× one 64 KiB fp32 head. That ratio is
+  not the 4144 or 4192 B/token page line and not the 1.26× startup
+  budget. The live state in that design stays fp32. The next count is
+  FA KV against live GDN state against cached GDN snapshots, on a
+  prefix-cached load and on a no-cache decode. No separate pool and no
+  cube flush until that split says the snapshots are large. MIX in one
+  kernel still does not launch.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
