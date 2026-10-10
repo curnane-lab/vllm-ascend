@@ -1346,6 +1346,48 @@ stopped. The host's reopen list is the zeros race, the chunked cast,
 and a retile if the upstream dense kernel moves to a cube or MIX
 path. None of those is a measured window under 14.5 ms.
 
+## Dense live state, compressed prefix checkpoints
+
+The quantized execution line stays stopped. A later implementation
+that wants the 1.10 bar still has to time a same-machine lockstep
+window at or under `15.98 / 1.10 = 14.53` ms. One split of that
+budget is a step at or under 0.40 ms and an all-due flush at or under
+8.0 ms (`16 × 0.40 + 8.0 = 14.4`). Those are targets. The only number
+that counts is the paired window, and it is recomputed if the dense
+op changes. A cube flush is not the next kernel. On this toolchain a
+MIX kernel does not launch, including an empty one. An AIC-only flush
+or a stream of separate kernels is the shape that can be tried, and
+only after it is correct and under 8 ms.
+
+The separate question is prefix-cache capacity with live decode left
+on the dense op. A cached boundary can store the checkpoint alone:
+int8 codes, fp16 compensator tokens, and the fp32 scales, 19,456 B
+per head. The fp32 state of one head is 64 KiB, and
+`65536 / 19456 = 3.37`. That ratio is the checkpoint against one
+dense head. It is not the page line. Mode 0 is `4,243,456/1024 =
+4144` B/token and mode 3 pad is `2,146,304/512 = 4192` B/token.
+Shrinking the page and the block together did not change that line.
+The live request in this design keeps the fp32 state and calls the
+dense kernel, so the resident decode state does not shrink. The
+savings are the cached copies that are not the active state. The
+paper's capacity number is about one such checkpoint per 1K cached
+tokens, with the high-precision window allocated once per active
+request. How many of those copies this server actually holds, next to
+the FA KV and the live GDN state, is not measured. Attention bytes
+are still unlisted. Until that split is known, 3.37× is not a
+concurrency claim, and the 1.26× startup budget is not this design.
+
+The first measurement is that split, on a prefix-cached load and on a
+no-cache decode. If the cached GDN snapshots are a small slice, this
+route stops. If they are not, a later roundtrip encodes a real layer
+state at a flushed boundary and decodes it back, including a zero
+state, a hot row, and a resumed generation. Storage for those
+checkpoints is separate from the live page. The live page stride stays
+legal. The compact page stays off. Restoring a checkpoint is a
+quantized state. A one-layer roundtrip is not a task score. A
+no-prefix long decode stays on the dense kernel. This route does not
+reopen E5, E6, or the allocator.
+
 ## Still open
 
 - The operator line is stopped. At B=256 the production window is
@@ -1373,6 +1415,14 @@ path. None of those is a measured window under 14.5 ms.
   Production flags stay off. The probe kernel and benches are on the
   host and are not in this tree. The vendored-fork 0.780–0.797× scan
   is a different stack and is not re-opened here.
+- A dense-live path with compressed prefix checkpoints is unmeasured.
+  The 19,456 B checkpoint is 3.37× one 64 KiB fp32 head. That ratio is
+  not the 4144 or 4192 B/token page line and not the 1.26× startup
+  budget. The live state in that design stays fp32. The next count is
+  FA KV against live GDN state against cached GDN snapshots, on a
+  prefix-cached load and on a no-cache decode. No separate pool and no
+  cube flush until that split says the snapshots are large. MIX in one
+  kernel still does not launch.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
