@@ -1390,42 +1390,27 @@ reopen E5, E6, or the allocator.
 
 ## Next experiments
 
-Quantized execution stays stopped. E5, E6, the allocator, a multi-head
-step, further flush polish, and a MIX kernel stay unstarted. Production
-flags stay off. The compact page stays off. The 1.10 bar for a later
-quantized window is still `15.98 / 1.10 = 14.53` ms on the same
-machine, recomputed if the dense op changes.
+The current AIV organization stays stopped. Its measured window is
+still the paired dense op at 15.98 ms against the 24.33 ms flush, and
+the untimed 26.4 ms assembly is not a pass. E5, E6, step v2 wiring,
+the production quant flags, the compact page, and the allocator stay
+off. MIX in one kernel still does not launch.
 
-One measurement decides the capacity route. It uses the dense path
-only. LeapQuant stays off. Both loads record `max_model_len`, the
-tokenized lengths, the block size, the batch that actually ran, and
-whether prefix cache is on.
+The next round is the gated GPU-path plan in
+`leapquant-npu/results/migration-v2-plan.md`. It authorizes R0–R2
+only: identify the binary that actually runs, the batch the engine can
+hold, and any memory ledger that already exists; close the zeros
+residue, the NaN readback, and the cross-pool bind; then time two real
+codes readouts, Vector and a separate Cube matmul. R3 and R4 start
+only after a candidate is correct and still inside the window budget.
+The B=256 bar in that plan is `15.98 / 1.10 = 14.527` ms for the whole
+window. A step average of 0.908 ms already misses it when everything
+else is free. A component sum is not that window.
 
-| load | setup |
-|---|---|
-| A | prefix cache on, a long shared prefix, enough requests to fill the cache |
-| B | prefix cache off, the same model, a pure decode |
-
-At steady state, after warmup, split occupied HBM into FA KV, live
-GDN fp32 state, and cached GDN snapshots. Record how many snapshots
-exist and whether a snapshot is one per sequence or one per cache
-block. The kill line is on load A: if the cached GDN snapshots are
-under 15% of occupied HBM, stop. A perfect replacement of that slice
-by the 19,456 B checkpoint frees at most about
-`0.15 × (1 − 19456/65536) = 11%` of occupied HBM, and load B has no
-such slice. That is not a serving-capacity project. If the slice is
-at or above 15%, the follow-up is an encode at a flushed boundary and
-a decode back to fp32, on a real layer state, a zero state, and a hot
-row, then a short dense resume against the original fp32 trajectory.
-The checkpoint store is a separate allocation. The live page stride
-does not change. The roundtrip time is reported per layer. A one-layer
-error is not a task score.
-
-A cube flush is not part of this round. MIX in one kernel does not
-launch. An AIC-only flush, or separate kernels on one stream, is the
-only shape that can be timed later, and only when its all-due call is
-correct and under 8 ms. A paired window waits until a design's step
-and flush already sum to at most 14.53 ms on paper.
+The capacity count in the section above is now R0c and R8 of that
+plan. This tree has no `exp1_mem_split` ledger. A missing file is a
+gap. The 15% HBM screen stays the reason to stop a capacity project,
+and it is not a reason to start the allocator in this round.
 
 ## Still open
 
@@ -1459,9 +1444,11 @@ and flush already sum to at most 14.53 ms on paper.
   not the 4144 or 4192 B/token page line and not the 1.26× startup
   budget. The live state in that design stays fp32. The next count is
   FA KV against live GDN state against cached GDN snapshots, on a
-  prefix-cached load and on a no-cache decode. No separate pool and no
-  cube flush until that split says the snapshots are large. MIX in one
-  kernel still does not launch.
+  prefix-cached load and on a no-cache decode. This tree has no such
+  ledger yet. A separate checkpoint pool and a cube flush wait on that
+  split and on the migration plan. MIX in one kernel still does not
+  launch. A separate Cube matmul for the codes readout is R2 of that
+  plan, and it is not this flush.
 - Step v2 wiring stays off. The 24-pool run is a state-read/write
   disagreement. Observation error and address binding are still open,
   and 0 fallbacks does not close the old E1 fault. Locate it with
