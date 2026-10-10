@@ -1196,7 +1196,44 @@ packed reference.
 The next measurement is one probe, on the header this chip compiles,
 and it stops again if that reduce is wrong or is not faster than
 7.6 µs per matvec. The loaded library's hash is the identity of the
-binary. An object mtime only says a rebuild happened.
+binary. An object mtime only says a rebuild happened. A paired
+16-step window is not part of this probe.
+
+Zeroing the two codes matvecs does not enter the budget below. They
+are 15.2 µs of the measured 24.9 µs instance, from the flush-debug
+probe identified with `CodesDots16`, not from a split of the 4.253 ms
+trace. `4.253 − 2.60 = 1.65` ms/step for everything else, and
+`16 × 1.65 = 26.4` ms. That is already over the 14.5 ms window,
+before flush and before whatever of the 15.2 µs remains. If the
+in-step dots are cheaper than the probe, this remainder is larger.
+Splicing a faster reduce into the current step leaves that remainder.
+
+`15.98 / 1.10 = 14.53` ms is the whole lockstep window, step and
+flush together:
+
+| step | 16 × step | flush has to be under |
+|---:|---:|---:|
+| 0.30 ms | 4.80 | 9.73 ms |
+| 0.40 ms | 6.40 | 8.13 ms |
+| 0.50 ms | 8.00 | 6.53 ms |
+| 0.80 ms | 12.80 | 1.73 ms |
+
+The 0.80 ms row needs a flush under 1.73 ms, which is about 10 µs per
+instance on the slowest block. Pass 4b alone is 23.2 µs, so that row
+is not a target. The rows that still meet an 8.6 ms flush, the
+unmeasured 50 µs bound, need the step at about 0.37 ms or under.
+Today's 4.253 ms step and 24.33 ms flush are outside every row. Both
+have to move. Fusing those two kernels into one launch keeps both
+costs.
+
+The codes term can fold `(s_k ⊙ x) / 127` into `x` before the matvec,
+and apply `p` and `s_v` to the result. The compensator and the window
+stay; they are not removed by sharing one codes tile across the key
+and query readouts. GQA here is 16 key heads and 32 value heads. The
+dense kernel indexes `head_i / (NV / NK)` inside the head loop.
+Dropping the host `repeat_interleave` removes that expand. It is not
+a 2× cut of the matvec. The first version that gets timed stays fp32.
+The cube path and a hi/lo split wait. MIX still does not launch.
 
 1. Record the loaded library hash and which of the two headers that
    build selected.
@@ -1204,17 +1241,23 @@ binary. An object mtime only says a rebuild happened.
    compare it with the single-repeat reference on the layout the
    header consumes. The inputs cover random values, zeros, tiny
    values, a large row, and cancellation. A wrong result or a time
-   that does not beat 7.6 µs ends the probe.
-3. Only after that passes, put int8 decode and the scale in front of
-   the same layout.
-4. Only if that stays near the dense matvec, time both readouts and
-   then the compensator and the window, per head, on the binary that
-   passed.
+   that does not beat 7.6 µs ends the probe. Nothing else starts.
+3. Only after that passes, a new direct step may load each codes tile
+   once, decode it, run both readouts, and keep the compensator and
+   the window. It has to come in near the 0.3–0.5 ms rows. A kernel
+   whose non-matvec part is still ~1.65 ms does not.
+4. A flush rewrite is the same header applied to the fold's
+   reductions, not a merge of the current kernels. It has to come in
+   under the flush column of whichever step row is real. Nothing-due
+   is already 0.01–0.03 ms, so skipping the scan does not move these
+   rows. One head stays on one block. Splitting that head's value
+   tiles across blocks means the fold cannot run in the same kernel.
 
 Rebalancing heads across blocks can change a mixed-due wall. An
 all-due call already occupies every block, so it does not change the
 fold. The fp32 transpose route stays unbuilt. E6 and the allocator
-stay stopped.
+stay stopped. A host binary is not reviewable from this tree until
+its source and the loaded library hash are recorded with the timing.
 
 ## Still open
 
@@ -1230,10 +1273,11 @@ stay stopped.
   has two AIV-only dense headers, and the one this chip compiles has
   not been extracted and timed. The current step organization stays
   stopped until that probe beats 7.6 µs and matches the single-repeat
-  reference. The §15 direct-Triton row of 0.170–2.411 ms was not
-  reproduced; the later Triton direct row
-  is 2.573–8.728 ms. No multi-head step, no further flush polish, and
-  no E5. E6 and the allocator stay stopped. The B=2 engine gap remains
+  reference. Zeroing those two matvecs still leaves about 1.65 ms/step
+  in the current direct kernel, 26.4 ms across 16 steps, before flush.
+  The §15 direct-Triton row of 0.170–2.411 ms was not reproduced; the
+  later Triton direct row is 2.573–8.728 ms. No multi-head step, no
+  further flush polish, and no E5. E6 and the allocator stay stopped. The B=2 engine gap remains
   1.935 s step increment, 6.341 s flush region, 0.729 s prefill, and
   3.295 s unattributed. That 0.344 ms flush average is a B=2 mix, not a
   larger-batch constant. The old direct-readout kernel stays out.
