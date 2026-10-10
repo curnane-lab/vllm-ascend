@@ -1113,8 +1113,13 @@ and both bench scripts stay on that host. They are not in this tree.
 | 11/21, pair-add, `WholeReduceSum(64, repeat=128)` | 1.0 | fails, max abs about 30 against mode 22 |
 | 13/23, strided halving, `WholeReduceSum(8)` with a repeat | 1.4 | fails, max abs about 32 against mode 22 |
 
-Both multi-repeat widths fail with `dstRepStride=1`. The fast shapes
-are not a usable floor. The host identifies this with the step
+Both multi-repeat widths fail against mode 22, with max abs about
+30 and 32. The host first read that as a broken multi-repeat
+primitive. The production-header probe below reran the K=128 fold
+with the production argument order and 64-row tiles. That form passed.
+The 1.0 µs row in this table is a 128-row call with the stride
+arguments in the wrong slots, and it is not a usable measurement of
+the primitive. The host identifies the old failure with the step
 kernel's earlier mis-scattered reduce. The shape that passes is the
 one already in the step, at 7.6 µs. Two codes matvecs are 15.2 µs per
 instance. On the B=256 slowest block that is `171 × 15.2` µs `= 2.60`
@@ -1259,6 +1264,88 @@ fold. The fp32 transpose route stays unbuilt. E6 and the allocator
 stay stopped. A host binary is not reviewable from this tree until
 its source and the loaded library hash are recorded with the timing.
 
+## Production fold probe (910C, 2026-10-10)
+
+The host ran the K=128 reduce from the header this chip compiles.
+ascend910_93 took `recurrent_gated_delta_rule.h`, not `arch35/`. The
+entry is still `KERNEL_TYPE_AIV_ONLY`. The loaded `libcust_opapi.so`
+starts `ab760fc5`. An earlier citation of that library started
+`5cfdb993`; this is a later build. The recurrent kernel objects the
+host names are `d3d0ef13` and `17258834`, VectorCore. The probe
+source and the two benches stay on that host. They are not in this
+tree.
+
+`ReduceSumAddFoldK128` adds the two halves into `src[64]`, then one
+`WholeReduceSum(dst, src[64], 64, rows, 1, 1, 16)`. The seven
+arguments are destination, source, mask, repeat, destination repeat
+stride, source block stride, source repeat stride. The host reads the
+tiling as `vStep ≈ 64` when `dv = 128`, so production calls this with
+64 rows and does a second call for the other half of V. The source
+allows up to 255 rows. A probe call with 128 rows wrote 16 results.
+That call is outside the production tile.
+
+On the flush debug path, mode 14 times and mode 24 reads back. Two
+tiles of 64 rows:
+
+| shape | µs per `[128,128]` | check |
+|---|---:|---|
+| row `Mul`+`Add`, one-repeat `WholeReduceSum` | 7.44 | reference |
+| production add-fold, two tiles of 64 | 0.98 | five families pass |
+
+`7.44 / 0.98 = 7.6`. The families are random, zeros, tiny, a large
+row, and cancellation. Under zeros, 10 of 256 heads show about 0.025
+in 7 lanes. The host calls that about 1e-3 relative and suspects a
+visibility race from the vector pipe into the reduce. It is not
+root-caused. `0.98` µs over 128 rows is 7.7 ns/row. The row-wise form
+is the extra instructions per row. After this probe, flush parity
+passed, E2 bench passed, and mode 0 read 4.546 ms and 6.116 ms, the
+same head1 and B=64 all-due walls as the de-scalarized binary.
+
+Mode 15 is decode, scale, and the fold, with the casts in a row loop:
+6.25 µs. `6.25 − 0.98 = 5.27` µs of those casts. A cast of 2048
+elements is 32 repeats, inside the 255 limit, and the host estimates
+that replacing the row loop would bring decode plus the matvec to
+about 1.3 µs. That cast was not run. The same estimate applied to the
+flush pass 0+1 cast loop is about 5 µs per instance, also not run.
+Mode 25 read the decode path back and got NaN. Mode 24 on the same
+path did not. Gate 3 has a speed and no passing correctness check.
+
+Mode 16 times the two readouts, the compensator dots, a folded window
+tile, and the output assembly, with `kn = 1` and `qn = 0.5`. It is
+7.58 µs per instance. On the B=256 slowest block that is
+`171 × 7.58` µs `= 1.30` ms/step, and `16 × 1.30 = 20.7` ms before
+the flush. The paste's 2.9 µs, and the 0.50 ms/step that follows from
+`2.9 × 171`, subtract an unmeasured cast rewrite from this 7.58 µs.
+`7.58 − (6.25 − 1.3) = 2.63` µs, not 2.9. Neither 2.63 nor 2.9 was
+timed. Mode 16 is a timing case, not a correctness pass.
+
+The host's optimistic assembly, using the unmeasured cast and a flush
+that has not been rewritten:
+
+| piece | figure | what it is |
+|---|---:|---|
+| step, 0.50 ms, ×16 | 8.0 ms | 2.9 µs/instance, not timed |
+| flush, 108 µs/instance | 18.4 ms | pass 2 cut by 32.7 µs and casts by 5, not timed |
+| sum | 26.4 ms | |
+| budget | 14.5 ms | |
+
+`142 − 32.7 − 5 = 104` µs, about 4 µs under the 108 µs in that table.
+`108 × 171 = 18.5` ms. `15.98 / 26.4 = 0.61`. The measured mode 16
+plus the measured flush is `20.7 + 24.33 = 45.0` ms,
+`15.98 / 45.0 = 0.355`. Pass 0+1, pass 3, and pass 4b are 59.3, 21.0,
+and 23.2 µs. Those three are 104 µs with nothing else left, and
+`104 × 171 = 17.8` ms of flush. The add-fold does not apply to that
+scalar chain, to the pass 3 layout, or to the pass 4b max tree. The
+0.50 ms step is also over the 0.37 ms step budget that an 8.6 ms
+flush would leave. The production step is 15.98/16 = 1.00 ms.
+Comparing an untimed 0.50 ms readout with that 1.00 ms leaves the
+flush still in the window.
+
+The operator line stays stopped. E5, E6, and the allocator stay
+stopped. The host's reopen list is the zeros race, the chunked cast,
+and a retile if the upstream dense kernel moves to a cube or MIX
+path. None of those is a measured window under 14.5 ms.
+
 ## Still open
 
 - The operator line is stopped. At B=256 the production window is
@@ -1267,14 +1354,16 @@ its source and the loaded library hash are recorded with the timing.
   across 16 lockstep steps. The codes matvec that actually matches the
   reference is 7.6 µs, 2.60 ms per step on the slowest block, 41.6 ms
   across 16 steps, before the window term and before the flush.
-  Multi-repeat `WholeReduceSum` returns values about 30 away from that
-  reference, so its 1.0 µs timing is not a floor. The 7.6 µs shape is
-  the one that passed, not a hardware floor. vllm-ascend `3b3188623`
-  has two AIV-only dense headers, and the one this chip compiles has
-  not been extracted and timed. The current step organization stays
-  stopped until that probe beats 7.6 µs and matches the single-repeat
-  reference. Zeroing those two matvecs still leaves about 1.65 ms/step
-  in the current direct kernel, 26.4 ms across 16 steps, before flush.
+  The production-header probe on ascend910_93 passed the add-fold at
+  0.98 µs per `[128,128]`, 7.6× the 7.44 µs row-wise form, on five
+  input families. The earlier 1.0 µs failure was a 128-row call with
+  the stride arguments in the wrong slots. Zeros still show a stale
+  ~0.025 on 10 of 256 heads. The full step math that was timed is
+  7.58 µs per instance, 1.30 ms/step, 20.7 ms across 16 steps, before
+  flush. The 0.50 ms step and the 18.4 ms flush in the optimistic
+  assembly were not timed. That sum is 26.4 ms against 14.5 ms,
+  R≈0.61. The decode readback was NaN, so the chunked-cast estimate
+  inside the 0.50 ms figure has no passing correctness check.
   The §15 direct-Triton row of 0.170–2.411 ms was not reproduced; the
   later Triton direct row is 2.573–8.728 ms. No multi-head step, no
   further flush polish, and no E5. E6 and the allocator stay stopped. The B=2 engine gap remains
