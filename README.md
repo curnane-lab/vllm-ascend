@@ -26,14 +26,19 @@ leapquant-npu/            # 独立验证/基准 harness（不依赖 vLLM 启动�
     smoke_qwen35.py       # 全模型离线生成冒烟（--out 导出 token_ids）
     measure_drift.py      # prompt-logprob drift 测量（fp32/leapquant/bf16 三模式）
     compare_gen.py        # 两份生成 dump 的逐 token 对比
+    bench_e2e_metrics.py  # E2E 基准（含 request metrics；来自宿主机 tmp/F0BtVT.py）
+    eval_gsm8k_math500.py # GSM8K + MATH-500 贪心评测（对照参考答案；来自 tmp/ZIeo68.py）
+    profile_long_prompt.py # 8198-token 单 prompt 分模式 profiler（来自 tmp/ebkGtx.py）
   tests/
     test_pools_parity.py  # pools vs 稠密 fp32 oracle 单层对拍（NPU）
     test_step_triton.py   # triton step kernel vs torch pools 对拍
     test_flush_triton.py  # triton flush kernel vs torch pools 对拍（kernel 未完成，见下）
     replay_dump.py        # 真实权重 dump 回放对拍（torch oracle vs fla_npu 稠密 kernel）
     bench_step.py         # step kernel 微基准
-vllm-ascend/vllm_ascend/  # vllm-ascend 侧改动的文件镜像（按仓库相对路径）
+vllm-ascend/              # vllm-ascend v0.30.0rc2（upstream 8fde6d4e）完整源码
+                          #   + LeapQuant 研究覆盖层（即下方改动清单的 5 个文件 + csrc gdn_lq_*）
 patches/vllm-ascend-leapquant.patch  # 上述改动的完整 git diff（相对本 workspace 的 vllm-ascend 研究分支）
+patches/v030rc2-npu-eval/ # 2026-10-16 评估栈宿主机 patch 记录（0001/0003/0004，树已实体化）
 results/                  # 实测结果摘要
 ```
 
@@ -46,6 +51,9 @@ results/                  # 实测结果摘要
 | `vllm_ascend/ops/gdn_leapquant.py`（新） | 复合状态 pools（原地视图）+ torch 版 decode_step/flush/init_from_dense |
 | `vllm_ascend/ops/triton/gdn_leapquant_step.py`（新） | Triton-Ascend step kernel |
 | `vllm_ascend/ops/triton/gdn_leapquant_flush.py`（新） | Triton-Ascend flush kernel（**实验性，BiSheng 编译挂起，未启用**） |
+
+以上改动已直接落在 `vllm-ascend/` 实体化完整树内（upstream v0.30.0rc2 @ 8fde6d4e + 覆盖层 + 0001 patch），
+重建配方见 `leapquant-npu/results/v030rc2-npu-eval.md` 的 "Materialized tree"。
 
 关键设计：**原地存储**。vllm 的 32GB KV 池预算已用尽，独立分配状态池必然 OOM；
 复合格式（~0.9MB）装进每 slot 固有的 2MB fp32 状态区，通过 as_strided 类型化视图访问。
