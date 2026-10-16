@@ -1,0 +1,519 @@
+diff --git a/leapquant-npu/scripts/bench_e2e.py b/leapquant-npu/scripts/bench_e2e.py
+index 065990a..cf69353 100644
+--- a/leapquant-npu/scripts/bench_e2e.py
++++ b/leapquant-npu/scripts/bench_e2e.py
+@@ -14,6 +14,7 @@ piecewise|full (implies not eager).
+ import argparse
+ import json
+ import os
++import sys
+ import subprocess
+ import time
+ from pathlib import Path
+@@ -45,7 +46,7 @@ def main():
+         }
+         args.eager = False
+     llm = LLM(
+-        model=os.environ.get("LQ_MODEL_PATH", "/mnt/workspace/models/Qwen3.5-9B"),
++        model=os.environ.get("LQ_MODEL_PATH", "/data1/models/Qwen3.5-9B"),
+         max_model_len=4096,
+         enforce_eager=args.eager,
+         gpu_memory_utilization=float(os.getenv("SMOKE_MEM_UTIL", "0.85")),
+diff --git a/leapquant-npu/tests/test_step_triton.py b/leapquant-npu/tests/test_step_triton.py
+index 37cf1ec..758a6df 100644
+--- a/leapquant-npu/tests/test_step_triton.py
++++ b/leapquant-npu/tests/test_step_triton.py
+@@ -1,6 +1,7 @@
+ """Parity test: Triton-Ascend LeapQuant step kernel vs the eager torch pools."""
+ 
+ import sys
++import os
+ from pathlib import Path
+ 
+ import torch
+@@ -9,6 +10,7 @@ _REPO = Path(__file__).resolve().parents[2]
+ sys.path.insert(0, str(_REPO / "vllm-ascend"))
+ from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
+ from vllm_ascend.ops.triton.gdn_leapquant_step import gdn_leapquant_step  # noqa: E402
++from vllm_ascend.ops.gdn_lq_flush_ascendc import flush_pools_ascendc  # noqa: E402
+ 
+ DEVICE = "npu"
+ B, H, HK, V, K, T = 8, 32, 16, 128, 128, 96
+@@ -52,6 +54,11 @@ def main():
+     pools_t.init_from_dense(buf_t, idx)
+     pools_k.init_from_dense(buf_k, idx)
+ 
++    mode = os.getenv("TRITON_STEP_MODE", "dense")
++    os.environ["VLLM_ASCEND_GDN_LQ_DIRECT_READOUT"] = (
++        "1" if mode == "direct" else "0"
++    )
++
+     errs = []
+     for t in range(T):
+         qx, kx, vx, at, beta = gen_inputs(gen)
+@@ -61,10 +68,11 @@ def main():
+         o_t = pools_t.decode_step(idx, kn.bfloat16(), qn.bfloat16(), vx, g_log, beta, 1.0)
+         o_k = gdn_leapquant_step(pools_k, idx, kn.bfloat16(), qn.bfloat16(), vx, g_log, beta, 1.0)
+         pools_t.flush(idx)
+-        pools_k.flush(idx)
++        if not flush_pools_ascendc(pools_k, idx):
++            pools_k.flush(idx)
+         denom = o_t.float().abs().mean().clamp_min(1e-6)
+         errs.append(((o_k.float() - o_t.float()).abs().mean() / denom).item())
+-    print(f"triton-vs-torch output rel err: max={max(errs):.6f} last16 max={max(errs[-16:]):.6f}")
++    print(f"{mode} triton-vs-torch output rel err: max={max(errs):.6f} last16 max={max(errs[-16:]):.6f}")
+     # buffer bookkeeping parity
+     ti, hi = pools_t.th_index(idx)
+     for name in ["w", "p", "fill", "codes", "kbuf", "ubuf"]:
+diff --git a/tmp/F0BtVT.py b/tmp/F0BtVT.py
+new file mode 100644
+--- /dev/null
++++ b/tmp/F0BtVT.py
+@@ -0,0 +1,165 @@
++#!/usr/bin/env python3
++"""End-to-end vLLM benchmark with request metrics and optional dump."""
++
++import argparse
++import json
++import os
++import re
++import subprocess
++import time
++
++from vllm import LLM, SamplingParams
++
++SHORT_PROMPTS = [
++    "请用中文简要介绍量子计算的基本原理。",
++    "Write a short Python function to compute the nth Fibonacci number and explain it.",
++    "Solve step by step: A train travels 300 km in 2 hours, then 150 km in 1 hour. What is its average speed for the whole journey?",
++    "Explain the difference between TCP and UDP to a junior engineer, with one use case each.",
++]
++LONG_PROMPTS = [
++    "请详细推导线性回归的闭式解（正规方程），并解释每一步的数学原理。",
++    "Write a detailed technical explanation of how the RSA algorithm works, including key generation, encryption, and decryption, with a small worked example.",
++]
++
++
++def metric_value(metric, name):
++    value = getattr(metric, name, None)
++    if value is None and isinstance(metric, dict):
++        value = metric.get(name)
++    return value
++
++
++def parse_pool_gib():
++    try:
++        text = subprocess.run(["npu-smi", "info"], capture_output=True,
++                              text=True, timeout=30).stdout
++        used = [int(m.group(1)) for m in
++                re.finditer(r"(\d+)\s*/\s*65536", text)]
++        return max(used) / 1024 if used else None
++    except Exception:
++        return None
++
++
++def percentile(values, q):
++    if not values:
++        return None
++    values = sorted(values)
++    index = min(len(values) - 1, max(0, int(round((len(values) - 1) * q))))
++    return values[index]
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--model", default=os.environ.get("LQ_MODEL_PATH", "/data1/models/Qwen3.5-9B"))
++    parser.add_argument("--output-tokens", type=int, default=256)
++    parser.add_argument("--max-num-seqs", type=int, default=8)
++    parser.add_argument("--max-model-len", type=int, default=4096)
++    parser.add_argument("--max-num-batched-tokens", type=int, default=8192)
++    parser.add_argument("--enable-prefix-caching", action="store_true")
++    parser.add_argument("--long", action="store_true")
++    parser.add_argument("--shared-prefix", type=int, default=0)
++    parser.add_argument("--requests", type=int, default=0, help="repeat prompts to this count")
++    parser.add_argument("--warmup", action="store_true")
++    parser.add_argument("--dump", default=None)
++    parser.add_argument("--out", required=True)
++    parser.add_argument("--tag", default="")
++    parser.add_argument("--gpu-mem", type=float, default=0.85)
++    args = parser.parse_args()
++
++    base_prompts = LONG_PROMPTS if args.long else SHORT_PROMPTS
++    if args.shared_prefix > 0:
++        filler = "分布式系统关注吞吐、延迟、一致性和失效隔离。" * 12
++        while len(filler) < args.shared_prefix * 2:
++            filler += filler
++        base_prompts = [filler[: args.shared_prefix * 2] + p for p in base_prompts]
++    prompts = list(base_prompts)
++    while len(prompts) < args.requests:
++        prompts.extend(base_prompts)
++    prompts = prompts[: args.requests or len(base_prompts)]
++
++    llm = LLM(
++        model=args.model,
++        max_model_len=args.max_model_len,
++        max_num_batched_tokens=args.max_num_batched_tokens,
++        enforce_eager=True,
++        gpu_memory_utilization=args.gpu_mem,
++        limit_mm_per_prompt={"image": 0, "video": 0},
++        max_num_seqs=args.max_num_seqs,
++        enable_prefix_caching=args.enable_prefix_caching,
++    )
++    sampling = SamplingParams(temperature=0.0, max_tokens=args.output_tokens)
++    if args.warmup:
++        llm.generate(prompts[: min(len(prompts), 2)],
++                     SamplingParams(temperature=0.0, max_tokens=8),
++                     use_tqdm=False)
++
++    started = time.perf_counter()
++    outputs = llm.generate(prompts, sampling, use_tqdm=True)
++    wall = time.perf_counter() - started
++
++    output_tokens = 0
++    ttfts, e2es, tpots, itls = [], [], [], []
++    records = []
++    for index, output in enumerate(outputs):
++        tokens = list(output.outputs[0].token_ids)
++        output_tokens += len(tokens)
++        metrics = output.metrics
++        first = metric_value(metrics, "first_token_latency")
++        e2e = metric_value(metrics, "e2e_latency")
++        if first is not None:
++            ttfts.append(float(first))
++        if e2e is not None:
++            e2es.append(float(e2e))
++        if first is not None and e2e is not None and len(tokens) > 1:
++            tpots.append((float(e2e) - float(first)) / (len(tokens) - 1) * 1000.0)
++        records.append({
++            "index": index,
++            "prompt_token_ids": list(output.prompt_token_ids),
++            "token_ids": tokens,
++            "text": output.outputs[0].text,
++            "first_token_latency": first,
++            "e2e_latency": e2e,
++            "finish_reason": str(output.outputs[0].finish_reason),
++        })
++
++    def stats(values, scale=1.0):
++        return {
++            "mean": sum(values) / len(values) * scale if values else None,
++            "p50": percentile(values, 0.50) * scale if values else None,
++            "p90": percentile(values, 0.90) * scale if values else None,
++            "p99": percentile(values, 0.99) * scale if values else None,
++        }
++
++    row = {
++        "tag": args.tag,
++        "mode": int(os.getenv("VLLM_ASCEND_GDN_LEAPQUANT", "0")),
++        "step_v2": int(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2", "0")),
++        "requests": len(prompts),
++        "output_tokens": args.output_tokens,
++        "max_num_seqs": args.max_num_seqs,
++        "max_model_len": args.max_model_len,
++        "max_num_batched_tokens": args.max_num_batched_tokens,
++        "prefix_caching": args.enable_prefix_caching,
++        "long": args.long,
++        "shared_prefix_tokens_estimate": args.shared_prefix,
++        "wall_s": wall,
++        "generated_tokens": output_tokens,
++        "completion_ratio": output_tokens / (args.output_tokens * len(prompts)),
++        "request_throughput": len(prompts) / wall,
++        "output_token_throughput": output_tokens / wall,
++        "ttft_s": stats(ttfts),
++        "e2e_s": stats(e2es),
++        "tpot_ms": stats(tpots),
++        "pool_gib_at_end": parse_pool_gib(),
++    }
++    with open(args.out, "a") as handle:
++        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
++    print(json.dumps(row, ensure_ascii=False))
++    if args.dump:
++        with open(args.dump, "w") as handle:
++            for record in records:
++                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tmp/ZIeo68.py b/tmp/ZIeo68.py
+new file mode 100644
+--- /dev/null
++++ b/tmp/ZIeo68.py
+@@ -0,0 +1,179 @@
++#!/usr/bin/env python3
++"""GSM8K + MATH-500 evaluation for vLLM 0.30 with reference answers."""
++
++import argparse
++import glob
++import json
++import math
++import os
++import re
++import time
++
++from vllm import LLM, SamplingParams
++
++GSM8K_PATH = "/data1/f00538480/DeepSpec/eval_datasets/gsm8k.jsonl"
++MATH500_PATH = "/data1/f00538480/DeepSpec/eval_datasets/math500.jsonl"
++GSM_REF_PATH = "/data1/w00842045/logs/evalscope_gsm8k_results/20260908_165231/predictions/qwen_3.5_9B_MLA_SFT_no_think_ckpt776/gsm8k_main.jsonl"
++MATH_REF_GLOB = "/data1/w00842045/logs/evalscope_math_500_results/20260908_165231/reviews/qwen_3.5_9B_MLA_SFT_no_think_ckpt776/*.jsonl"
++
++FEWSHOT = [
++    {"role": "user", "content": "Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?"},
++    {"role": "assistant", "content": "Natalia sold 48/2 = 24 clips in May.\nNatalia sold 48+24 = 72 clips altogether in April and May.\n#### 72"},
++    {"role": "user", "content": "Weng earns $12 an hour for babysitting. Yesterday, she just did 50 minutes of babysitting. How much did she earn?"},
++    {"role": "assistant", "content": "Weng earns 12/60 = $0.2 per minute.\nWorking 50 minutes, she earned 0.2 * 50 = $10.\n#### 10"},
++]
++
++
++def load_jsonl(path):
++    with open(path) as handle:
++        return [json.loads(line) for line in handle if line.strip()]
++
++
++def boxed(text):
++    index = text.rfind("\\boxed{")
++    if index < 0:
++        return None
++    depth, start = 1, index + 7
++    for i in range(start, len(text)):
++        if text[i] == "{":
++            depth += 1
++        elif text[i] == "}":
++            depth -= 1
++            if depth == 0:
++                return text[start:i].strip()
++    return None
++
++
++def extract_answer(text, dataset):
++    if dataset == "gsm8k":
++        matches = re.findall(r"-?\d+(?:\.\d+)?", text.replace(",", ""))
++        return matches[-1] if matches else None
++    return boxed(text)
++
++
++def normalize(value, dataset):
++    if value is None:
++        return None
++    value = str(value).strip().replace(",", "").replace("$", "")
++    if dataset == "gsm8k":
++        try:
++            number = float(value)
++            return str(int(number)) if number == int(number) else str(number)
++        except ValueError:
++            return value
++    value = value.replace(" ", "").replace("\\!", "").replace("\\,", "")
++    value = value.replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
++    return value or None
++
++
++def grade(pred, ref, dataset):
++    pred, ref = normalize(pred, dataset), normalize(ref, dataset)
++    if pred is None or ref is None:
++        return False
++    if pred == ref:
++        return True
++    try:
++        return abs(float(pred) - float(ref)) < 1e-6
++    except ValueError:
++        return False
++
++
++def references():
++    gsm = {}
++    for row in load_jsonl(GSM_REF_PATH):
++        question = row["raw_input"]["question"]
++        answer = row["raw_input"]["answer"]
++        gsm[question] = answer.rsplit("####", 1)[-1].strip()
++    math = {}
++    for path in glob.glob(MATH_REF_GLOB):
++        for row in load_jsonl(path):
++            item = row.get("raw_input", {})
++            if item.get("problem") and item.get("answer"):
++                math[item["problem"]] = item["answer"]
++    return gsm, math
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--model", default="/data1/models/Qwen3.5-9B")
++    parser.add_argument("--gsm8k-limit", type=int, default=200)
++    parser.add_argument("--math500-limit", type=int, default=200)
++    parser.add_argument("--max-tokens", type=int, default=2048)
++    parser.add_argument("--max-num-seqs", type=int, default=32)
++    parser.add_argument("--max-model-len", type=int, default=8192)
++    parser.add_argument("--out", required=True)
++    parser.add_argument("--dump", required=True)
++    parser.add_argument("--tag", default="")
++    args = parser.parse_args()
++
++    gsm_refs, math_refs = references()
++    gsm_items = load_jsonl(GSM8K_PATH)
++    if args.gsm8k_limit:
++        gsm_items = gsm_items[: args.gsm8k_limit]
++    math_items = load_jsonl(MATH500_PATH)
++    if args.math500_limit:
++        math_items = math_items[: args.math500_limit]
++
++    messages, refs, datasets = [], [], []
++    for item in gsm_items:
++        question = item["turns"][0].rsplit("\nPlease reason step by step", 1)[0]
++        messages.append(FEWSHOT + [{"role": "user", "content": question}])
++        refs.append(gsm_refs.get(question))
++        datasets.append("gsm8k")
++    for item in math_items:
++        problem = item["turns"][0].rsplit("\nPlease reason step by step", 1)[0]
++        messages.append([{"role": "user", "content": item["turns"][0]}])
++        refs.append(math_refs.get(problem))
++        datasets.append("math500")
++
++    llm = LLM(
++        model=args.model,
++        max_model_len=args.max_model_len,
++        enforce_eager=True,
++        gpu_memory_utilization=0.85,
++        limit_mm_per_prompt={"image": 0, "video": 0},
++        max_num_seqs=args.max_num_seqs,
++        enable_prefix_caching=False,
++    )
++    sampling = SamplingParams(temperature=0.0, max_tokens=args.max_tokens)
++    llm.chat([{"role": "user", "content": "Hi"}], sampling, use_tqdm=False,
++             chat_template_kwargs={"enable_thinking": False})
++    started = time.perf_counter()
++    outputs = llm.chat(messages, sampling, use_tqdm=True,
++                       chat_template_kwargs={"enable_thinking": False})
++    wall = time.perf_counter() - started
++
++    results = {"gsm8k": {"correct": 0, "total": 0, "missing_ref": 0},
++               "math500": {"correct": 0, "total": 0, "missing_ref": 0}}
++    records = []
++    for index, output in enumerate(outputs):
++        dataset = datasets[index]
++        text = output.outputs[0].text
++        pred = extract_answer(text, dataset)
++        correct = grade(pred, refs[index], dataset) if refs[index] is not None else False
++        results[dataset]["total"] += 1
++        results[dataset]["correct"] += correct
++        if refs[index] is None:
++            results[dataset]["missing_ref"] += 1
++        records.append({"index": index, "dataset": dataset, "pred": pred,
++                        "ref": refs[index], "correct": correct,
++                        "output": text,
++                        "prompt_token_ids": list(output.prompt_token_ids),
++                        "token_ids": list(output.outputs[0].token_ids)})
++    summary = {"tag": args.tag,
++               "mode": int(os.getenv("VLLM_ASCEND_GDN_LEAPQUANT", "0")),
++               "step_v2": int(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2", "0")),
++               "wall_s": wall,
++               "gsm8k": {"accuracy_pct": 100 * results["gsm8k"]["correct"] / results["gsm8k"]["total"], **results["gsm8k"]},
++               "math500": {"accuracy_pct": 100 * results["math500"]["correct"] / results["math500"]["total"], **results["math500"]}}
++    os.makedirs(os.path.dirname(args.out), exist_ok=True)
++    with open(args.out, "a") as handle:
++        handle.write(json.dumps(summary, ensure_ascii=False) + "\n")
++    with open(args.dump, "w") as handle:
++        for record in records:
++            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
++    print(json.dumps(summary, ensure_ascii=False))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tmp/ebkGtx.py b/tmp/ebkGtx.py
+new file mode 100644
+--- /dev/null
++++ b/tmp/ebkGtx.py
+@@ -0,0 +1,93 @@
++"""Profile one 8198-token prompt and 32 greedy decode tokens per mode."""
++
++import argparse
++import json
++import os
++import time
++
++from transformers import AutoTokenizer
++from vllm import LLM, SamplingParams
++
++
++BASE_PREFIX = (
++    "以下是某分布式系统的设计文档。"
++    "系统设计目标：高吞吐、低延迟、可水平扩展，失效隔离，数据一致。"
++    "请记住，本系统采用分层一致性协议，并在日志中保留租约版本。"
++) * 64
++
++
++def build_prompt():
++    return (
++        BASE_PREFIX
++        + "\n专属上下文编号 0：节点 0 的租约版本为 1000，副本数为 1。"
++        + "\n请简要总结第 0 号节点的关键点。"
++    )
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--mode", type=int, required=True)
++    parser.add_argument("--decode", type=int, default=32)
++    parser.add_argument("--mem-util", type=float, default=0.90)
++    parser.add_argument("--max-model-len", type=int, default=12288)
++    parser.add_argument("--max-batched-tokens", type=int, default=16384)
++    parser.add_argument("--out", required=True)
++    args = parser.parse_args()
++    args.max_num_batched_tokens = args.max_batched_tokens
++
++    tokenizer = AutoTokenizer.from_pretrained(
++        os.environ.get("LQ_MODEL_PATH", "/data1/models/Qwen3.5-9B"))
++    global BASE_PREFIX
++    while len(tokenizer.encode(BASE_PREFIX)) < 8192:
++        BASE_PREFIX += "日志租约版本必须按节点递增，并在副本间保持一致。"
++    prompt = build_prompt()
++    prompt_tokens = len(tokenizer.encode(prompt))
++    os.environ["VLLM_ASCEND_GDN_LQ_PROFILE"] = "1"
++    os.environ["VLLM_ASCEND_GDN_LEAPQUANT"] = str(args.mode)
++    max_model_len = max(args.max_model_len, prompt_tokens + args.decode)
++    llm = LLM(
++        model=os.environ.get("LQ_MODEL_PATH", "/data1/models/Qwen3.5-9B"),
++        max_model_len=max_model_len,
++        gpu_memory_utilization=min(args.mem_util, 0.3),
++        limit_mm_per_prompt={"image": 0},
++        enable_prefix_caching=bool(os.getenv("VLLM_ASCEND_MAMBA_UNEQUAL_PAGES")),
++        max_num_seqs=1,
++        block_size=128 if os.getenv("VLLM_ASCEND_MAMBA_UNEQUAL_PAGES") else None,
++        max_num_batched_tokens=args.max_batched_tokens,
++        enforce_eager=True,
++        enable_chunked_prefill=bool(os.getenv("VLLM_ASCEND_MAMBA_UNEQUAL_PAGES")),
++    )
++    sp = SamplingParams(temperature=0.0, max_tokens=args.decode)
++    started = time.perf_counter()
++    try:
++        outputs = llm.generate([prompt], sp, use_tqdm=False)
++    except Exception as exc:
++        row = {"mode": args.mode, "error": repr(exc)}
++        with open(args.out, "a") as handle:
++            handle.write(json.dumps(row) + "\n")
++        raise
++    wall = time.perf_counter() - started
++
++    profile = None
++    try:
++        from vllm_ascend.ops import gdn as gdn_module
++        profile = gdn_module._LQ_PROFILER.summarize()
++    except Exception as exc:
++        profile = {"error": repr(exc)}
++    row = {
++        "mode": args.mode,
++        "prefix_len_target": 8192,
++        "prefix_len_tokens": prompt_tokens,
++        "decode": args.decode,
++        "wall_s": round(wall, 6),
++        "tok_per_s": round(sum(len(o.outputs[0].token_ids) for o in outputs) / wall, 6),
++        "token_ids": list(outputs[0].outputs[0].token_ids),
++        "profile": profile,
++    }
++    with open(args.out, "a") as handle:
++        handle.write(json.dumps(row) + "\n")
++    print(json.dumps(row), flush=True)
++
++
++if __name__ == "__main__":
++    main()
