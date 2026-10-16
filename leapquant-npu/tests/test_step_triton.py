@@ -1,6 +1,7 @@
 """Parity test: Triton-Ascend LeapQuant step kernel vs the eager torch pools."""
 
 import sys
+import os
 from pathlib import Path
 
 import torch
@@ -9,6 +10,7 @@ _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "vllm-ascend"))
 from vllm_ascend.ops.gdn_leapquant import GDNLeapQuantPools  # noqa: E402
 from vllm_ascend.ops.triton.gdn_leapquant_step import gdn_leapquant_step  # noqa: E402
+from vllm_ascend.ops.gdn_lq_flush_ascendc import flush_pools_ascendc  # noqa: E402
 
 DEVICE = "npu"
 B, H, HK, V, K, T = 8, 32, 16, 128, 128, 96
@@ -52,6 +54,11 @@ def main():
     pools_t.init_from_dense(buf_t, idx)
     pools_k.init_from_dense(buf_k, idx)
 
+    mode = os.getenv("TRITON_STEP_MODE", "dense")
+    os.environ["VLLM_ASCEND_GDN_LQ_DIRECT_READOUT"] = (
+        "1" if mode == "direct" else "0"
+    )
+
     errs = []
     for t in range(T):
         qx, kx, vx, at, beta = gen_inputs(gen)
@@ -61,10 +68,11 @@ def main():
         o_t = pools_t.decode_step(idx, kn.bfloat16(), qn.bfloat16(), vx, g_log, beta, 1.0)
         o_k = gdn_leapquant_step(pools_k, idx, kn.bfloat16(), qn.bfloat16(), vx, g_log, beta, 1.0)
         pools_t.flush(idx)
-        pools_k.flush(idx)
+        if not flush_pools_ascendc(pools_k, idx):
+            pools_k.flush(idx)
         denom = o_t.float().abs().mean().clamp_min(1e-6)
         errs.append(((o_k.float() - o_t.float()).abs().mean() / denom).item())
-    print(f"triton-vs-torch output rel err: max={max(errs):.6f} last16 max={max(errs[-16:]):.6f}")
+    print(f"{mode} triton-vs-torch output rel err: max={max(errs):.6f} last16 max={max(errs[-16:]):.6f}")
     # buffer bookkeeping parity
     ti, hi = pools_t.th_index(idx)
     for name in ["w", "p", "fill", "codes", "kbuf", "ubuf"]:

@@ -32,8 +32,9 @@ def _binding():
                            "op_api/lib/libcust_opapi.so")
                  + glob.glob("/usr/local/Ascend/opp/vendors/*/op_api/lib/"
                              "libcust_opapi.so", recursive=True)
-                 + glob.glob("/mnt/workspace/vllm-ascend/vllm_ascend/"
-                             "_cann_ops_custom/**/op_api/lib/libcust_opapi.so",
+                 + glob.glob(os.path.join(os.path.dirname(__file__), "..",
+                             "_cann_ops_custom", "**", "op_api", "lib",
+                             "libcust_opapi.so"),
                              recursive=True))
         if not cands:
             _AVAILABLE = False
