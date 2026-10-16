@@ -1,7 +1,7 @@
 # LeapQuant NPU 移植实验计划：GPU 执行路径复现轮
 
 日期：2026-10-10（Asia/Shanghai）。版本：v2，替代 2026-10-09 的容量优先安排。
-状态：第一轮已有宿主报告，记在 `M5-measurement-update.md`。本文仍是协议，不是新的配对窗口。计划默认使用 910C 64GB、Qwen3.5-9B。
+状态：第一轮已有宿主报告，记在 `M5-measurement-update.md`。本文仍是协议，不是新的配对窗口。2026-10-16 的宿主评估栈已改为 vLLM 0.30.0 / vllm-ascend 0.30.0rc2 `8fde6d4e` / CANN 9.2.0，见 `v030rc2-npu-eval.md`。0.27.1 上的 15.98 ms 窗口不能直接当作新栈的门。计划默认模型仍是 Qwen3.5-9B。
 决策：先执行 R0–R2 的受控探索；R3/R4 由正确性和预算筛选解锁。原报告 E5/E6、step v2 接线、生产量化开关、compact page 和分配器改造继续暂停，直到相应门槛通过。
 
 记录时对照 `M5-measurement-update.md`（主分支 `4e3ded7`）改了两处，避免把门限写反，或把仓库里没有的账写成已测结论：
