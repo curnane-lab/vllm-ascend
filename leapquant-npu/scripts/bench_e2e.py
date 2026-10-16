@@ -14,6 +14,7 @@ piecewise|full (implies not eager).
 import argparse
 import json
 import os
+import sys
 import subprocess
 import time
 from pathlib import Path
@@ -45,7 +46,7 @@ def main():
         }
         args.eager = False
     llm = LLM(
-        model=os.environ.get("LQ_MODEL_PATH", "/mnt/workspace/models/Qwen3.5-9B"),
+        model=os.environ.get("LQ_MODEL_PATH", "/data1/models/Qwen3.5-9B"),
         max_model_len=4096,
         enforce_eager=args.eager,
         gpu_memory_utilization=float(os.getenv("SMOKE_MEM_UTIL", "0.85")),

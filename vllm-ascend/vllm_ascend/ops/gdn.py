@@ -16,6 +16,8 @@
 #
 
 from functools import lru_cache, wraps
+import time
+from contextlib import contextmanager
 import os
 import sys
 
@@ -58,6 +60,38 @@ from vllm_ascend.ops.triton.mamba.causal_conv1d import extract_last_width
 from vllm_ascend.ops.triton.mamba.state_index import gather_ssm_states, scatter_ssm_states_
 
 _PACKED_CONV_WEIGHT_NAME = "ascend_conv1d_weight"
+
+
+class _LQProfiler:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.counters = {}
+        self.times = {}
+
+    def count(self, key, value=1):
+        self.counters[key] = self.counters.get(key, 0) + value
+
+    @contextmanager
+    def measure(self, key):
+        torch.npu.synchronize()
+        started = time.perf_counter()
+        try:
+            yield
+        finally:
+            torch.npu.synchronize()
+            self.times[key] = self.times.get(key, 0.0) + time.perf_counter() - started
+
+    def summarize(self):
+        return {
+            "counters": dict(self.counters),
+            "device_seconds": {key: round(value, 6)
+                                for key, value in self.times.items()},
+        }
+
+
+_LQ_PROFILER = _LQProfiler()
 
 
 def _get_leapquant_pools(layer, ssm_state: torch.Tensor) -> GDNLeapQuantPools:
@@ -106,6 +140,9 @@ def _leapquant_resync(layer, ssm_state: torch.Tensor, idx: torch.Tensor) -> None
 
 def _lq_decode_step(mode, pools, idx, kn, qn, v, g_log, beta, scale):
     if mode == 2 or mode == 3:
+        if os.getenv("VLLM_ASCEND_GDN_LQ_PROFILE"):
+            with _LQ_PROFILER.measure("triton_step"):
+                return gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale)
         return gdn_leapquant_step(pools, idx, kn, qn, v, g_log, beta, scale)
     return pools.decode_step(idx=idx, kn=kn, qn=qn, v=v, g_log=g_log, beta=beta, scale=scale)
 
@@ -134,8 +171,21 @@ def _lq_decode_step_v2(pools, idx, kn, qn, v, g_log, beta, scale):
 
 
 def _lq_flush(mode, pools, idx):
-    if mode >= 3 and flush_pools_ascendc(pools, idx):
-        return
+    if mode >= 3:
+        profiler = _LQ_PROFILER if os.getenv("VLLM_ASCEND_GDN_LQ_PROFILE") else None
+        if profiler is not None:
+            f = pools.fill[idx.long()]
+            profiler.count("flush_calls")
+            profiler.count("flush_due", int((f >= pools.WINDOW).sum().item()))
+            with profiler.measure("flush_v1"):
+                ok = flush_pools_ascendc(pools, idx)
+            if not ok:
+                profiler.count("flush_slowpath")
+                with profiler.measure("flush_torch"):
+                    pools.flush(idx)
+            return
+        if flush_pools_ascendc(pools, idx):
+            return
     pools.flush(idx)
 
 
@@ -799,9 +849,26 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 # replaced by this restore path (the raise would be
                 # indistinguishable from a cache hit and is no longer
                 # a correctness risk).
-                dense_init = pools.reconstruct_dense(prefill_state_indices.flatten().long())
-                mask = prefill_has_initial_state.view(-1, 1, 1, 1)
-                dense_init = torch.where(mask, dense_init, torch.zeros_like(dense_init))
+                if os.getenv("VLLM_ASCEND_GDN_LQ_PROFILE"):
+                    _LQ_PROFILER.count("prefill_reconstruct_calls")
+                    _LQ_PROFILER.count(
+                        "prefill_no_initial_state",
+                        int((~prefill_has_initial_state).sum().item()),
+                    )
+                    profiler = _LQ_PROFILER
+                    with profiler.measure("prefill_reconstruct"):
+                        dense_init = pools.reconstruct_dense(
+                            prefill_state_indices.flatten().long())
+                    with profiler.measure("prefill_mask_initial_state"):
+                        mask = prefill_has_initial_state.view(-1, 1, 1, 1)
+                        dense_init = torch.where(
+                            mask, dense_init, torch.zeros_like(dense_init))
+                else:
+                    dense_init = pools.reconstruct_dense(
+                        prefill_state_indices.flatten().long())
+                    mask = prefill_has_initial_state.view(-1, 1, 1, 1)
+                    dense_init = torch.where(
+                        mask, dense_init, torch.zeros_like(dense_init))
             if split_non_spec:
                 query_non_spec = query_non_spec[:, num_decode_tokens:]
                 key_non_spec = key_non_spec[:, num_decode_tokens:]
@@ -813,6 +880,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 HardwareCapability.FLA_GDN_PREFILL
             )
             fla_gdn_prefill_op = _get_fla_gdn_prefill_op() if use_fla_gdn_prefill else None
+            profile = bool(os.getenv("VLLM_ASCEND_GDN_LQ_PROFILE"))
             if fla_gdn_prefill_op is not None:
                 initial_state = (
                     dense_init
@@ -823,22 +891,46 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                         prefill_has_initial_state,
                     )
                 )
-                (core_attn_out_non_spec, last_recurrent_state) = DeviceOperator.fla_gdn_prefill(
-                    q=query_non_spec,
-                    k=key_non_spec,
-                    v=value_non_spec,
-                    g=g_non_spec,
-                    beta=beta_non_spec,
-                    initial_state=initial_state,
-                    scale=key_non_spec.shape[-1] ** -0.5,
-                    prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
-                    fused_fwd=fla_gdn_prefill_op,
-                )
-                if pools is not None:
-                    pools.quantize_from_tensor(
-                        last_recurrent_state.to(torch.float32).contiguous(),
-                        prefill_state_indices.flatten().long(),
+                if profile:
+                    with _LQ_PROFILER.measure("prefill_op"):
+                        core_attn_out_non_spec, last_recurrent_state = (
+                            DeviceOperator.fla_gdn_prefill(
+                                q=query_non_spec,
+                                k=key_non_spec,
+                                v=value_non_spec,
+                                g=g_non_spec,
+                                beta=beta_non_spec,
+                                initial_state=initial_state,
+                                scale=key_non_spec.shape[-1] ** -0.5,
+                                prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
+                                fused_fwd=fla_gdn_prefill_op,
+                            )
+                        )
+                else:
+                    core_attn_out_non_spec, last_recurrent_state = DeviceOperator.fla_gdn_prefill(
+                        q=query_non_spec,
+                        k=key_non_spec,
+                        v=value_non_spec,
+                        g=g_non_spec,
+                        beta=beta_non_spec,
+                        initial_state=initial_state,
+                        scale=key_non_spec.shape[-1] ** -0.5,
+                        prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
+                        fused_fwd=fla_gdn_prefill_op,
                     )
+                if pools is not None:
+                    if profile:
+                        _LQ_PROFILER.count("prefill_quantize_calls")
+                        with _LQ_PROFILER.measure("prefill_quantize"):
+                            pools.quantize_from_tensor(
+                                last_recurrent_state.to(torch.float32).contiguous(),
+                                prefill_state_indices.flatten().long(),
+                            )
+                    else:
+                        pools.quantize_from_tensor(
+                            last_recurrent_state.to(torch.float32).contiguous(),
+                            prefill_state_indices.flatten().long(),
+                        )
                 else:
                     scatter_ssm_states_(
                         ssm_state,
@@ -862,23 +954,46 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                         output_dtype=torch.bfloat16,
                     )
                 )
-                core_attn_out_non_spec, last_recurrent_state = (
-                    AscendGatedDeltaNetAttention._chunk_gated_delta_rule_fused(
-                        q=query_non_spec,
-                        k=key_non_spec,
-                        v=value_non_spec,
-                        g=g_non_spec,
-                        beta=beta_non_spec,
-                        initial_state=initial_state,
-                        cu_seqlens=prefill_query_start_loc,
-                        scale=key_non_spec.shape[-1] ** -0.5,
+                if profile:
+                    with _LQ_PROFILER.measure("prefill_op"):
+                        core_attn_out_non_spec, last_recurrent_state = (
+                            AscendGatedDeltaNetAttention._chunk_gated_delta_rule_fused(
+                                q=query_non_spec,
+                                k=key_non_spec,
+                                v=value_non_spec,
+                                g=g_non_spec,
+                                beta=beta_non_spec,
+                                initial_state=initial_state,
+                                cu_seqlens=prefill_query_start_loc,
+                                scale=key_non_spec.shape[-1] ** -0.5,
+                            )
+                        )
+                else:
+                    core_attn_out_non_spec, last_recurrent_state = (
+                        AscendGatedDeltaNetAttention._chunk_gated_delta_rule_fused(
+                            q=query_non_spec,
+                            k=key_non_spec,
+                            v=value_non_spec,
+                            g=g_non_spec,
+                            beta=beta_non_spec,
+                            initial_state=initial_state,
+                            cu_seqlens=prefill_query_start_loc,
+                            scale=key_non_spec.shape[-1] ** -0.5,
+                        )
                     )
-                )
                 if pools is not None:
-                    pools.quantize_from_tensor(
-                        last_recurrent_state.to(torch.float32).contiguous(),
-                        prefill_state_indices.flatten().long(),
-                    )
+                    if profile:
+                        _LQ_PROFILER.count("prefill_quantize_calls")
+                        with _LQ_PROFILER.measure("prefill_quantize"):
+                            pools.quantize_from_tensor(
+                                last_recurrent_state.to(torch.float32).contiguous(),
+                                prefill_state_indices.flatten().long(),
+                            )
+                    else:
+                        pools.quantize_from_tensor(
+                            last_recurrent_state.to(torch.float32).contiguous(),
+                            prefill_state_indices.flatten().long(),
+                        )
                 else:
                     scatter_ssm_states_(
                         ssm_state,
@@ -891,26 +1006,52 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                 else:
                     initial_state = ssm_state[prefill_state_indices].transpose(-1, -2).contiguous()
                     clear_ssm_states(initial_state, prefill_has_initial_state)
-                (core_attn_out_non_spec, last_recurrent_state) = chunk_gated_delta_rule(
-                    q=query_non_spec,
-                    k=key_non_spec,
-                    v=value_non_spec,
-                    g=g_non_spec,
-                    beta=beta_non_spec,
-                    initial_state=initial_state,
-                    output_final_state=True,
-                    cu_seqlens=prefill_query_start_loc,
-                    prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
-                    head_first=False,
-                    use_qk_l2norm_in_kernel=True,
-                )
+                if profile:
+                    with _LQ_PROFILER.measure("prefill_op"):
+                        core_attn_out_non_spec, last_recurrent_state = (
+                            chunk_gated_delta_rule(
+                                q=query_non_spec,
+                                k=key_non_spec,
+                                v=value_non_spec,
+                                g=g_non_spec,
+                                beta=beta_non_spec,
+                                initial_state=initial_state,
+                                output_final_state=True,
+                                cu_seqlens=prefill_query_start_loc,
+                                prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
+                                head_first=False,
+                                use_qk_l2norm_in_kernel=True,
+                            )
+                        )
+                else:
+                    core_attn_out_non_spec, last_recurrent_state = chunk_gated_delta_rule(
+                        q=query_non_spec,
+                        k=key_non_spec,
+                        v=value_non_spec,
+                        g=g_non_spec,
+                        beta=beta_non_spec,
+                        initial_state=initial_state,
+                        output_final_state=True,
+                        cu_seqlens=prefill_query_start_loc,
+                        prebuilt_meta=attn_metadata.non_spec_prefill_metadata.chunk,
+                        head_first=False,
+                        use_qk_l2norm_in_kernel=True,
+                    )
                 if pools is not None:
                     # slot already holds the composite checkpoint (the
                     # quantize_from_tensor above); no dense write exists
-                    pools.quantize_from_tensor(
-                        last_recurrent_state.transpose(-1, -2).contiguous(),
-                        prefill_state_indices.flatten().long(),
-                    )
+                    if profile:
+                        _LQ_PROFILER.count("prefill_quantize_calls")
+                        with _LQ_PROFILER.measure("prefill_quantize"):
+                            pools.quantize_from_tensor(
+                                last_recurrent_state.transpose(-1, -2).contiguous(),
+                                prefill_state_indices.flatten().long(),
+                            )
+                    else:
+                        pools.quantize_from_tensor(
+                            last_recurrent_state.transpose(-1, -2).contiguous(),
+                            prefill_state_indices.flatten().long(),
+                        )
                 else:
                     ssm_state[prefill_state_indices] = (
                         last_recurrent_state.transpose(-1, -2).contiguous().to(ssm_state.dtype)

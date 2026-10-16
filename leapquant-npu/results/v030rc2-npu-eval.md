@@ -7,7 +7,9 @@ This note records the stack the host evaluated. It does not add a new
 paired window, a memory ledger, or a task score.
 `0001`, `0003`, and `0004` are in `patches/v030rc2-npu-eval/`. The
 vendor tarball, `evaluation-summary.md`, and `SHA256SUMS` are still
-only on the host.
+only on the host. The `vllm-ascend/` directory of this repository is
+now the materialized evaluated tree (see "Materialized tree" below),
+so the patches no longer need to be applied by hand.
 
 ## Runtime versions
 
@@ -26,6 +28,40 @@ repository's `vllm-ascend/` package by putting it first on `PYTHONPATH`.
 Earlier 0.27.1 / CANN 9.1.0 rows in `M5-measurement-update.md` are a
 different stack. Their 15.98 ms dense window is not this stack's gate
 until it is measured again.
+
+## Materialized tree
+
+`vllm-ascend/` in this repository is the full evaluated source tree,
+rebuilt as:
+
+1. upstream `vllm-project/vllm-ascend` at `8fde6d4e` (`0.30.0rc2`),
+   complete tree;
+2. overlaid with fork main's research files (`csrc/attention/gdn_lq_*`,
+   `envs.py`, `ops/gdn.py`, `ops/gdn_leapquant.py`,
+   `ops/gdn_lq_flush_ascendc.py`, `ops/gdn_lq_step_ascendc.py`,
+   `ops/triton/gdn_leapquant_{flush,step}.py`,
+   `patch/platform/patch_mamba_config{,_310}.py`);
+3. with `0001` applied.
+
+`0003` needed nothing: all five files it adds (`__init__.py`,
+`logger.py`, `utils.py`, `patch/platform/__init__.py`,
+`patch/worker/__init__.py`) are blob-identical to upstream at
+`8fde6d4e` (`git hash-object` matches every index sha in the patch).
+`0001`'s `gdn_lq_flush_ascendc.py` binding hunk was already folded into
+fork main's `_flush_lib_candidates()` — the same package-relative
+`_cann_ops_custom` search — so only `gdn_lq_step_ascendc.py` carries
+the patch form. `0004` is applied, with its three host scratch scripts
+(`tmp/F0BtVT.py`, `tmp/ZIeo68.py`, `tmp/ebkGtx.py`) normalized to
+`leapquant-npu/scripts/bench_e2e_metrics.py`,
+`leapquant-npu/scripts/eval_gsm8k_math500.py`, and
+`leapquant-npu/scripts/profile_long_prompt.py`.
+
+Two upstream patch files
+(`patch/platform/patch_indexer_kv_dtype.py`,
+`patch/worker/patch_kv_cache_dtype.py`) use starred-subscript
+`typing.Literal[*...]`, which needs Python 3.11+ at runtime; parsing
+them with 3.10 reports a syntax error. That matches upstream and is
+not a porting defect.
 
 ## Patches
 
@@ -70,7 +106,9 @@ Three changes, all default off:
 Adds package base files copied from `vllm-ascend 0.30.0rc2`
 (`__init__.py`, `logger.py`, `utils.py`, and the patch package
 initializers). They exist so the research tree imports on its own under
-the `PYTHONPATH` override.
+the `PYTHONPATH` override. Every one of the five files is blob-identical
+to upstream `8fde6d4e`, so the materialized tree already contains them
+and the patch is kept as a record only.
 
 ### `0004-local-evaluation-scripts-rel-fork-main.patch`
 
@@ -86,7 +124,12 @@ and the 8198-token single-prompt per-mode profiler (`tmp/ebkGtx.py`).
 The dataset and reference-answer defaults inside `tmp/ZIeo68.py` point
 at host-only paths (`/data1/f00538480/...`, `/data1/w00842045/...`)
 and are arguments, not contracts. The evaluation numbers themselves
-are in `v030rc2-npu-eval-progress.md`.
+are in `v030rc2-npu-eval-progress.md`. In the materialized tree the
+three scratch scripts live as
+`leapquant-npu/scripts/bench_e2e_metrics.py`,
+`leapquant-npu/scripts/eval_gsm8k_math500.py`, and
+`leapquant-npu/scripts/profile_long_prompt.py`; the patch keeps the
+host's `tmp/` names as the record.
 
 ### `0002-ascendc-csrc-ops-rel-fork-main.patch`
 
@@ -104,22 +147,26 @@ kernel hash.
 
 ## Apply
 
-`0001` applies on a clean checkout of fork main:
+The tree is already materialized in this repository: check it out and
+`vllm-ascend/` is the evaluated stack — no patch needs to be applied.
+The patches remain the host-faithful record of what was pasted on top
+of fork main `cb6242e`:
+
+- `0001` — applied, except the `gdn_lq_flush_ascendc.py` binding hunk
+  that fork main had already folded into `_flush_lib_candidates()`.
+- `0003` — no-op against upstream `8fde6d4e` (all five files
+  blob-identical).
+- `0004` — applied; the three `tmp/` scripts are normalized into
+  `leapquant-npu/scripts/`.
+
+To rebuild the same tree from scratch instead:
 
 ```bash
-git checkout cb6242ec4ef18db660f916c5cb62278294f45e49
+rm -rf vllm-ascend && mkdir vllm-ascend
+tar -xzf vllm-ascend-8fde6d4e335fe300e2b949aab0e31659cce0811d.tar.gz
+cp -r vllm-ascend-8fde6d4e335fe300e2b949aab0e31659cce0811d/. vllm-ascend/
+cp -a <fork-overlay>/vllm-ascend/. vllm-ascend/
 git apply patches/v030rc2-npu-eval/0001-vllm-ascend-python-port-rel-fork-main.patch
-```
-
-`0003` applies on the same checkout:
-
-```bash
-git apply patches/v030rc2-npu-eval/0003-local-package-base-files-add.patch
-```
-
-`0004` applies there too, and brings the evaluation scripts:
-
-```bash
 git apply patches/v030rc2-npu-eval/0004-local-evaluation-scripts-rel-fork-main.patch
 ```
 
