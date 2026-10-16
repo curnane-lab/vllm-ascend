@@ -4,9 +4,10 @@ Generated: 2026-10-16.
 Archive base: fork main `cb6242ec4ef18db660f916c5cb62278294f45e49`.
 
 This note records the stack the host evaluated. It does not add a new
-paired window, a memory ledger, or a task score. The patch bodies, the
-vendor tarball, `evaluation-summary.md`, and `SHA256SUMS` are on that
-host. They are not in this commit.
+paired window, a memory ledger, or a task score.
+`0001-vllm-ascend-python-port-rel-fork-main.patch` is in
+`patches/v030rc2-npu-eval/`. `0003`, the vendor tarball,
+`evaluation-summary.md`, and `SHA256SUMS` are still only on the host.
 
 ## Runtime versions
 
@@ -30,14 +31,39 @@ until it is measured again.
 
 ### `0001-vllm-ascend-python-port-rel-fork-main.patch`
 
-Relative to fork main `cb6242e`. The host checked that it applies
-cleanly. It adds the GDN LeapQuant mode 0/1/2/3 integration, the
-composite pool hookup, profile counters, the AscendC flush, the step-v2
-hook, and a path fix. It also adds the two runtime flags and the
-compact Mamba page patches. Production flags stay off until a paired
-window on this stack passes its own gate. The compact page stays off
-for the same reason it was withdrawn: the old compact geometry wrote
-into attention V.
+Relative to fork main `cb6242e`. `git apply --check` on that tree
+succeeds. The host paste searched for `libcust_opapi.so` under a
+personal absolute path. The stored patch deletes the
+fork's `/mnt/workspace/vllm-ascend/...` glob and searches
+`_cann_ops_custom` beside the package
+(`os.path.join(os.path.dirname(__file__), "..", "_cann_ops_custom", ...)`).
+The two binding hunks are `@@ -33,7 +33,8 @@` and
+`@@ -32,7 +32,8 @@`, matching the seven context-and-removal lines in
+`cb6242e`.
+
+The diff sits on top of the LeapQuant code already in `cb6242e`. It
+does not add mode 0/1/2/3, the composite pool, the AscendC flush, step
+v2, or the compact page. Those stay where they already are, and the
+compact page stays off: the old compact geometry wrote into attention V.
+
+Three changes, all default off:
+
+1. `_LQProfiler` in `gdn.py`, entered only when
+   `VLLM_ASCEND_GDN_LQ_PROFILE` is set. Each measured span synchronizes
+   the device on entry and exit. The flush span also reads a due count
+   with `.item()`. Leave the variable unset.
+2. The package-relative `libcust_opapi.so` search in
+   `gdn_lq_flush_ascendc.py` and `gdn_lq_step_ascendc.py`.
+3. A Triton branch in `triton/gdn_leapquant_step.py` behind
+   `VLLM_ASCEND_GDN_LQ_DIRECT_READOUT` (default `"0"`) and
+   `VLLM_ASCEND_GDN_LQ_DIRECT_VBLOCK` (default `16`). Leave it off. It
+   is the same listing already rejected under "Direct-readout step" in
+   `M5-measurement-update.md`: the codes term divides by `QMAX` twice,
+   the compensator `q`/`u` terms are not loaded, a length-`VBLOCK`
+   partial is added to a length-`V` vector, and the shared epilogue
+   reads `w` that this branch never loads. The comment says
+   compensators are included; the branch does not touch `u_ptr` or
+   `q_ptr`. This is not the R2 Cube readout.
 
 ### `0003-local-package-base-files-add.patch`
 
@@ -62,11 +88,17 @@ kernel hash.
 
 ## Apply
 
-From a clean checkout of fork main, once the host archive is present:
+`0001` applies on a clean checkout of fork main:
 
 ```bash
 git checkout cb6242ec4ef18db660f916c5cb62278294f45e49
 git apply patches/v030rc2-npu-eval/0001-vllm-ascend-python-port-rel-fork-main.patch
+```
+
+`0003` and the vendor tarball are not in this tree. When the host
+archive is present, the rest of that checkout is:
+
+```bash
 git apply patches/v030rc2-npu-eval/0003-local-package-base-files-add.patch
 
 mkdir -p vllm-ascend/vllm_ascend/_cann_ops_custom/vendors
