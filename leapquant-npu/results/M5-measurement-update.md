@@ -1587,8 +1587,13 @@ The host evaluation target moved. vLLM is `0.30.0`, vllm-ascend is
 `2.10.0.post7`, and CANN is `9.2.0`. The device in that note is
 Ascend910, logical device 15. The port applies on fork main `cb6242e`.
 The installed vllm-ascend tree is read-only; the run imports this
-repository's package through `PYTHONPATH`. Details, including which
-patch files were not shipped here, are in
+repository's package through `PYTHONPATH`.
+`patches/v030rc2-npu-eval/0001-vllm-ascend-python-port-rel-fork-main.patch`
+is the host diff against `cb6242e`: the env-gated profiler, a
+package-relative `libcust_opapi.so` search, and the direct-readout
+Triton branch. Both flags stay off. The direct-readout branch is the
+listing rejected above, not the R2 Cube readout. `0003` and the vendor
+tarball are still host-only. Details are in
 `leapquant-npu/results/v030rc2-npu-eval.md`.
 
 No new dense window, readout, or memory ledger was attached. The
