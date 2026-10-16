@@ -5,9 +5,9 @@ Archive base: fork main `cb6242ec4ef18db660f916c5cb62278294f45e49`.
 
 This note records the stack the host evaluated. It does not add a new
 paired window, a memory ledger, or a task score.
-`0001-vllm-ascend-python-port-rel-fork-main.patch` is in
-`patches/v030rc2-npu-eval/`. `0003`, the vendor tarball,
-`evaluation-summary.md`, and `SHA256SUMS` are still only on the host.
+`0001`, `0003`, and `0004` are in `patches/v030rc2-npu-eval/`. The
+vendor tarball, `evaluation-summary.md`, and `SHA256SUMS` are still
+only on the host.
 
 ## Runtime versions
 
@@ -72,6 +72,22 @@ Adds package base files copied from `vllm-ascend 0.30.0rc2`
 initializers). They exist so the research tree imports on its own under
 the `PYTHONPATH` override.
 
+### `0004-local-evaluation-scripts-rel-fork-main.patch`
+
+Relative to fork main `cb6242e`. `git apply --check` on that tree
+succeeds. Five files: `bench_e2e.py` adds the `sys` import and moves
+the local model default to `/data1/models/Qwen3.5-9B`,
+`test_step_triton.py` gains a `TRITON_STEP_MODE` dense/direct switch
+that prefers the AscendC flush kernel with a torch fallback, and three
+evaluator scripts land under `tmp/` with the host's scratch names — an
+E2E benchmark with request metrics (`tmp/F0BtVT.py`), the GSM8K +
+MATH-500 greedy evaluator against reference answers (`tmp/ZIeo68.py`),
+and the 8198-token single-prompt per-mode profiler (`tmp/ebkGtx.py`).
+The dataset and reference-answer defaults inside `tmp/ZIeo68.py` point
+at host-only paths (`/data1/f00538480/...`, `/data1/w00842045/...`)
+and are arguments, not contracts. The evaluation numbers themselves
+are in `v030rc2-npu-eval-progress.md`.
+
 ### `0002-ascendc-csrc-ops-rel-fork-main.patch`
 
 Not emitted. Every tracked `csrc/attention/gdn_lq_*` source is already
@@ -95,12 +111,22 @@ git checkout cb6242ec4ef18db660f916c5cb62278294f45e49
 git apply patches/v030rc2-npu-eval/0001-vllm-ascend-python-port-rel-fork-main.patch
 ```
 
-`0003` and the vendor tarball are not in this tree. When the host
-archive is present, the rest of that checkout is:
+`0003` applies on the same checkout:
 
 ```bash
 git apply patches/v030rc2-npu-eval/0003-local-package-base-files-add.patch
+```
 
+`0004` applies there too, and brings the evaluation scripts:
+
+```bash
+git apply patches/v030rc2-npu-eval/0004-local-evaluation-scripts-rel-fork-main.patch
+```
+
+The vendor tarball is not in this tree. When the host archive is
+present, the rest of that checkout is:
+
+```bash
 mkdir -p vllm-ascend/vllm_ascend/_cann_ops_custom/vendors
 tar -xzf patches/v030rc2-npu-eval/custom_transformer-vendor-20261016.tar.gz \
   -C vllm-ascend/vllm_ascend/_cann_ops_custom/vendors
