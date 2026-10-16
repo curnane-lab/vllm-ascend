@@ -1580,6 +1580,24 @@ wiring, MIX, the allocator, and the compact page stay off. The
 servable question is the remainder at about B=128. It is not a
 serving sweep.
 
+## v0.30.0rc2 stack (2026-10-16)
+
+The host evaluation target moved. vLLM is `0.30.0`, vllm-ascend is
+`0.30.0rc2` at `8fde6d4e`, torch is `2.10.0+cpu`, torch_npu is
+`2.10.0.post7`, and CANN is `9.2.0`. The device in that note is
+Ascend910, logical device 15. The port applies on fork main `cb6242e`.
+The installed vllm-ascend tree is read-only; the run imports this
+repository's package through `PYTHONPATH`. Details, including which
+patch files were not shipped here, are in
+`leapquant-npu/results/v030rc2-npu-eval.md`.
+
+No new dense window, readout, or memory ledger was attached. The
+15.98 ms / 14.527 ms gate remains the 0.27.1, CANN 9.1.0 number. A
+paired window on 9.2.0 has to be measured again before it replaces
+that gate. Production flags stay off. The compact page stays off.
+Triton standalone launch needs `TRITON_ALLOW_NON_CONSTEXPR_GLOBALS=1`
+because the runtime rejects the global `QMAX`.
+
 ## Still open
 
 - The operator line is stopped. At B=256 the production window is

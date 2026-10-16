@@ -53,8 +53,12 @@ results/                  # 实测结果摘要
 ## 使用
 
 ```bash
-# 环境：Ascend 910，CANN 9.1.0，torch_npu 2.10.0.post4，triton-ascend 3.2.2
-# 注意：需 ATB 库路径，否则 torch_npu ATB 插件加载失败
+# 2026-10-16 评估栈：vLLM 0.30.0，vllm-ascend 0.30.0rc2（8fde6d4e），
+# torch 2.10.0+cpu，torch_npu 2.10.0.post7，CANN 9.2.0，Ascend910。
+# 归档说明：leapquant-npu/results/v030rc2-npu-eval.md
+# 更早的 0.27.1 / CANN 9.1.0 测量不能直接当作这一栈的门槛。
+# ATB 路径随 CANN 安装位置变化。下面这行是旧 9.1.0 主机的例子，
+# 9.2.0 评估不要照抄。
 export LD_LIBRARY_PATH=/home/developer/Ascend/nnal/atb/9.1.0/atb/cxx_abi_1/lib:$LD_LIBRARY_PATH
 
 # 基线 / LeapQuant(torch) / LeapQuant(triton step)
