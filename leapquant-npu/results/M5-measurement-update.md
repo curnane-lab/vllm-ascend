@@ -1603,8 +1603,43 @@ that gate. Production flags stay off. The compact page stays off.
 Triton standalone launch needs `TRITON_ALLOW_NON_CONSTEXPR_GLOBALS=1`
 because the runtime rejects the global `QMAX`.
 
+## v0.30.0rc2 validation v1, B32 block 1 (2026-10-16)
+
+Logical NPU 8. Payload: 32 requests × 128 fixed output tokens, eager,
+prefix off, `ignore_eos=True`, `fixed_length=true`, 4096 generated
+tokens. Full note:
+`leapquant-npu/results/v030rc2-validation-v1-b32.md`.
+
+Offline `LLM.generate`, not a service baseline:
+
+| config | tok/s | vs U0 |
+|---|---:|---:|
+| U0 clean upstream | 684.69 | 1.000x |
+| R0 patched mode0 | 679.94 | 0.993x |
+| Q3 research mode3 | 431.06 | 0.630x |
+| QV2 requested step-v2 | 403.97 | 0.590x |
+
+Online vllm-ascend HTTP service, block 1 only: U0 432.92 tok/s,
+R0 433.90 tok/s, R0/U0 = 1.002x, 32/32 successful requests each.
+Q3 and QV2 have no service row. The host's `server_b32/` README and
+summary are not in this commit.
+
+The offline U0/R0 gap is −0.69%, inside the 2% porting screen. That
+does not close a five-pair acceptance. The Q3/QV2 gap is not the
+earlier short-prompt comparison. QV2 counters never left EngineCore,
+so 403.97 tok/s does not prove step v2 ran. The identity artifact is a
+driver-side import proxy, not the worker process map. This block is
+not production acceptance and does not replace the 15.98 ms gate.
+
 ## Still open
 
+- v0.30.0rc2 validation v1 B32 block 1 is recorded and is not
+  acceptance. Offline driver rates are U0 684.69, R0 679.94, Q3 431.06,
+  QV2 403.97 tok/s. The service baseline for that block is U0 432.92
+  and R0 433.90 tok/s (1.002x). QV2 execution is unproven. Four more
+  U0/R0 pairs, an EngineCore identity export, and per-worker step-v2
+  counters are still open. See
+  `leapquant-npu/results/v030rc2-validation-v1-b32.md`.
 - The operator line is stopped. At B=256 the production window is
   15.98 ms, and R≥1.10 needs the LeapQuant window at or under 14.5 ms.
   The AscendC direct step measured on the later run is 4.253 ms, 68.0 ms
