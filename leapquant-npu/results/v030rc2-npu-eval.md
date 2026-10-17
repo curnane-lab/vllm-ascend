@@ -198,3 +198,8 @@ not a service baseline. The online HTTP block 1 is U0 432.92 and
 R0 433.90 tok/s (1.002x), 32/32 each. QV2 is requested step-v2;
 execution is unproven. One block is not the five-pair acceptance, and
 neither rate replaces the 15.98 ms operator gate.
+
+The earlier neutral mode3 “B32” is a different protocol: 4 prompts,
+256 output tokens, `max_num_seqs=32` as a cap (78.73 vs 77.48 tok/s).
+The correction is
+`leapquant-npu/results/v030rc2-b32-protocol-correction.md`.
