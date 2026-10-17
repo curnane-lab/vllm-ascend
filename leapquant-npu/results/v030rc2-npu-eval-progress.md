@@ -31,8 +31,13 @@ upstream synchronization.
 
 - Completed 27/27 eager throughput points: three modes, batches 8/16/32, and
   three runs.
-- Confirmed mode3 is production-neutral: relative medians 1.006x, 0.973x, and
-  0.990x at batches 8, 16, and 32.
+- Reported mode3 relative medians 1.006x, 0.973x, and 0.990x under the
+  labels batches 8, 16, and 32. The batch-32 label is not a measured
+  resident batch: the 2026-10-17 correction shows that setup launched 4
+  prompts with `max_num_seqs=32`. One raw pair is mode0 78.73 tok/s
+  (13.01 s) and mode3 77.48 tok/s (13.22 s), ratio 0.984. See
+  `leapquant-npu/results/v030rc2-b32-protocol-correction.md`. Batches 8
+  and 16 are not re-described there.
 - Isolated a reproducible mode3v2 eager batch16 slow tail: median 0.856x,
   CV 8.9%. Batch8 and batch32 remain normal.
 - Verified piecewise graph mode at batch16 and 128 tokens: mode0 596.9,
@@ -74,9 +79,12 @@ Details: `leapquant-npu/results/v030rc2-validation-v1-b32.md`.
 
 Offline `LLM.generate` (driver batch, not a service baseline): U0
 684.69, R0 679.94 (0.993x, −0.69%, inside the 2% screen), Q3 431.06
-(0.630x), QV2 403.97 (0.590x) tok/s. The Q3/QV2 gap is a heavy fixed
-1024-token scheduler payload and is not the short-prompt median above
-(batch 32 mode3 at 0.990x). Online HTTP block 1: U0 432.92, R0 433.90
+(0.630x), QV2 403.97 (0.590x) tok/s. The earlier neutral “B32” mode3
+number is the 4-request run above, not this resident batch. Later
+medians, with unequal valid blocks, are U0 684.29 (4), R0 679.04 (4),
+Q3 444.38 (3), QV2 417.05 (3) tok/s. The host paired ratios are
+0.982x / 0.650x / 0.600x; the ratios of those medians are 0.992, 0.649,
+and 0.609. Online HTTP block 1: U0 432.92, R0 433.90
 tok/s (1.002x), 32/32 each. Q3 and QV2 were not in that service block.
 QV2 is requested step-v2; EngineCore did not export `v2_status()` into
 the benchmark JSONL, so execution is unproven. Identity currently
@@ -84,20 +92,23 @@ proves R0 import at startup from the driver, not the worker map.
 
 ## Next priorities
 
-1. Move identity collection into the EngineCore worker and export
+1. B-equivalence: keep the fixed-length 128-token payload, launch 4
+   requests with `max_num_seqs=4`, and see whether mode3 overhead
+   shrinks with the resident batch. Then finish five complete paired
+   B32 blocks and export EngineCore profiler counters before deciding.
+2. Move identity collection into the EngineCore worker and export
    `v2_status()` through an IPC/file mechanism. Do not interpret the
    B32 QV2 rate until per-worker step-v2/fallback counters are exported.
-2. Capture four more paired U0/R0 blocks. Block 1 alone is not the
-   five-block result, and the offline 684.69 tok/s row is not the
-   service baseline.
-3. Add an EngineCore-to-driver counter export path and reproduce the batch16
+3. The offline 684.69 tok/s row is not the service baseline. Service
+   block 1 is U0 432.92 and R0 433.90 tok/s.
+4. Add an EngineCore-to-driver counter export path and reproduce the batch16
    mode3v2 tail with direct counters.
-4. Investigate the v0.30rc2 compact-page hook and enable actual unequal-page
+5. Investigate the v0.30rc2 compact-page hook and enable actual unequal-page
    geometry and capacity.
-5. Run full GSM8K and MATH-500 greedy regression.
-6. Continue OpenAI-server/async-client benchmarking past this one HTTP
+6. Run full GSM8K and MATH-500 greedy regression.
+7. Continue OpenAI-server/async-client benchmarking past this one HTTP
    block, then production trace replay. The block-1 service rates are
    U0 432.92 and R0 433.90 tok/s only.
-7. Fix the Triton constexpr dependency. Step-v2 executor and input-pool
+8. Fix the Triton constexpr dependency. Step-v2 executor and input-pool
    optimization wait until a block shows that step v2 actually ran. The
    target remains mode3v2 at least matching mode3 at batches 16 and 32.

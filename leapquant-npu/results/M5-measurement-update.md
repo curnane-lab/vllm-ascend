@@ -1625,21 +1625,52 @@ Q3 and QV2 have no service row. The host's `server_b32/` README and
 summary are not in this commit.
 
 The offline U0/R0 gap is −0.69%, inside the 2% porting screen. That
-does not close a five-pair acceptance. The Q3/QV2 gap is not the
-earlier short-prompt comparison. QV2 counters never left EngineCore,
+does not close a five-pair acceptance. QV2 counters never left EngineCore,
 so 403.97 tok/s does not prove step v2 ran. The identity artifact is a
 driver-side import proxy, not the worker process map. This block is
 not production acceptance and does not replace the 15.98 ms gate.
+
+## Why the earlier mode3 “B32” looked neutral (2026-10-17)
+
+The earlier neutral mode3 “B32” and this rerun are different
+experiments. Full note:
+`leapquant-npu/results/v030rc2-b32-protocol-correction.md`.
+
+| setup | requests | output cap | wall | tok/s |
+|---|---:|---:|---:|---:|
+| old mode0 “B32” | 4 | 256 | 13.01 s | 78.73 |
+| old mode3 “B32” | 4 | 256 | 13.22 s | 77.48 |
+| new U0 | 32 | 128 fixed | 5.98 s | 684.69 |
+| new Q3 | 32 | 128 fixed | 9.50 s | 431.06 |
+
+Old total output is 4 × 256 = 1024 tokens. New total is 4096. Reported
+rates are 684.69 / 78.73 = 8.70× apart. Old `max_num_seqs=32` is a cap:
+4 prompts, mostly B=1 decode, EOS allowed. The new run is fixed length
+(`ignore_eos`, `min_tokens=max_tokens=128`) at the intended resident
+batch. 77.48 / 78.73 = 0.984 on that one old pair. That pair is not the
+labeled 0.990× median, and batches 8 and 16 are not re-described.
+
+Later offline medians: U0 684.29 (4 blocks), R0 679.04 (4), Q3 444.38
+(3), QV2 417.05 (3) tok/s. Host paired ratios 0.982× / 0.650× / 0.600×.
+Ratios of those medians: 0.992, 0.649, 0.609. Per-block pairs are not
+in this commit. The remaining Q3/QV2 gap is a real finding. Next check
+is 4 requests at `max_num_seqs=4` on the same fixed-length payload,
+then five complete B32 pairs and EngineCore counters. Host geometry on
+the new run: attention block 640→384, padding 22.14%→43.28%, LCM block
+5120→3072. No counter yet covers the whole gap.
 
 ## Still open
 
 - v0.30.0rc2 validation v1 B32 block 1 is recorded and is not
   acceptance. Offline driver rates are U0 684.69, R0 679.94, Q3 431.06,
   QV2 403.97 tok/s. The service baseline for that block is U0 432.92
-  and R0 433.90 tok/s (1.002x). QV2 execution is unproven. Four more
-  U0/R0 pairs, an EngineCore identity export, and per-worker step-v2
-  counters are still open. See
-  `leapquant-npu/results/v030rc2-validation-v1-b32.md`.
+  and R0 433.90 tok/s (1.002x). The earlier neutral mode3 “B32” was 4
+  prompts under a `max_num_seqs=32` cap (78.73 vs 77.48 tok/s), not
+  this resident batch. Medians so far are U0 684.29 (4 blocks),
+  R0 679.04 (4), Q3 444.38 (3), QV2 417.05 (3). QV2 execution is
+  unproven. Next is a 4-request `max_num_seqs=4` fixed-length check,
+  then five complete pairs and EngineCore counters. See
+  `leapquant-npu/results/v030rc2-b32-protocol-correction.md`.
 - The operator line is stopped. At B=256 the production window is
   15.98 ms, and R≥1.10 needs the LeapQuant window at or under 14.5 ms.
   The AscendC direct step measured on the later run is 4.253 ms, 68.0 ms

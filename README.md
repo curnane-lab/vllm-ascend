@@ -65,6 +65,7 @@ results/                  # 实测结果摘要
 # torch 2.10.0+cpu，torch_npu 2.10.0.post7，CANN 9.2.0，Ascend910。
 # 归档说明：leapquant-npu/results/v030rc2-npu-eval.md
 # B32 第一块（离线驱动 vs 在线服务要分开）：leapquant-npu/results/v030rc2-validation-v1-b32.md
+# 旧 “B32” 只有 4 条请求：leapquant-npu/results/v030rc2-b32-protocol-correction.md
 # 更早的 0.27.1 / CANN 9.1.0 测量不能直接当作这一栈的门槛。
 # ATB 路径随 CANN 安装位置变化。下面这行是旧 9.1.0 主机的例子，
 # 9.2.0 评估不要照抄。

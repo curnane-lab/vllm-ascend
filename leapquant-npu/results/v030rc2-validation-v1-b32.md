@@ -40,11 +40,14 @@ and `server_b32/summary.json`. Those two files are not in this commit.
 - The offline U0/R0 difference is −0.69%. This block does not breach the
   2% porting-overhead screen. The online pair is 1.002x on its own
   protocol. Neither pair is the five-block acceptance set.
-- The offline Q3/QV2 gap is not comparable to the earlier short-prompt
-  result. The host reads it as expected for a heavy fixed 1024-token
-  scheduler payload with mode3 enabled. The 1024-token phrase is the
-  host's description of that payload; the recorded request shape is
-  32 × 128 output tokens.
+- The offline Q3/QV2 gap is not the earlier “B32” mode3 result. That
+  earlier run launched 4 prompts of 256 tokens under `max_num_seqs=32`;
+  32 was the cap, and one raw pair is 78.73 vs 77.48 tok/s. The 1024
+  in `1024 / 13.0` is 4 × 256, not this block’s payload. This block is
+  32 × 128 fixed tokens. The protocol split is
+  `leapquant-npu/results/v030rc2-b32-protocol-correction.md`. After that
+  split, the Q3/QV2 gap is a real finding and still needs counters plus
+  five complete pairs.
 - This is one block, not the five-pair acceptance set.
 - The identity artifact currently proves the full R0 tree import path at
   NPU runtime startup. It is a driver-side proxy, not the final
@@ -56,9 +59,11 @@ and `server_b32/summary.json`. Those two files are not in this commit.
 
 ## Immediate next work
 
-1. Move identity collection into the EngineCore worker and export
+1. B-equivalence check: same fixed-length payload, 4 requests,
+   `max_num_seqs=4`, then the five-block B32 comparison.
+2. Move identity collection into the EngineCore worker and export
    `v2_status()` through an IPC/file mechanism.
-2. Capture four more paired blocks to form the five-block U0/R0 result.
-3. Export per-worker step-v2/fallback counters before interpreting QV2.
-4. Re-run after identity closes. Do not use this block as production
+3. Capture four more paired blocks to form the five-block U0/R0 result.
+4. Export per-worker step-v2/fallback counters before interpreting QV2.
+5. Re-run after identity closes. Do not use this block as production
    acceptance.
