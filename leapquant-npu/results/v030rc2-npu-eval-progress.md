@@ -66,14 +66,38 @@ Primary evidence lives in the repository result directory:
 - The archive intentionally excludes bulky result JSONL files and generated
   caches; result summaries and key evidence remain in the results directory.
 
+## Validation v1, B32 block 1 (2026-10-16)
+
+Logical NPU 8. One eager block, prefix off, 32 × 128 output tokens.
+This is not the five-pair acceptance and not a production pass.
+Details: `leapquant-npu/results/v030rc2-validation-v1-b32.md`.
+
+Offline `LLM.generate` (driver batch, not a service baseline): U0
+684.69, R0 679.94 (0.993x, −0.69%, inside the 2% screen), Q3 431.06
+(0.630x), QV2 403.97 (0.590x) tok/s. The Q3/QV2 gap is a heavy fixed
+1024-token scheduler payload and is not the short-prompt median above
+(batch 32 mode3 at 0.990x). Online HTTP block 1: U0 432.92, R0 433.90
+tok/s (1.002x), 32/32 each. Q3 and QV2 were not in that service block.
+QV2 is requested step-v2; EngineCore did not export `v2_status()` into
+the benchmark JSONL, so execution is unproven. Identity currently
+proves R0 import at startup from the driver, not the worker map.
+
 ## Next priorities
 
-1. Add an EngineCore-to-driver counter export path and reproduce the batch16
+1. Move identity collection into the EngineCore worker and export
+   `v2_status()` through an IPC/file mechanism. Do not interpret the
+   B32 QV2 rate until per-worker step-v2/fallback counters are exported.
+2. Capture four more paired U0/R0 blocks. Block 1 alone is not the
+   five-block result, and the offline 684.69 tok/s row is not the
+   service baseline.
+3. Add an EngineCore-to-driver counter export path and reproduce the batch16
    mode3v2 tail with direct counters.
-2. Investigate the v0.30rc2 compact-page hook and enable actual unequal-page
+4. Investigate the v0.30rc2 compact-page hook and enable actual unequal-page
    geometry and capacity.
-3. Run full GSM8K and MATH-500 greedy regression.
-4. Add OpenAI-server/async-client benchmarking and production trace replay.
-5. Fix the Triton constexpr dependency and continue step-v2 executor and
-   input-pool optimization; target mode3v2 at least matching mode3 at batches
-   16 and 32.
+5. Run full GSM8K and MATH-500 greedy regression.
+6. Continue OpenAI-server/async-client benchmarking past this one HTTP
+   block, then production trace replay. The block-1 service rates are
+   U0 432.92 and R0 433.90 tok/s only.
+7. Fix the Triton constexpr dependency. Step-v2 executor and input-pool
+   optimization wait until a block shows that step v2 actually ran. The
+   target remains mode3v2 at least matching mode3 at batches 16 and 32.

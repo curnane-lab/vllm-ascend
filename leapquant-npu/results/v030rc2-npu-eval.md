@@ -186,3 +186,15 @@ directory. Those two paths are machine-local and are not recorded here.
 The standalone Triton path currently needs
 `TRITON_ALLOW_NON_CONSTEXPR_GLOBALS=1`. The Triton runtime rejects the
 kernel's global `QMAX`. That remains a compatibility TODO.
+
+## Validation v1, B32 block 1
+
+Recorded in `leapquant-npu/results/v030rc2-validation-v1-b32.md`.
+Logical NPU 8, 2026-10-16, scope correction 2026-10-17.
+
+The offline `LLM.generate` block is U0 684.69, R0 679.94 (0.993x,
+−0.69%), Q3 431.06 (0.630x), QV2 403.97 (0.590x) tok/s. That table is
+not a service baseline. The online HTTP block 1 is U0 432.92 and
+R0 433.90 tok/s (1.002x), 32/32 each. QV2 is requested step-v2;
+execution is unproven. One block is not the five-pair acceptance, and
+neither rate replaces the 15.98 ms operator gate.
