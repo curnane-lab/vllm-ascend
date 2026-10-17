@@ -1659,8 +1659,52 @@ then five complete B32 pairs and EngineCore counters. Host geometry on
 the new run: attention block 640→384, padding 22.14%→43.28%, LCM block
 5120→3072. No counter yet covers the whole gap.
 
+## v0.30.0rc2 B32 graph cost (2026-10-17, NPU 9)
+
+Full note: `leapquant-npu/results/v030rc2-b32-graph-cost.md`.
+Payload: 32 × 1024 random input, prefix off, seed `20261017`.
+PIECEWISE capture size 32. This is not the 15.98 ms operator gate.
+
+`ACL graph replay is active` proves a graph segment replays. Q3's core
+goes through `vllm::qwen_gdn_attention_core` with
+`eager_break_during_capture`, so the Python body runs outside the
+captured graph. Q3 profiler counters stay empty under graph and
+increment under eager.
+
+PIECEWISE Q3 at 256 output tokens, graph3: 168.14 tok/s, TPOT 151.13 ms,
+wall 48.72 s. Eager Q3 from E2A at 1024 output tokens: 226.99 tok/s,
+TPOT 131.09 ms. Output lengths differ, so the tok/s figures are not a
+ratio. 151.13 / 131.09 = 1.153×. PIECEWISE is slower per decode token.
+
+`due_slots` mean 116.77 on 223 decode rows is global pool state, not
+kernel work. A single-pool probe (256 slots, 32 active) stayed about
+0.08 ms when only inactive slots were due, and rose to about 4.40 ms
+when the 32 active slots were due. Do not compare 116.77 with 32.
+
+Executor recreation was real: 6,888 creations, 6,887 prior
+`idx.data_ptr()` changes, 223 × 24 = 5,352 of them in decode. The host
+repeatable-executor binding then got 6,888 hits and 504 creations, and
+TPOT moved 151.13 → 150.86 ms (−0.27 ms). Mechanism gate passes.
+Performance gate fails. Executor construction is not the material gap.
+A standalone reuse probe alternated about 4.34 ms due and 0.05 ms not
+due; that is not a measured slice of serving TPOT. The binding is not
+in this commit.
+
+Q3 serving, readout-kernel optimization, and step+flush fusion stay
+suspended. A restart needs a measured budget advantage for a new
+organization under the same mode and resident batch, including step,
+flush, and every added overhead.
+
 ## Still open
 
+- v0.30.0rc2 Q3 serving is suspended after the NPU 9 graph account.
+  PIECEWISE leaves the GDN core outside the captured graph. TPOT is
+  151.13 ms versus eager 131.09 ms (1.153×) at different output
+  lengths. Repeatable ACLNN executors pass the mechanism gate and move
+  TPOT by −0.27 ms. `due_slots` 116.77 is pool state, not kernel work.
+  Due-flush device time on the serving path is unmeasured. Readout
+  optimization and step+flush fusion stay off. See
+  `leapquant-npu/results/v030rc2-b32-graph-cost.md`.
 - v0.30.0rc2 validation v1 B32 block 1 is recorded and is not
   acceptance. Offline driver rates are U0 684.69, R0 679.94, Q3 431.06,
   QV2 403.97 tok/s. The service baseline for that block is U0 432.92

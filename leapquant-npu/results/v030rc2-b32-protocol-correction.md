@@ -78,6 +78,10 @@ counters and five complete paired blocks before an engineering
 decision. QV2 stays `requested step-v2` until those counters show it
 ran.
 
+The 2026-10-17 graph account in
+`leapquant-npu/results/v030rc2-b32-graph-cost.md` suspends Q3 serving.
+The 4-request check below was not that account.
+
 ## Immediate corrective next step
 
 Keep the new fixed-length payload and launch only 4 requests with

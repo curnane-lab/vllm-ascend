@@ -203,3 +203,7 @@ The earlier neutral mode3 “B32” is a different protocol: 4 prompts,
 256 output tokens, `max_num_seqs=32` as a cap (78.73 vs 77.48 tok/s).
 The correction is
 `leapquant-npu/results/v030rc2-b32-protocol-correction.md`.
+
+The NPU 9 graph account suspends Q3 serving. PIECEWISE does not capture
+the quantized step, and the repeatable-executor fix moves TPOT by
+−0.27 ms. See `leapquant-npu/results/v030rc2-b32-graph-cost.md`.
