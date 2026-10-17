@@ -90,12 +90,29 @@ QV2 is requested step-v2; EngineCore did not export `v2_status()` into
 the benchmark JSONL, so execution is unproven. Identity currently
 proves R0 import at startup from the driver, not the worker map.
 
+## B32 graph cost (2026-10-17, NPU 9)
+
+Q3 serving is suspended. PIECEWISE replay does not contain the
+quantized step: `qwen_gdn_attention_core` breaks the graph. graph3 at
+32 × 1024 + 256 is 168.14 tok/s, TPOT 151.13 ms. Eager E2A at
+32 × 1024 + 1024 is TPOT 131.09 ms; 151.13 / 131.09 = 1.153×. Do not
+ratio the tok/s columns. The repeatable-executor fix cuts decode
+creations from 5,352 to about zero and changes TPOT by −0.27 ms, so
+executor construction is not the gap. `due_slots` mean 116.77 is global
+pool state. A standalone due flush is about 4.34 ms and a not-due flush
+about 0.05 ms; that split was not measured inside this serving path.
+Details: `leapquant-npu/results/v030rc2-b32-graph-cost.md`. The binding
+is not in this tree.
+
 ## Next priorities
 
-1. B-equivalence: keep the fixed-length 128-token payload, launch 4
-   requests with `max_num_seqs=4`, and see whether mode3 overhead
-   shrinks with the resident batch. Then finish five complete paired
-   B32 blocks and export EngineCore profiler counters before deciding.
+1. Q3 serving, readout-kernel optimization, and step+flush fusion stay
+   suspended. A restart needs a new computation organization with a
+   measured budget advantage under the same execution mode and the
+   actual resident batch, counting step, flush, and every added
+   overhead. Graph safety or a correct ACLNN call is not that
+   measurement. The 4-request `max_num_seqs=4` check was not part of
+   the graph account.
 2. Move identity collection into the EngineCore worker and export
    `v2_status()` through an IPC/file mechanism. Do not interpret the
    B32 QV2 rate until per-worker step-v2/fallback counters are exported.
@@ -106,9 +123,9 @@ proves R0 import at startup from the driver, not the worker map.
 5. Investigate the v0.30rc2 compact-page hook and enable actual unequal-page
    geometry and capacity.
 6. Run full GSM8K and MATH-500 greedy regression.
-7. Continue OpenAI-server/async-client benchmarking past this one HTTP
-   block, then production trace replay. The block-1 service rates are
-   U0 432.92 and R0 433.90 tok/s only.
+7. OpenAI-server/async-client benchmarking past block 1 stays a U0/R0
+   question. Q3 graph serving is not that continuation. Block-1 service
+   rates are U0 432.92 and R0 433.90 tok/s only.
 8. Fix the Triton constexpr dependency. Step-v2 executor and input-pool
    optimization wait until a block shows that step v2 actually ran. The
    target remains mode3v2 at least matching mode3 at batches 16 and 32.
