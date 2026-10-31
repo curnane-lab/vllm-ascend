@@ -1,0 +1,22 @@
+[W1031 03:30:22.856530860 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+INFO 10-31 03:30:28 [__init__.py:52] Available plugins for group vllm.platform_plugins:
+INFO 10-31 03:30:28 [__init__.py:54] - ascend -> vllm_ascend:register
+INFO 10-31 03:30:28 [__init__.py:57] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 10-31 03:30:28 [__init__.py:272] Platform plugin ascend is activated
+INFO 10-31 03:30:28 [platform.py:74] Breakable CUDAGraph on Ascend is opt-in; using VLLM_USE_BREAKABLE_CUDAGRAPH=0.
+[W1031 03:30:40.127416880 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with memory allocation. (function operator())
+B=32 mode=0 window=3.633 ms step=3.161 ms flush=0.000 ms other=0.473 ms flush_calls=0 effective=0 due=0
+B=32 mode=1 window=157.692 ms step=45.405 ms flush=107.913 ms other=4.546 ms flush_calls=16 effective=1 due=512
+B=32 mode=2 window=139.242 ms step=8.560 ms flush=124.908 ms other=5.788 ms flush_calls=16 effective=1 due=512
+B=32 mode=3 window=142.997 ms step=8.998 ms flush=127.504 ms other=6.385 ms flush_calls=16 effective=1 due=512
+B=32 mode=1 speedup_vs_dense=0.023x
+B=32 mode=2 speedup_vs_dense=0.026x
+B=32 mode=3 speedup_vs_dense=0.025x
+B=128 mode=0 window=7.063 ms step=6.481 ms flush=0.000 ms other=0.582 ms flush_calls=0 effective=0 due=0
+B=128 mode=1 window=240.542 ms step=66.413 ms flush=168.560 ms other=5.528 ms flush_calls=16 effective=1 due=2048
+B=128 mode=2 window=190.178 ms step=16.454 ms flush=168.143 ms other=5.417 ms flush_calls=16 effective=1 due=2048
+B=128 mode=3 window=190.615 ms step=16.319 ms flush=168.578 ms other=5.632 ms flush_calls=16 effective=1 due=2048
+B=128 mode=1 speedup_vs_dense=0.029x
+B=128 mode=2 speedup_vs_dense=0.037x
+B=128 mode=3 speedup_vs_dense=0.037x
+wrote runs/window_account_b32_b128.json

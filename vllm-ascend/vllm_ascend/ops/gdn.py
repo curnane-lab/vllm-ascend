@@ -349,14 +349,6 @@ def _flatten_recurrent_state_indices(
     return state_indices[seq_ids, slot_ids].contiguous()
 
 
-def _split_head_first_conv_output(
-    output: torch.Tensor, num_k_heads: int, num_v_heads: int
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Expose FLA's [H, T, D] output as sequence-major Q/K/V."""
-    q, k, v = output.split((num_k_heads, num_k_heads, num_v_heads), dim=0)
-    return tuple(part.transpose(0, 1).unsqueeze(0) for part in (q, k, v))
-
-
 def _rearrange_decode_qkv(
     mixed_qkv: torch.Tensor,
     key_dim: int,
@@ -657,6 +649,26 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
         b = b[:num_actual_tokens]
         a = a[:num_actual_tokens]
 
+        # vLLM 0.31 packed recurrent decode. LeapQuant, spec, and mixed
+        # prefill stay on the composite path below. The parent method writes
+        # core_attn_out and owns conv plus ssm state for this batch shape.
+        decode_fast = getattr(type(self), "_forward_core_decode_non_spec", None)
+        if (
+            decode_fast is not None
+            and not use_leapquant
+            and spec_sequence_masks is None
+            and attn_metadata.num_prefills == 0
+            and attn_metadata.num_decodes > 0
+        ):
+            return decode_fast(
+                self,
+                mixed_qkv=mixed_qkv,
+                b=b,
+                a=a,
+                core_attn_out=core_attn_out,
+                attn_metadata=attn_metadata,
+            )
+
         # 1. Convolution sequence transformation
         conv_weights_T = _get_packed_conv_weights(self)
         if spec_sequence_masks is not None:
@@ -826,10 +838,12 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
         else:
             query_spec, key_spec, value_spec = None, None, None
         if attn_metadata.num_prefills > 0 and mixed_qkv_non_spec is not None and conv_head_num:
-            query_non_spec, key_non_spec, value_non_spec = _split_head_first_conv_output(
+            query_non_spec, key_non_spec, value_non_spec = _rearrange_decode_qkv(
                 mixed_qkv_non_spec,
-                self.num_k_heads // self.tp_size,
-                self.num_v_heads // self.tp_size,
+                self.key_dim // self.tp_size,
+                self.value_dim // self.tp_size,
+                self.head_k_dim,
+                self.head_v_dim,
             )
         elif attn_metadata.num_prefills == 0 and mixed_qkv_non_spec is not None:
             query_non_spec, key_non_spec, value_non_spec = _rearrange_decode_qkv(

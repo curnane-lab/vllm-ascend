@@ -4,6 +4,7 @@
 # Copyright (c) 2025 Huawei Technologies Co., Ltd. All Rights Reserved.
 # This file is a part of the vllm-ascend project.
 #
+import inspect
 from collections.abc import Sequence
 
 import vllm.v1.core.single_type_kv_cache_manager as single_type_kv_cache_manager
@@ -59,20 +60,24 @@ class AscendMambaManager(MambaManager):
         num_local_computed_tokens: int | None = None,
         num_tokens_main_model: int | None = None,
         apply_admission_cap: bool = False,
+        prefill_end: int = 0,
     ) -> int:
         if num_tokens_main_model is None:
             assert num_local_computed_tokens is not None
             num_tokens_main_model = num_local_computed_tokens
         local_hit_tokens = len(new_computed_blocks) * self.block_size
-        num_new_blocks = super().get_num_blocks_to_allocate(
-            request_id,
-            num_tokens,
-            new_computed_blocks,
-            total_computed_tokens,
-            num_local_computed_tokens,
-            num_tokens_main_model,
+        alloc_kwargs = dict(
+            request_id=request_id,
+            num_tokens=num_tokens,
+            new_computed_blocks=new_computed_blocks,
+            total_computed_tokens=total_computed_tokens,
+            num_local_computed_tokens=num_local_computed_tokens,
+            num_tokens_main_model=num_tokens_main_model,
             apply_admission_cap=apply_admission_cap,
         )
+        if "prefill_end" in inspect.signature(MambaManager.get_num_blocks_to_allocate).parameters:
+            alloc_kwargs["prefill_end"] = prefill_end
+        num_new_blocks = super().get_num_blocks_to_allocate(**alloc_kwargs)
         # When external KV cache is loaded synchronously with new
         # tokens, allocate_new_computed_blocks() allocates one
         # extra block to hold the external cache content. Account

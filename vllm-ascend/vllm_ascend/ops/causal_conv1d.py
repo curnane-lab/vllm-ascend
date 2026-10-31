@@ -52,6 +52,52 @@ def causal_conv1d_ref(
     return (out, None) if not return_final_states else (out, final_states_out)
 
 
+def _orient_conv_tensors(x: torch.Tensor, weight: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, bool]:
+    """Return channel-major x ``[dim, tokens]`` and weight ``[dim, width]``.
+
+    Callers pass either the historical ``[dim, tokens]`` layout or the vLLM
+    0.31 token-major ``[tokens, dim]`` layout. The kernel width is the short
+    axis of ``weight``, which disambiguates a short token axis from the
+    channel axis.
+    """
+    if weight.dim() != 2:
+        raise RuntimeError(f"causal_conv1d weight must be 2D, got {tuple(weight.shape)}")
+    width_for: dict[int, int] = {}
+    w0, w1 = int(weight.shape[0]), int(weight.shape[1])
+    if w0 != w1:
+        width_for[w0] = w1
+        width_for[w1] = w0
+    else:
+        width_for[w0] = w1
+
+    x0, x1 = int(x.shape[0]), int(x.shape[-1])
+    channel_width = width_for.get(x0)
+    token_width = width_for.get(x1)
+    if channel_width is None and token_width is None:
+        raise RuntimeError(
+            f"causal_conv1d: cannot match x shape {tuple(x.shape)} to weight shape {tuple(weight.shape)}"
+        )
+    if token_width is None:
+        token_major = False
+    elif channel_width is None:
+        token_major = True
+    elif token_width < channel_width:
+        token_major = True
+    elif channel_width < token_width:
+        token_major = False
+    else:
+        # Square activation. Historical callers use [dim, tokens].
+        token_major = False
+
+    feature_dim = x1 if token_major else x0
+    if int(weight.shape[0]) == feature_dim:
+        weight_dw = weight.contiguous()
+    else:
+        weight_dw = weight.transpose(0, 1).contiguous()
+    x_cm = x.transpose(0, 1).contiguous() if token_major else x
+    return x_cm, weight_dw, token_major
+
+
 def causal_conv1d_fn(
     x: torch.Tensor,
     weight: torch.Tensor,
@@ -62,12 +108,14 @@ def causal_conv1d_fn(
     cache_indices: torch.Tensor | None = None,
     query_start_loc: torch.Tensor | None = None,
     pad_slot_id: int = PAD_SLOT_ID,
+    null_block_id: int | None = None,
+    **kwargs,
 ):
     """
     PyTorch implementation of causal_conv1d_fn.
 
     Args:
-        x: (dim, cu_seq_len) for varlen
+        x: (dim, cu_seq_len) or vLLM 0.31 (cu_seq_len, dim)
         weight: (dim, width)
         bias: (dim,)
         activation: str
@@ -108,15 +156,8 @@ def causal_conv1d_fn(
     if x.dim() != 2:
         raise RuntimeError(f"Unsupported x ndim for causal_conv1d_fn: {x.dim()}")
 
-    feature_dim = x.shape[0]
-    if weight.shape[0] != feature_dim and weight.shape[1] == feature_dim:
-        weight = weight.transpose(0, 1)
-    weight = weight.contiguous()
+    x, weight, token_major = _orient_conv_tensors(x, weight)
     dim, width = weight.shape
-    if dim != feature_dim:
-        raise RuntimeError(
-            f"causal_conv1d_fn: weight dim mismatch, x dim={feature_dim}, weight.shape={tuple(weight.shape)}"
-        )
 
     state_len = width - 1
     if conv_states.shape[-2] != dim and conv_states.shape[-1] == dim:
@@ -152,8 +193,10 @@ def causal_conv1d_fn(
         out_chunks.append(out_ref.squeeze(0))
 
     if not out_chunks:
-        return x.new_zeros((dim, 0))
-    return torch.cat(out_chunks, dim=-1)
+        empty = (0, dim) if token_major else (dim, 0)
+        return x.new_zeros(empty)
+    out = torch.cat(out_chunks, dim=-1)
+    return out.transpose(0, 1).contiguous() if token_major else out
 
 
 def causal_conv1d_update(
@@ -166,6 +209,8 @@ def causal_conv1d_update(
     num_accepted_tokens: torch.Tensor | None = None,
     query_start_loc: torch.Tensor | None = None,
     pad_slot_id: int = PAD_SLOT_ID,
+    null_block_id: int | None = None,
+    **kwargs,
 ):
     """
     PyTorch implementation of causal_conv1d_update.
@@ -192,7 +237,12 @@ def causal_conv1d_update(
     original_x_dtype = x.dtype
     x = x.to(conv_state.dtype)
 
-    feature_dim = x.shape[-1] if query_start_loc is None else x.shape[1]
+    # Token-major inputs keep dim on the last axis. [batch, dim, seq] still
+    # has dim at axis 1; pick whichever axis the weight actually matches.
+    feature_dim = x.shape[-1]
+    if weight.shape[0] != feature_dim and weight.shape[1] != feature_dim and x.dim() >= 2:
+        if weight.shape[0] == x.shape[1] or weight.shape[1] == x.shape[1]:
+            feature_dim = x.shape[1]
     if weight.shape[0] != feature_dim and weight.shape[1] == feature_dim:
         weight = weight.transpose(0, 1)
     weight = weight.contiguous()

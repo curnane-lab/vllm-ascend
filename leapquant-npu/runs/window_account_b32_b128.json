@@ -1,0 +1,538 @@
+{
+  "schema_version": 1,
+  "git_sha": "d3f40e21b092556bb0f7c0489573333b3a5a9531",
+  "git_dirty": true,
+  "config": {
+    "batches": [
+      32,
+      128
+    ],
+    "modes": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "heads": 16,
+    "window_steps": 16,
+    "warmup": 1,
+    "iters": 3,
+    "flush_semantics": "production: flush after every decode step",
+    "mode_semantics": {
+      "0": "dense recurrent step",
+      "1": "Torch step + Torch flush",
+      "2": "K-space Triton step + Torch flush",
+      "3": "K-space Triton step + old AscendC flush, Torch fallback"
+    },
+    "timing": "synchronized wall time per step and flush; other_ms includes timing and accounting overhead"
+  },
+  "device": {
+    "name": "Ascend910B3",
+    "torch": "2.10.0+cpu",
+    "torch_npu": "2.10.0.post4"
+  },
+  "runs": [
+    {
+      "batch": 32,
+      "mode": 0,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 3.2658190466463566,
+          "flush_calls": 0,
+          "effective_flush_calls": 0,
+          "due_instances": 0,
+          "flush_ms": 0.0,
+          "flush_backends": {},
+          "window_ms": 3.7549398839473724,
+          "other_ms": 0.48912083730101585
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 3.13579011708498,
+          "flush_calls": 0,
+          "effective_flush_calls": 0,
+          "due_instances": 0,
+          "flush_ms": 0.0,
+          "flush_backends": {},
+          "window_ms": 3.608310129493475,
+          "other_ms": 0.47252001240849495
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 3.1607593409717083,
+          "flush_calls": 0,
+          "effective_flush_calls": 0,
+          "due_instances": 0,
+          "flush_ms": 0.0,
+          "flush_backends": {},
+          "window_ms": 3.6325603723526,
+          "other_ms": 0.4718010313808918
+        }
+      ],
+      "median": {
+        "window_ms": 3.6325603723526,
+        "step_ms": 3.1607593409717083,
+        "flush_ms": 0.0,
+        "other_ms": 0.47252001240849495,
+        "step_calls": 16,
+        "flush_calls": 0,
+        "effective_flush_calls": 0,
+        "due_instances": 0
+      }
+    },
+    {
+      "batch": 32,
+      "mode": 1,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 45.31524097546935,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 107.83046996220946,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 157.69175998866558,
+          "other_ms": 4.546049050986767
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 45.405338518321514,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 107.91255999356508,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 157.64367999508977,
+          "other_ms": 4.325781483203173
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 47.94335085898638,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 110.57351110503078,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 163.18278992548585,
+          "other_ms": 4.665927961468697
+        }
+      ],
+      "median": {
+        "window_ms": 157.69175998866558,
+        "step_ms": 45.405338518321514,
+        "flush_ms": 107.91255999356508,
+        "other_ms": 4.546049050986767,
+        "step_calls": 16,
+        "flush_calls": 16,
+        "effective_flush_calls": 1,
+        "due_instances": 512
+      }
+    },
+    {
+      "batch": 32,
+      "mode": 2,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 8.557569235563278,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 125.41214190423489,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 139.83737025409937,
+          "other_ms": 5.867659114301205
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 8.560169488191605,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 124.32821979746222,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 138.67643987759948,
+          "other_ms": 5.788050591945648
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 8.596760220825672,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 124.90761978551745,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 139.24209028482437,
+          "other_ms": 5.737710278481245
+        }
+      ],
+      "median": {
+        "window_ms": 139.24209028482437,
+        "step_ms": 8.560169488191605,
+        "flush_ms": 124.90761978551745,
+        "other_ms": 5.788050591945648,
+        "step_calls": 16,
+        "flush_calls": 16,
+        "effective_flush_calls": 1,
+        "due_instances": 512
+      }
+    },
+    {
+      "batch": 32,
+      "mode": 3,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 9.068380109965801,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 128.51672060787678,
+          "flush_backends": {
+            "torch_fallback": 16
+          },
+          "window_ms": 143.97043036296964,
+          "other_ms": 6.385329645127058
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 8.997861295938492,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 127.50355945900083,
+          "flush_backends": {
+            "torch_fallback": 16
+          },
+          "window_ms": 142.99657009541988,
+          "other_ms": 6.495149340480566
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 8.448199834674597,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 512,
+          "flush_ms": 125.6044595502317,
+          "flush_backends": {
+            "torch_fallback": 16
+          },
+          "window_ms": 140.0414602831006,
+          "other_ms": 5.988800898194313
+        }
+      ],
+      "median": {
+        "window_ms": 142.99657009541988,
+        "step_ms": 8.997861295938492,
+        "flush_ms": 127.50355945900083,
+        "other_ms": 6.385329645127058,
+        "step_calls": 16,
+        "flush_calls": 16,
+        "effective_flush_calls": 1,
+        "due_instances": 512
+      }
+    },
+    {
+      "batch": 128,
+      "mode": 0,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 6.480800919234753,
+          "flush_calls": 0,
+          "effective_flush_calls": 0,
+          "due_instances": 0,
+          "flush_ms": 0.0,
+          "flush_backends": {},
+          "window_ms": 7.062519900500774,
+          "other_ms": 0.5817189812660217
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 6.623229943215847,
+          "flush_calls": 0,
+          "effective_flush_calls": 0,
+          "due_instances": 0,
+          "flush_ms": 0.0,
+          "flush_backends": {},
+          "window_ms": 7.210650015622377,
+          "other_ms": 0.5874200724065304
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 6.476028822362423,
+          "flush_calls": 0,
+          "effective_flush_calls": 0,
+          "due_instances": 0,
+          "flush_ms": 0.0,
+          "flush_backends": {},
+          "window_ms": 7.033039815723896,
+          "other_ms": 0.5570109933614731
+        }
+      ],
+      "median": {
+        "window_ms": 7.062519900500774,
+        "step_ms": 6.480800919234753,
+        "flush_ms": 0.0,
+        "other_ms": 0.5817189812660217,
+        "step_calls": 16,
+        "flush_calls": 0,
+        "effective_flush_calls": 0,
+        "due_instances": 0
+      }
+    },
+    {
+      "batch": 128,
+      "mode": 1,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 66.41343049705029,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 168.74710004776716,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 240.76058994978666,
+          "other_ms": 5.600059404969215
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 66.45354954525828,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 168.55989256873727,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 240.54162995889783,
+          "other_ms": 5.528187844902277
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 66.38692039996386,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 167.3010103404522,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 238.88052999973297,
+          "other_ms": 5.192599259316921
+        }
+      ],
+      "median": {
+        "window_ms": 240.54162995889783,
+        "step_ms": 66.41343049705029,
+        "flush_ms": 168.55989256873727,
+        "other_ms": 5.528187844902277,
+        "step_calls": 16,
+        "flush_calls": 16,
+        "effective_flush_calls": 1,
+        "due_instances": 2048
+      }
+    },
+    {
+      "batch": 128,
+      "mode": 2,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 16.29591966047883,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 167.09452914074063,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 188.8070199638605,
+          "other_ms": 5.416571162641048
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 16.453991178423166,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 168.33613999187946,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 190.17837988212705,
+          "other_ms": 5.388248711824417
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 16.76214812323451,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 168.14330080524087,
+          "flush_backends": {
+            "torch": 16
+          },
+          "window_ms": 190.42330980300903,
+          "other_ms": 5.517860874533653
+        }
+      ],
+      "median": {
+        "window_ms": 190.17837988212705,
+        "step_ms": 16.453991178423166,
+        "flush_ms": 168.14330080524087,
+        "other_ms": 5.416571162641048,
+        "step_calls": 16,
+        "flush_calls": 16,
+        "effective_flush_calls": 1,
+        "due_instances": 2048
+      }
+    },
+    {
+      "batch": 128,
+      "mode": 3,
+      "iterations": [
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 16.190459951758385,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 167.48023871332407,
+          "flush_backends": {
+            "torch_fallback": 16
+          },
+          "window_ms": 189.03608992695808,
+          "other_ms": 5.365391261875629
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 16.409100964665413,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 168.76206127926707,
+          "flush_backends": {
+            "torch_fallback": 16
+          },
+          "window_ms": 190.8031296916306,
+          "other_ms": 5.631967447698116
+        },
+        {
+          "window_steps": 16,
+          "step_calls": 16,
+          "step_ms": 16.31902949884534,
+          "flush_calls": 16,
+          "effective_flush_calls": 1,
+          "due_instances": 2048,
+          "flush_ms": 168.5782396234572,
+          "flush_backends": {
+            "torch_fallback": 16
+          },
+          "window_ms": 190.6147301197052,
+          "other_ms": 5.717460997402668
+        }
+      ],
+      "median": {
+        "window_ms": 190.6147301197052,
+        "step_ms": 16.31902949884534,
+        "flush_ms": 168.5782396234572,
+        "other_ms": 5.631967447698116,
+        "step_calls": 16,
+        "flush_calls": 16,
+        "effective_flush_calls": 1,
+        "due_instances": 2048
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "batch": 32,
+      "mode": 1,
+      "dense_window_ms": 3.6325603723526,
+      "leapquant_window_ms": 157.69175998866558,
+      "speedup_vs_dense": 0.023035828711745608,
+      "target_window_ms_at_1_10x": 3.3023276112296363
+    },
+    {
+      "batch": 32,
+      "mode": 2,
+      "dense_window_ms": 3.6325603723526,
+      "leapquant_window_ms": 139.24209028482437,
+      "speedup_vs_dense": 0.026088091358884916,
+      "target_window_ms_at_1_10x": 3.3023276112296363
+    },
+    {
+      "batch": 32,
+      "mode": 3,
+      "dense_window_ms": 3.6325603723526,
+      "leapquant_window_ms": 142.99657009541988,
+      "speedup_vs_dense": 0.025403129389247842,
+      "target_window_ms_at_1_10x": 3.3023276112296363
+    },
+    {
+      "batch": 128,
+      "mode": 1,
+      "dense_window_ms": 7.062519900500774,
+      "leapquant_window_ms": 240.54162995889783,
+      "speedup_vs_dense": 0.029360904811809793,
+      "target_window_ms_at_1_10x": 6.420472636818885
+    },
+    {
+      "batch": 128,
+      "mode": 2,
+      "dense_window_ms": 7.062519900500774,
+      "leapquant_window_ms": 190.17837988212705,
+      "speedup_vs_dense": 0.03713629227927033,
+      "target_window_ms_at_1_10x": 6.420472636818885
+    },
+    {
+      "batch": 128,
+      "mode": 3,
+      "dense_window_ms": 7.062519900500774,
+      "leapquant_window_ms": 190.6147301197052,
+      "speedup_vs_dense": 0.037051280853612645,
+      "target_window_ms_at_1_10x": 6.420472636818885
+    }
+  ]
+}

@@ -19,6 +19,9 @@ _B = None
 _AVAILABLE = None
 _CACHE = {}
 _CACHE_CAP = 256  # keyed by data_ptrs; addresses are stable in decode loops
+_HITS = 0
+_NEW_EXECUTORS = 0
+_FALLBACKS = 0
 _WS_BUF = None  # one shared workspace: the op's kernel takes no workspace
 # argument, and aclnn executions on the same stream are serialized, so a
 # single buffer sized to the max requested workspace serves all executors
@@ -100,8 +103,10 @@ def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
         capturing = torch.npu.is_current_stream_capturing()
     except Exception:
         capturing = False
+    global _HITS, _NEW_EXECUTORS, _FALLBACKS
     bnd = _binding()
     if bnd is None:
+        _FALLBACKS += 1
         return False
     rt, runtime, lib = bnd
     dev = state.device
@@ -118,19 +123,26 @@ def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
     global _WS_BUF
     if hit is not None:
         if capturing and _WS_BUF is None:
+            _FALLBACKS += 1
             return False
         executor = hit[0]
         ret = lib.aclnnGdnLqFlush(
             ctypes.c_void_p(int(_WS_BUF.data_ptr())),
             ctypes.c_uint64(_WS_BUF.numel()),
             executor, ctypes.c_void_p(stream))
-        return ret == 0
+        if ret == 0:
+            _HITS += 1
+            return True
+        _FALLBACKS += 1
+        return False
     if capturing:
         # cannot build aclTensor descriptors / executors mid-capture
+        _FALLBACKS += 1
         return False
     try:
         ctx = rt._CallContext(runtime, dev)
     except Exception:
+        _FALLBACKS += 1
         return False
     try:
         args = [
@@ -179,9 +191,11 @@ def gdn_lq_flush_ascendc(state, idx, q0_rv, num_heads) -> bool:
             _CACHE.clear()
         # keep the tensors alive: the executor bakes their addresses
         _CACHE[key] = (executor, state, idx, q0_rv)
+        _NEW_EXECUTORS += 1
         return True
     except Exception as e:
         import sys
+        _FALLBACKS += 1
         print(f"[gdn-lq-flush] slow-path exception: {type(e).__name__}: {e!r}",
               file=sys.stderr, flush=True)
         return False
@@ -213,3 +227,17 @@ def _state_tensor(pools):
     # the fp32 ssm_state view the pools were built on; the kernel addresses
     # slots through the s_slot byte-stride attribute, heads through HEAD_BYTES
     return pools._state
+
+
+def flush_counters():
+    """Executor-cache counters for the AscendC flush binding.
+
+    ``calls`` counts every entry, including fallbacks. A newly built
+    executor is not also counted as a hit.
+    """
+    return {
+        "calls": _HITS + _NEW_EXECUTORS + _FALLBACKS,
+        "hits": _HITS,
+        "new_executors": _NEW_EXECUTORS,
+        "fallbacks": _FALLBACKS,
+    }
