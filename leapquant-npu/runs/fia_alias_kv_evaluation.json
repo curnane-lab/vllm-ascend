@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "model": "/data/f00538480/Qwen3.5-4B",
+  "device": "Ascend910B3",
+  "graph_mode": "requested FULL; runtime resolves FULL_DECODE_ONLY",
+  "implementation": {
+    "alias_shape": "2N-1",
+    "alias_stride": [131072, 1024, 1],
+    "block_table_mapping": "b >= 0 ? 2*b : b",
+    "private_block_table_buffer_per_layer": true,
+    "scheduler_block_table_modified": false,
+    "writer_view_and_slot_mapping_changed": false,
+    "new_kv_pool_allocation": false
+  },
+  "paired_results": [
+    {
+      "batch": 32,
+      "memory_utilization": 0.35,
+      "tokens_per_request": 64,
+      "original_tpot_ms": 37.37986389300897,
+      "alias_tpot_ms": 18.36800726388382,
+      "speedup": 2.034648990150244,
+      "cross_layout_exact_token_matches": 32,
+      "requests": 32,
+      "repeat_matches": true,
+      "original_torch_allocated_gib": 19.9,
+      "alias_torch_allocated_gib": 19.9
+    },
+    {
+      "batch": 64,
+      "memory_utilization": 0.35,
+      "tokens_per_request": 64,
+      "original_tpot_ms": 45.30132633988701,
+      "alias_tpot_ms": 26.332319378049025,
+      "speedup": 1.720413722253176,
+      "cross_layout_exact_token_matches": 64,
+      "requests": 64,
+      "repeat_matches": true,
+      "original_torch_allocated_gib": 19.9,
+      "alias_torch_allocated_gib": 19.9
+    },
+    {
+      "batch": 64,
+      "memory_utilization": 0.75,
+      "tokens_per_request": 160,
+      "original_tpot_ms": 86.12140025171075,
+      "alias_tpot_ms": 26.110931922613535,
+      "speedup": 3.2982890272531704,
+      "cross_layout_exact_token_matches": 64,
+      "requests": 64,
+      "repeat_matches": true,
+      "original_torch_allocated_gib": 44.29,
+      "alias_torch_allocated_gib": 44.29,
+      "crosses_128_token_block": true
+    }
+  ],
+  "slice_validation": {
+    "original_decode_large_slice_count": 2108,
+    "alias_decode_large_slice_count": 0,
+    "remaining_prefill_slice_count": 48,
+    "note": "The alias currently covers DecodeOnly; prefill materialization is unchanged"
+  },
+  "gdn_budget": [
+    {
+      "batch": 32,
+      "alias_tpot_ms": 18.36800726388382,
+      "target_tpot_at_1_10x_ms": 16.698188421712562,
+      "required_saving_ms": 1.6698188421712565,
+      "packed_recurrent_ms": 4.539664193548385,
+      "required_local_recurrent_speedup": 1.5818497646118719
+    },
+    {
+      "batch": 64,
+      "alias_tpot_ms": 26.332319378049025,
+      "target_tpot_at_1_10x_ms": 23.938472161862748,
+      "required_saving_ms": 2.393847216186277,
+      "packed_recurrent_ms": 9.063115161290323,
+      "required_local_recurrent_speedup": 1.358937028155184
+    }
+  ],
+  "default": "VLLM_ASCEND_FIA_ALIAS_KV=0",
+  "tests": {
+    "attention_and_alias": 42,
+    "allocator_and_hybrid_regressions": 3,
+    "total": 45
+  }
+}

@@ -66,6 +66,35 @@ class TestAttentionGraphHelpers(TestBase):
         self.assertFalse(requires_contiguous_pa_kv_cache(SimpleNamespace(impl=impl), config, padded_spec))
         mock_using_pa.assert_called_once()
 
+    def test_interleaved_kv_alias_preserves_storage_and_block_mapping(self):
+        backing = torch.arange(64)
+        key = backing.as_strided((2, 2, 4), (16, 4, 1), 0)
+        value = backing.as_strided((2, 2, 4), (16, 4, 1), 8)
+        self.assertTrue(attn_module.AscendAttentionBackendImpl._fia_kv_alias_supported(key, value))
+
+        alias_key, alias_value = attn_module.AscendAttentionBackendImpl._alias_fia_kv(key, value)
+        self.assertEqual(alias_key.shape, (3, 2, 4))
+        self.assertEqual(alias_key.stride(), (8, 4, 1))
+        self.assertEqual(alias_key.untyped_storage().data_ptr(), backing.untyped_storage().data_ptr())
+        torch.testing.assert_close(alias_key[0], key[0])
+        torch.testing.assert_close(alias_key[2], key[1])
+        torch.testing.assert_close(alias_value[0], value[0])
+        torch.testing.assert_close(alias_value[2], value[1])
+
+        block_table = torch.tensor([[-1, 0, 1, 3]])
+        remapped = attn_module._remap_fia_block_table(block_table)
+        torch.testing.assert_close(remapped, torch.tensor([[-1, 0, 2, 6]]))
+        provider = attn_module.FIAParamProvider("layer", None, alias_block_table=remapped.clone())
+        metadata = {
+            "layer": SimpleNamespace(
+                actual_seq_lengths_q=[1],
+                seq_lens_list=[1],
+                block_tables=block_table,
+            )
+        }
+        resolved = provider.resolve(metadata)
+        torch.testing.assert_close(resolved["block_table"], remapped)
+
     def test_paged_attention_allocation_checks_any_configured_shape(self):
         config = SimpleNamespace(
             speculative_config=None,

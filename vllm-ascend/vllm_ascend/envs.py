@@ -101,6 +101,17 @@ env_variables: dict[str, Callable[[], Any]] = {
     # also set (2 or 3); falls back to the Triton step whenever a custom op
     # is unavailable or returns False. Default 0 (off). Not sensitive.
     "VLLM_ASCEND_GDN_LQ_STEP_V2": lambda: int(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2", "0")),
+    # Allocate separate contiguous K/V tensors for eligible full-attention
+    # layers instead of interleaved K/V views. This avoids implicit contiguous
+    # copies in FIA, but bypasses hybrid shared backing and can increase memory
+    # use. 0 (default): preserve interleaved views. Valid values: 0, 1.
+    # Not sensitive.
+    "VLLM_ASCEND_FIA_CONTIGUOUS_KV": lambda: _strict_binary_env("VLLM_ASCEND_FIA_CONTIGUOUS_KV"),
+    # Use contiguous aliases over interleaved K/V storage and remap FIA block
+    # tables to even physical blocks. This preserves shared backing and only
+    # adds a small private block-table buffer. 0 (default): disabled.
+    # Valid values: 0, 1. Not sensitive.
+    "VLLM_ASCEND_FIA_ALIAS_KV": lambda: _strict_binary_env("VLLM_ASCEND_FIA_ALIAS_KV"),
 }
 
 # end-env-vars-definition

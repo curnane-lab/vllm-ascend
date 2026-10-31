@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "model": "/data/f00538480/Qwen3.5-4B",
+  "device": "Ascend910B3",
+  "graph_mode": "requested FULL; runtime resolves FULL_DECODE_ONLY",
+  "memory_utilization_for_paired_runs": 0.35,
+  "root_cause": {
+    "original_fia_key_shape": [9135, 128, 1024],
+    "original_fia_key_stride": [262144, 1024, 1],
+    "contiguous_expected_stride": [131072, 1024, 1],
+    "original_slice_output_shape": [9135, 128, 1024],
+    "original_slice_output_dtype": "BF16",
+    "original_slice_output_format": "NCL",
+    "mechanism": "K/V are interleaved by block, so FIA materializes separate contiguous K and V views"
+  },
+  "pool_sensitivity_b32": {
+    "memory_utilization": [0.75, 0.55],
+    "tpot_ms": [78.68766703593013, 58.25152657745916],
+    "full_attention_slice_ms": [59.05075258064516, 38.58067419354839],
+    "attention_core_ms": [0.5659974193548387, 0.5597980645161289]
+  },
+  "paired_results": [
+    {
+      "batch": 32,
+      "original_tpot_ms": 37.37986389300897,
+      "contiguous_tpot_ms": 18.226571543934934,
+      "speedup": 2.0508444938701307,
+      "cross_layout_exact_token_matches": 32,
+      "requests": 32,
+      "tokens_per_request": 64,
+      "contiguous_repeat_matches": true
+    },
+    {
+      "batch": 64,
+      "original_tpot_ms": 45.30132633988701,
+      "contiguous_tpot_ms": 26.182830095335486,
+      "speedup": 1.7301921211319902,
+      "cross_layout_exact_token_matches": 64,
+      "requests": 64,
+      "tokens_per_request": 64,
+      "contiguous_repeat_matches": true
+    }
+  ],
+  "slice_validation": {
+    "original_large_slice_count": 2108,
+    "contiguous_large_slice_count": 0,
+    "contiguous_fia_key_stride": [131072, 1024, 1],
+    "contiguous_fia_value_stride": [131072, 1024, 1],
+    "contiguous_k_and_v_have_independent_storage": true
+  },
+  "memory_cost": {
+    "original_torch_allocated_gib": 19.9,
+    "contiguous_torch_allocated_gib": 53.76,
+    "additional_gib": 33.86,
+    "original_graph_memory_gib": 4.68,
+    "contiguous_graph_memory_gib": 0.44,
+    "note": "Separate K/V bypass hybrid shared backing; this is not a zero-memory-cost optimization"
+  },
+  "default": "VLLM_ASCEND_FIA_CONTIGUOUS_KV=0",
+  "unit_tests": {
+    "attention_v1": 41,
+    "allocator_and_hybrid_regressions": 3
+  }
+}

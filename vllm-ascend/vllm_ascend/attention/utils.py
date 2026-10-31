@@ -15,6 +15,7 @@ from vllm.v1.attention.backend import MLAAttentionImpl
 from vllm.v1.attention.backends.utils import CommonAttentionMetadata
 from vllm.v1.kv_cache_interface import AttentionSpec, CrossAttentionSpec, FullAttentionSpec
 
+from vllm_ascend import envs
 from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
 from vllm_ascend.device.utils import FIA_TND_LARGE_HEAD_FALLBACK_HEAD_SIZE
 from vllm_ascend.utils import (
@@ -213,7 +214,9 @@ def using_paged_attention(runtime_shape: int | None, vllm_config: VllmConfig, he
 
 
 def requires_contiguous_pa_kv_cache(layer, vllm_config: VllmConfig, spec: FullAttentionSpec) -> bool:
-    """Require contiguous K/V only for unpadded ordinary Attention layers eligible for PA."""
+    """Require contiguous K/V for PA or explicitly requested FIA layouts."""
+    if envs.VLLM_ASCEND_FIA_CONTIGUOUS_KV:
+        return True
     # Import lazily to avoid a circular dependency with attention_v1.
     from vllm_ascend.attention.attention_v1 import AscendAttentionBackendImpl
 

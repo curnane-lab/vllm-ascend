@@ -2086,6 +2086,67 @@ class TestNPUModelRunnerKVCache(unittest.TestCase):
                     base_offset + layer_size,
                 )
 
+    @patch("vllm_ascend.worker.model_runner_v1.envs.VLLM_ASCEND_FIA_CONTIGUOUS_KV", True)
+    def test_hybrid_fia_contiguous_kv_allocation(self):
+        attn_name = "model.layers.0.self_attn.attn"
+        mamba_name = "model.layers.1.linear_attn"
+        attn_spec = FullAttentionSpec(
+            block_size=2,
+            num_kv_heads=1,
+            head_size=4,
+            head_size_v=4,
+            dtype=torch.float16,
+        )
+        mamba_spec = MambaSpec(
+            block_size=2,
+            shapes=((2, 4),),
+            dtypes=(torch.float32,),
+        )
+        self.assertEqual(attn_spec.page_size_bytes, mamba_spec.page_size_bytes)
+        num_blocks = 3
+        layer_size = num_blocks * attn_spec.page_size_bytes
+        kv_cache_config = KVCacheConfig(
+            num_blocks=num_blocks,
+            kv_cache_tensors=[
+                KVCacheTensor(
+                    size=layer_size,
+                    layers=[attn_name],
+                    layer_stride=layer_size,
+                    block_stride=attn_spec.page_size_bytes,
+                    offset=0,
+                ),
+                KVCacheTensor(
+                    size=layer_size,
+                    layers=[mamba_name],
+                    layer_stride=layer_size,
+                    block_stride=mamba_spec.page_size_bytes,
+                    offset=0,
+                ),
+            ],
+            kv_cache_groups=[
+                KVCacheGroupSpec(layer_names=[attn_name], kv_cache_spec=attn_spec),
+                KVCacheGroupSpec(layer_names=[mamba_name], kv_cache_spec=mamba_spec),
+            ],
+        )
+        runner = self._build_runner()
+        layout = SimpleNamespace(is_layer_compact=True, is_block_compact=True)
+        runner.vllm_config.cache_config.get_resolved_kv_cache_layout.return_value = layout
+
+        raw_caches = runner._allocate_kv_cache_tensors(kv_cache_config)
+        self.assertIsInstance(raw_caches[attn_name], tuple)
+        key, value = raw_caches[attn_name]
+        for tensor in (key, value):
+            self.assertEqual(tensor.numel(), layer_size // 2)
+            self.assertTrue(tensor.is_contiguous())
+        self.assertNotEqual(key.untyped_storage().data_ptr(), value.untyped_storage().data_ptr())
+
+        key[0].fill_(3)
+        value[1].fill_(5)
+        self.assertTrue(torch.all(key[0] == 3))
+        self.assertTrue(torch.all(value[1] == 5))
+        self.assertEqual(torch.count_nonzero(key[1]), 0)
+        self.assertEqual(torch.count_nonzero(value[0]), 0)
+
     @patch(
         "vllm_ascend.patch.platform.patch_kv_cache_utils.may_override_num_blocks",
         side_effect=lambda _config, num_blocks: num_blocks,

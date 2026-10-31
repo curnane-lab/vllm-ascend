@@ -121,6 +121,7 @@ from vllm.v1.worker.utils import (
 )
 
 # yapf: enable
+from vllm_ascend import envs
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.attention.attention_c8_mxfp import (
     AscendC8MXFPAttentionBackendImpl,
@@ -5112,6 +5113,7 @@ class NPUModelRunner(GPUModelRunner):
             and not self.use_sparse
             and not self.use_compress
             and kv_cache_config.kv_cache_tensors
+            and not envs.VLLM_ASCEND_FIA_CONTIGUOUS_KV
         ):
             layout = self.vllm_config.cache_config.get_resolved_kv_cache_layout()
             tensor_sizes = {tensor.size for tensor in kv_cache_config.kv_cache_tensors}
@@ -5156,8 +5158,30 @@ class NPUModelRunner(GPUModelRunner):
                 if reuse_slot and idx > 0:
                     kv_cache_raw_tensors[layer_name] = kv_cache_raw_tensors[shared_layers[0]]
                     continue
-                # Single tensor path for: mamba, hybrid attn-mamba, or cache_only_layers
                 if (
+                    envs.VLLM_ASCEND_FIA_CONTIGUOUS_KV
+                    and isinstance(layer_kv_cache_spec[layer_name], FullAttentionSpec)
+                    and "linear_attn" not in layer_name
+                    and layer_name not in kv_cache_raw_tensors
+                ):
+                    current_kv_cache_spec = layer_kv_cache_spec[layer_name]
+                    kv_cache_tensor_size = (
+                        kv_cache_config.num_blocks * current_kv_cache_spec.page_size_bytes
+                    )
+                    k_dim, v_dim = self._get_attention_kv_cache_dims(layer_name, current_kv_cache_spec)
+                    kv_head_dim_list = [k_dim, v_dim]
+                    if not self.use_sparse and enable_fa_quant(self.vllm_config):
+                        k_split, v_split = self.vllm_config.quant_config.get_kv_quant_split_factor(
+                            layer_name, kv_head_dim_list
+                        )
+                    else:
+                        k_split, v_split = calc_split_factor(kv_head_dim_list)
+                    kv_cache_raw_tensors[layer_name] = (
+                        self._allocate_int8_cache_tensor(int(kv_cache_tensor_size // k_split), alignment),
+                        self._allocate_int8_cache_tensor(int(kv_cache_tensor_size // v_split), alignment),
+                    )
+                # Single tensor path for: mamba, hybrid attn-mamba, or cache_only_layers
+                elif (
                     "linear_attn" in layer_name
                     or self.hybrid_with_attn_and_mamba
                     or layer_name in strided_attention_cache_layers

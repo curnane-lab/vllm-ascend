@@ -42,6 +42,7 @@ from vllm.v1.attention.ops.pcp import _gather_prefill_cache_inputs  # type: igno
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import AttentionSpec, CrossAttentionSpec
 
+from vllm_ascend import envs
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 from vllm_ascend.attention.attention_mask import AttentionMaskBuilder
 from vllm_ascend.attention.context_parallel.common_cp import (
@@ -477,21 +478,30 @@ class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
         return attn_metadata
 
 
+def _remap_fia_block_table(block_table: torch.Tensor) -> torch.Tensor:
+    return torch.where(block_table >= 0, block_table * 2, block_table)
+
+
 @dataclass(frozen=True, slots=True)
 class FIAParamProvider:
     layer_name: str | None
     sliding_window: int | None
     is_draft_model: bool = False
     is_non_pa: bool = False
+    alias_block_table: torch.Tensor | None = None
 
     def resolve(self, attn_metadata) -> dict[str, Any]:
         metadata = attn_metadata[self.layer_name]
+        block_table = None if self.is_non_pa else metadata.block_tables
+        if self.alias_block_table is not None:
+            self.alias_block_table.copy_(_remap_fia_block_table(block_table))
+            block_table = self.alias_block_table
 
         if self.is_draft_model or not self.sliding_window:
             return {
                 "actual_seq_lengths": metadata.actual_seq_lengths_q,
                 "actual_seq_lengths_kv": metadata.seq_lens_list,
-                "block_table": None if self.is_non_pa else metadata.block_tables,
+                "block_table": block_table,
             }
         else:
             return {
@@ -503,13 +513,18 @@ class FIAParamProvider:
 @dataclass(frozen=True, slots=True)
 class FIAV2ParamProvider:
     layer_name: str | None
+    alias_block_table: torch.Tensor | None = None
 
     def resolve(self, attn_metadata) -> dict[str, Any]:
         metadata = attn_metadata[self.layer_name]
-        return {
+        result = {
             "actual_seq_qlen": metadata.actual_seq_lengths_q,
             "actual_seq_kvlen": metadata.seq_lens_list,
         }
+        if self.alias_block_table is not None:
+            self.alias_block_table.copy_(_remap_fia_block_table(metadata.block_tables))
+            result["block_table"] = self.alias_block_table
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -711,6 +726,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
                 self.sliding_window,
                 _EXTRA_CTX.is_draft_model,
                 is_non_pa=block_table is None,
+                alias_block_table=block_table if self._fia_alias_active else None,
             ),
         )
         return output, num_tokens
@@ -778,7 +794,10 @@ class AscendAttentionBackendImpl(AttentionImpl):
                 "workspace": workspace,
                 "out": [output_view, softmax_lse],
             },
-            FIAV2ParamProvider(self._layer_name),
+            FIAV2ParamProvider(
+                self._layer_name,
+                alias_block_table=block_table if self._fia_alias_active else None,
+            ),
         )
         return output, num_tokens
 
@@ -829,7 +848,33 @@ class AscendAttentionBackendImpl(AttentionImpl):
             _, _, block_size, _ = key.shape
         return key, value, block_size
 
+    @staticmethod
+    def _fia_kv_alias_supported(key: torch.Tensor, value: torch.Tensor) -> bool:
+        if key.dim() != 3 or value.dim() != 3 or key.shape != value.shape:
+            return False
+        block_elements = key.shape[1] * key.shape[2]
+        return (
+            key.stride(0) == 2 * block_elements
+            and value.stride(0) == 2 * block_elements
+            and key.stride(1) == key.shape[2]
+            and value.stride(1) == value.shape[2]
+            and key.stride(2) == 1
+            and value.stride(2) == 1
+        )
+
+    @staticmethod
+    def _alias_fia_kv(key: torch.Tensor, value: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        def alias(tensor):
+            return tensor.as_strided(
+                (2 * tensor.shape[0] - 1, *tensor.shape[1:]),
+                (tensor.stride(0) // 2, *tensor.stride()[1:]),
+                tensor.storage_offset(),
+            )
+
+        return alias(key), alias(value)
+
     def _get_fia_params(self, key: torch.Tensor, value: torch.Tensor, attn_metadata: AscendMetadata, kv_cache=None):
+        self._fia_alias_active = False
         # PrefillNoCache doesn't need key_cache, but other modes do
         # Only initialize/require cache for modes that actually use it
         if attn_metadata.attn_state != AscendAttentionState.PrefillNoCache:
@@ -865,6 +910,10 @@ class AscendAttentionBackendImpl(AttentionImpl):
             key, value, block_size = self._get_kv_cache_view(self.key_cache, self.value_cache)
             block_table = attn_metadata.block_tables
             actual_seq_lengths_kv = attn_metadata.seq_lens_list
+            if envs.VLLM_ASCEND_FIA_ALIAS_KV and self._fia_kv_alias_supported(key, value):
+                self._fia_alias_active = True
+                key, value = self._alias_fia_kv(key, value)
+                block_table = _remap_fia_block_table(block_table)
         # chunked prefill.
         else:
             key, value, block_size = self._get_kv_cache_view(self.key_cache, self.value_cache)

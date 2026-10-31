@@ -1,0 +1,3350 @@
+{
+  "schema_version": 1,
+  "batch": 32,
+  "mode": "dense MR V2, FULL graph, prefix cache off, fixed length",
+  "metrics": {
+    "schema_version": 1,
+    "model": "/data/f00538480/Qwen3.5-4B",
+    "batch": 32,
+    "tokens": 64,
+    "decode_steps": 63,
+    "mode": "dense MR V2, FULL graph, prefix cache off, fixed length",
+    "token_trajectories_match": true,
+    "baseline": {
+      "wall_s": 5.851906500291079,
+      "generated_tokens": 2048,
+      "ttft_ms": {
+        "count": 32,
+        "mean": 884.3189924955368,
+        "median": 884.1731548309326,
+        "min": 875.2343654632568,
+        "max": 893.7380313873291
+      },
+      "tpot_ms": {
+        "count": 32,
+        "mean": 78.68766703593013,
+        "median": 78.71806777511088,
+        "min": 77.74524412132682,
+        "max": 78.71806777511088
+      }
+    },
+    "profile": {
+      "wall_s": 5.838492369744927,
+      "generated_tokens": 2048,
+      "ttft_ms": {
+        "count": 32,
+        "mean": 872.893325984478,
+        "median": 872.7648258209229,
+        "min": 863.9161586761475,
+        "max": 882.2777271270752
+      },
+      "tpot_ms": {
+        "count": 32,
+        "mean": 78.66041065403445,
+        "median": 78.6907306340124,
+        "min": 77.72049127471826,
+        "max": 78.6907306340124
+      }
+    },
+    "trace_dir": "/data/f00538480/vllm-ascend-sketchssm/leapquant-npu/runs/fullgraph_msprof_b32"
+  },
+  "source": "runs/fullgraph_msprof_b32/PROF_000001_20261031140216021_00176035JLGIRIDM/mindstudio_profiler_output/op_summary_20261031140353.csv",
+  "steps": {
+    "complete_pattern_matches": 63,
+    "used": 62,
+    "discarded_last": 1,
+    "layers_per_step": 32
+  },
+  "mean_ms_per_decode_step": {
+    "baseline_tpot": 78.68766703593013,
+    "device_union": 78.46410483870967,
+    "host_estimate": 0.22356219722045978,
+    "gdn": 9.3585,
+    "full_attention": 61.435709677419354,
+    "mlp": 6.5154112903225805,
+    "other": 1.1557056451612904,
+    "outside_gdn": 69.33038881012368,
+    "category_sum": 78.46532661290323,
+    "category_overlap_adjustment": -0.0012217741935529602
+  },
+  "op_duration_ms_per_decode_step": {
+    "gdn": {
+      "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.679040322580645,
+      "MatMulV2": 3.0313141935483876,
+      "CausalConv1d": 0.43442000000000003,
+      "AddRmsNormBias": 0.3775806451612902,
+      "Slice": 0.26979741935483875,
+      "_layer_norm_fwd_1pass_kernel_npu": 0.1755129032258065,
+      "ZerosLike": 0.17459903225806456,
+      "Add": 0.09523322580645158,
+      "IndexCheck": 0.027415806451612897,
+      "Cast": 0.025089677419354837,
+      "Index": 0.024539032258064527,
+      "IndexPutV2": 0.009922580645161288,
+      "GemmaRmsNorm": 0.009850000000000001,
+      "_compute_slot_mapping_kernel": 0.009102258064516129,
+      "GatherV2": 0.008172258064516125,
+      "Sub": 0.007448387096774195,
+      "Fill": 0.003234193548387097,
+      "BroadcastTo": 0.001688387096774194,
+      "ScatterElementsV2": 5.1935483870967745e-05,
+      "LinearIndex": 3.451612903225806e-05
+    },
+    "full_attention": {
+      "Slice": 59.05075258064516,
+      "MatMulV2": 0.9905677419354836,
+      "FusedInferAttentionScore": 0.5659974193548387,
+      "Index": 0.2373512903225806,
+      "AddRmsNormBias": 0.1256241935483871,
+      "split_qkv_rmsnorm_mrope_kernel": 0.10673580645161287,
+      "Mul": 0.09278225806451615,
+      "Sigmoid": 0.0748809677419355,
+      "ScatterPaKvCache": 0.07203161290322582,
+      "IndexCheck": 0.06690612903225807,
+      "Add": 0.05450838709677421
+    },
+    "mlp": {
+      "MatMulV2": 6.077102580645162,
+      "SwiGlu": 0.439630322580645
+    },
+    "other": {
+      "MatMulV2": 1.1191690322580645,
+      "ArgMaxV2": 0.036550967741935475
+    }
+  },
+  "step_records": [
+    {
+      "device_ms": {
+        "gdn": 9.38225,
+        "full_attention": 61.45175,
+        "mlp": 6.52625,
+        "other": 1.16
+      },
+      "device_union_ms": 78.5195,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09581999999999999,
+          "AddRmsNormBias": 0.37939999999999996,
+          "IndexCheck": 0.0282,
+          "Index": 0.02542,
+          "Cast": 0.02466,
+          "BroadcastTo": 0.0016,
+          "IndexPutV2": 0.008960000000000001,
+          "Fill": 0.00316,
+          "_compute_slot_mapping_kernel": 0.00898,
+          "Sub": 0.00736,
+          "GatherV2": 0.008039999999999999,
+          "GemmaRmsNorm": 0.01018,
+          "MatMulV2": 3.0325800000000003,
+          "Slice": 0.27068000000000003,
+          "ZerosLike": 0.17481999999999998,
+          "CausalConv1d": 0.4385400000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.694099999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1754
+        },
+        "full_attention": {
+          "Add": 0.055200000000000006,
+          "AddRmsNormBias": 0.12524,
+          "MatMulV2": 0.9901000000000001,
+          "Slice": 59.05593999999999,
+          "IndexCheck": 0.0669,
+          "Index": 0.24791999999999995,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10696,
+          "ScatterPaKvCache": 0.07206,
+          "FusedInferAttentionScore": 0.5666599999999999,
+          "Sigmoid": 0.07479999999999999,
+          "Mul": 0.09278
+        },
+        "mlp": {
+          "MatMulV2": 6.090779999999999,
+          "SwiGlu": 0.43751999999999996
+        },
+        "other": {
+          "MatMulV2": 1.12334,
+          "ArgMaxV2": 0.0368
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3645,
+        "full_attention": 61.434,
+        "mlp": 6.53525,
+        "other": 1.14875
+      },
+      "device_union_ms": 78.48125,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09488000000000003,
+          "AddRmsNormBias": 0.37777999999999984,
+          "IndexCheck": 0.027280000000000002,
+          "Index": 0.02442,
+          "Cast": 0.02586,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.00932,
+          "Fill": 0.0034,
+          "_compute_slot_mapping_kernel": 0.00876,
+          "Sub": 0.00668,
+          "GatherV2": 0.0081,
+          "GemmaRmsNorm": 0.009880000000000002,
+          "MatMulV2": 3.0324,
+          "Slice": 0.26924,
+          "ZerosLike": 0.17494000000000004,
+          "CausalConv1d": 0.43525999999999987,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.685059999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17604
+        },
+        "full_attention": {
+          "Add": 0.05502,
+          "AddRmsNormBias": 0.12475999999999998,
+          "MatMulV2": 0.9884400000000001,
+          "Slice": 59.05116,
+          "IndexCheck": 0.06676,
+          "Index": 0.24506,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10629999999999999,
+          "ScatterPaKvCache": 0.07208,
+          "FusedInferAttentionScore": 0.55992,
+          "Sigmoid": 0.07508,
+          "Mul": 0.09238
+        },
+        "mlp": {
+          "MatMulV2": 6.097040000000002,
+          "SwiGlu": 0.4413600000000001
+        },
+        "other": {
+          "MatMulV2": 1.11282,
+          "ArgMaxV2": 0.036
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3665,
+        "full_attention": 61.45725,
+        "mlp": 6.514,
+        "other": 1.1565
+      },
+      "device_union_ms": 78.493,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09509999999999999,
+          "AddRmsNormBias": 0.37757999999999997,
+          "IndexCheck": 0.026920000000000003,
+          "Index": 0.02384,
+          "Cast": 0.025359999999999997,
+          "BroadcastTo": 0.00148,
+          "IndexPutV2": 0.008960000000000001,
+          "Fill": 0.003,
+          "_compute_slot_mapping_kernel": 0.00898,
+          "Sub": 0.0071600000000000006,
+          "GatherV2": 0.00824,
+          "GemmaRmsNorm": 0.00992,
+          "MatMulV2": 3.030020000000001,
+          "Slice": 0.2700999999999999,
+          "ZerosLike": 0.17664,
+          "CausalConv1d": 0.43298000000000003,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.690859999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17445999999999998
+        },
+        "full_attention": {
+          "Add": 0.055659999999999994,
+          "AddRmsNormBias": 0.12539999999999998,
+          "MatMulV2": 0.9925,
+          "Slice": 59.04922,
+          "IndexCheck": 0.06747999999999998,
+          "Index": 0.2517,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10574000000000001,
+          "ScatterPaKvCache": 0.07280000000000002,
+          "FusedInferAttentionScore": 0.57126,
+          "Sigmoid": 0.07482000000000001,
+          "Mul": 0.0927
+        },
+        "mlp": {
+          "MatMulV2": 6.0761,
+          "SwiGlu": 0.43879999999999997
+        },
+        "other": {
+          "MatMulV2": 1.12106,
+          "ArgMaxV2": 0.03548
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.368,
+        "full_attention": 61.456,
+        "mlp": 6.51975,
+        "other": 1.15925
+      },
+      "device_union_ms": 78.5015,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09648000000000001,
+          "AddRmsNormBias": 0.37668000000000007,
+          "IndexCheck": 0.02692,
+          "Index": 0.025020000000000004,
+          "Cast": 0.024779999999999996,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.008919999999999999,
+          "Fill": 0.00306,
+          "_compute_slot_mapping_kernel": 0.00926,
+          "Sub": 0.0072,
+          "GatherV2": 0.00808,
+          "GemmaRmsNorm": 0.009980000000000001,
+          "MatMulV2": 3.03094,
+          "Slice": 0.2688800000000001,
+          "ZerosLike": 0.17538000000000004,
+          "CausalConv1d": 0.43736,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.687740000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17500000000000002
+        },
+        "full_attention": {
+          "Add": 0.05462,
+          "AddRmsNormBias": 0.12534,
+          "MatMulV2": 0.9887800000000001,
+          "Slice": 59.05226000000001,
+          "IndexCheck": 0.06724000000000001,
+          "Index": 0.25170000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10687999999999999,
+          "ScatterPaKvCache": 0.07202,
+          "FusedInferAttentionScore": 0.5717199999999999,
+          "Sigmoid": 0.0749,
+          "Mul": 0.0926
+        },
+        "mlp": {
+          "MatMulV2": 6.079240000000001,
+          "SwiGlu": 0.44126
+        },
+        "other": {
+          "MatMulV2": 1.12064,
+          "ArgMaxV2": 0.0384
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36575,
+        "full_attention": 61.44175,
+        "mlp": 6.52275,
+        "other": 1.14775
+      },
+      "device_union_ms": 78.4755,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09445999999999999,
+          "AddRmsNormBias": 0.37732000000000016,
+          "IndexCheck": 0.028079999999999997,
+          "Index": 0.023840000000000004,
+          "Cast": 0.02508,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.01036,
+          "Fill": 0.0032,
+          "_compute_slot_mapping_kernel": 0.00872,
+          "Sub": 0.0074399999999999996,
+          "GatherV2": 0.008320000000000001,
+          "GemmaRmsNorm": 0.009980000000000001,
+          "MatMulV2": 3.03342,
+          "Slice": 0.26872000000000007,
+          "ZerosLike": 0.17422,
+          "CausalConv1d": 0.43629999999999997,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.686780000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17514
+        },
+        "full_attention": {
+          "Add": 0.05416000000000001,
+          "AddRmsNormBias": 0.12552,
+          "MatMulV2": 0.9924,
+          "Slice": 59.042519999999996,
+          "IndexCheck": 0.06722,
+          "Index": 0.25251999999999997,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10638000000000002,
+          "ScatterPaKvCache": 0.07194,
+          "FusedInferAttentionScore": 0.5642999999999999,
+          "Sigmoid": 0.07447999999999999,
+          "Mul": 0.09251999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.083879999999998,
+          "SwiGlu": 0.44018000000000007
+        },
+        "other": {
+          "MatMulV2": 1.1111199999999999,
+          "ArgMaxV2": 0.03686
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3825,
+        "full_attention": 61.42125,
+        "mlp": 6.528,
+        "other": 1.15925
+      },
+      "device_union_ms": 78.4895,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09441999999999999,
+          "AddRmsNormBias": 0.3779800000000001,
+          "IndexCheck": 0.027780000000000003,
+          "Index": 0.031039999999999998,
+          "Cast": 0.02504,
+          "BroadcastTo": 0.00196,
+          "IndexPutV2": 0.01416,
+          "Fill": 0.0030800000000000003,
+          "_compute_slot_mapping_kernel": 0.009,
+          "Sub": 0.0071200000000000005,
+          "GatherV2": 0.00818,
+          "GemmaRmsNorm": 0.00962,
+          "MatMulV2": 3.0359399999999996,
+          "Slice": 0.26976000000000006,
+          "ZerosLike": 0.17506,
+          "CausalConv1d": 0.4344,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.68822,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17506
+        },
+        "full_attention": {
+          "Add": 0.05516,
+          "AddRmsNormBias": 0.1252,
+          "MatMulV2": 0.9939000000000001,
+          "Slice": 59.04691999999999,
+          "IndexCheck": 0.06692,
+          "Index": 0.23738000000000004,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10507999999999999,
+          "ScatterPaKvCache": 0.07158000000000002,
+          "FusedInferAttentionScore": 0.55432,
+          "Sigmoid": 0.075,
+          "Mul": 0.09308000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.089480000000002,
+          "SwiGlu": 0.43996
+        },
+        "other": {
+          "MatMulV2": 1.12312,
+          "ArgMaxV2": 0.036340000000000004
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36775,
+        "full_attention": 61.42075,
+        "mlp": 6.521,
+        "other": 1.157
+      },
+      "device_union_ms": 78.4655,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09568,
+          "AddRmsNormBias": 0.37674,
+          "IndexCheck": 0.02608,
+          "Index": 0.0255,
+          "Cast": 0.02442,
+          "BroadcastTo": 0.0016,
+          "IndexPutV2": 0.00888,
+          "Fill": 0.003,
+          "_compute_slot_mapping_kernel": 0.0086,
+          "Sub": 0.00684,
+          "GatherV2": 0.00822,
+          "GemmaRmsNorm": 0.009720000000000001,
+          "MatMulV2": 3.0310199999999994,
+          "Slice": 0.26861999999999997,
+          "ZerosLike": 0.17521999999999993,
+          "CausalConv1d": 0.4402,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6843,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17717999999999995
+        },
+        "full_attention": {
+          "Add": 0.05498,
+          "AddRmsNormBias": 0.12479999999999998,
+          "MatMulV2": 0.9890200000000002,
+          "Slice": 59.05218000000001,
+          "IndexCheck": 0.067,
+          "Index": 0.23418,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10860000000000002,
+          "ScatterPaKvCache": 0.07204,
+          "FusedInferAttentionScore": 0.5525599999999999,
+          "Sigmoid": 0.0754,
+          "Mul": 0.09218
+        },
+        "mlp": {
+          "MatMulV2": 6.08416,
+          "SwiGlu": 0.4373
+        },
+        "other": {
+          "MatMulV2": 1.1188399999999998,
+          "ArgMaxV2": 0.03814
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36125,
+        "full_attention": 61.43325,
+        "mlp": 6.52725,
+        "other": 1.1545
+      },
+      "device_union_ms": 78.475,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09606000000000003,
+          "AddRmsNormBias": 0.37789999999999996,
+          "IndexCheck": 0.027719999999999998,
+          "Index": 0.02386,
+          "Cast": 0.02612,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.00904,
+          "Fill": 0.003,
+          "_compute_slot_mapping_kernel": 0.00898,
+          "Sub": 0.007640000000000001,
+          "GatherV2": 0.00836,
+          "GemmaRmsNorm": 0.00958,
+          "MatMulV2": 3.0287200000000007,
+          "Slice": 0.2697,
+          "ZerosLike": 0.17476000000000005,
+          "CausalConv1d": 0.43154,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.68552,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17561999999999997
+        },
+        "full_attention": {
+          "Add": 0.05546000000000001,
+          "AddRmsNormBias": 0.12481999999999999,
+          "MatMulV2": 0.99312,
+          "Slice": 59.04709999999999,
+          "IndexCheck": 0.06656000000000001,
+          "Index": 0.23704000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10701999999999999,
+          "ScatterPaKvCache": 0.07184,
+          "FusedInferAttentionScore": 0.56516,
+          "Sigmoid": 0.07488000000000002,
+          "Mul": 0.09228
+        },
+        "mlp": {
+          "MatMulV2": 6.0896599999999985,
+          "SwiGlu": 0.43900000000000006
+        },
+        "other": {
+          "MatMulV2": 1.11758,
+          "ArgMaxV2": 0.03704
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35525,
+        "full_attention": 61.42875,
+        "mlp": 6.5335,
+        "other": 1.1595
+      },
+      "device_union_ms": 78.47625,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09444,
+          "AddRmsNormBias": 0.3771799999999999,
+          "IndexCheck": 0.027659999999999997,
+          "Index": 0.02454,
+          "Cast": 0.02404,
+          "BroadcastTo": 0.0016,
+          "IndexPutV2": 0.0089,
+          "Fill": 0.0029,
+          "_compute_slot_mapping_kernel": 0.00884,
+          "Sub": 0.0074199999999999995,
+          "GatherV2": 0.00826,
+          "GemmaRmsNorm": 0.0101,
+          "MatMulV2": 3.0269600000000003,
+          "Slice": 0.26968,
+          "ZerosLike": 0.17461999999999997,
+          "CausalConv1d": 0.4359599999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.683559999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17486000000000004
+        },
+        "full_attention": {
+          "Add": 0.05568,
+          "AddRmsNormBias": 0.12597999999999998,
+          "MatMulV2": 0.9943799999999998,
+          "Slice": 59.040020000000005,
+          "IndexCheck": 0.06698,
+          "Index": 0.23902000000000004,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10714000000000001,
+          "ScatterPaKvCache": 0.07203999999999999,
+          "FusedInferAttentionScore": 0.5639200000000001,
+          "Sigmoid": 0.07474,
+          "Mul": 0.09194
+        },
+        "mlp": {
+          "MatMulV2": 6.092939999999999,
+          "SwiGlu": 0.44128
+        },
+        "other": {
+          "MatMulV2": 1.1234000000000002,
+          "ArgMaxV2": 0.03596
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.369,
+        "full_attention": 61.4455,
+        "mlp": 6.51825,
+        "other": 1.15175
+      },
+      "device_union_ms": 78.483,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09482,
+          "AddRmsNormBias": 0.37726,
+          "IndexCheck": 0.02714,
+          "Index": 0.02384,
+          "Cast": 0.02584,
+          "BroadcastTo": 0.0019,
+          "IndexPutV2": 0.00904,
+          "Fill": 0.0035,
+          "_compute_slot_mapping_kernel": 0.00884,
+          "Sub": 0.00766,
+          "GatherV2": 0.00818,
+          "GemmaRmsNorm": 0.00996,
+          "MatMulV2": 3.03108,
+          "Slice": 0.26875999999999994,
+          "ZerosLike": 0.17456,
+          "CausalConv1d": 0.4389,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.685179999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17630000000000004
+        },
+        "full_attention": {
+          "Add": 0.054419999999999996,
+          "AddRmsNormBias": 0.12652,
+          "MatMulV2": 0.99098,
+          "Slice": 59.068020000000004,
+          "IndexCheck": 0.06698,
+          "Index": 0.23856,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10754000000000001,
+          "ScatterPaKvCache": 0.07174,
+          "FusedInferAttentionScore": 0.5562999999999999,
+          "Sigmoid": 0.07418000000000001,
+          "Mul": 0.09309999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.079460000000001,
+          "SwiGlu": 0.43878
+        },
+        "other": {
+          "MatMulV2": 1.1160999999999999,
+          "ArgMaxV2": 0.0357
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3675,
+        "full_attention": 61.43625,
+        "mlp": 6.53325,
+        "other": 1.1635
+      },
+      "device_union_ms": 78.4985,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09535999999999997,
+          "AddRmsNormBias": 0.37745999999999996,
+          "IndexCheck": 0.027280000000000002,
+          "Index": 0.025020000000000004,
+          "Cast": 0.02474,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.00894,
+          "Fill": 0.00296,
+          "_compute_slot_mapping_kernel": 0.00908,
+          "Sub": 0.007560000000000001,
+          "GatherV2": 0.008199999999999999,
+          "GemmaRmsNorm": 0.009460000000000001,
+          "MatMulV2": 3.031460000000001,
+          "Slice": 0.26763999999999993,
+          "ZerosLike": 0.17506,
+          "CausalConv1d": 0.43706000000000006,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.686120000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17482
+        },
+        "full_attention": {
+          "Add": 0.054860000000000006,
+          "AddRmsNormBias": 0.12553999999999998,
+          "MatMulV2": 0.9928400000000001,
+          "Slice": 59.04116,
+          "IndexCheck": 0.06678,
+          "Index": 0.23793999999999998,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10672,
+          "ScatterPaKvCache": 0.07204,
+          "FusedInferAttentionScore": 0.5726,
+          "Sigmoid": 0.07512,
+          "Mul": 0.09209999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.094139999999999,
+          "SwiGlu": 0.44025999999999993
+        },
+        "other": {
+          "MatMulV2": 1.1273199999999999,
+          "ArgMaxV2": 0.036340000000000004
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.266,
+        "full_attention": 61.4735,
+        "mlp": 6.4755,
+        "other": 1.1465
+      },
+      "device_union_ms": 78.36025,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09354,
+          "AddRmsNormBias": 0.37717999999999996,
+          "IndexCheck": 0.031459999999999995,
+          "Index": 0.03112,
+          "Cast": 0.025600000000000005,
+          "BroadcastTo": 0.0017800000000000001,
+          "IndexPutV2": 0.0089,
+          "Fill": 0.01806,
+          "LinearIndex": 0.00214,
+          "ScatterElementsV2": 0.00322,
+          "_compute_slot_mapping_kernel": 0.00868,
+          "Sub": 0.007379999999999999,
+          "GatherV2": 0.007719999999999999,
+          "GemmaRmsNorm": 0.009720000000000001,
+          "MatMulV2": 3.0334199999999996,
+          "Slice": 0.27055999999999997,
+          "ZerosLike": 0.17440000000000005,
+          "CausalConv1d": 0.43648000000000015,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.55408,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1758
+        },
+        "full_attention": {
+          "Add": 0.05391999999999999,
+          "AddRmsNormBias": 0.12486000000000001,
+          "MatMulV2": 0.9909600000000001,
+          "Slice": 59.089479999999995,
+          "IndexCheck": 0.06670000000000001,
+          "Index": 0.23620000000000002,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10424000000000001,
+          "ScatterPaKvCache": 0.07198,
+          "FusedInferAttentionScore": 0.5684,
+          "Sigmoid": 0.0749,
+          "Mul": 0.09322
+        },
+        "mlp": {
+          "MatMulV2": 6.0360200000000015,
+          "SwiGlu": 0.43944000000000005
+        },
+        "other": {
+          "MatMulV2": 1.11022,
+          "ArgMaxV2": 0.03616
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3855,
+        "full_attention": 61.456,
+        "mlp": 6.5175,
+        "other": 1.19725
+      },
+      "device_union_ms": 78.55525,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09550000000000003,
+          "AddRmsNormBias": 0.38866000000000006,
+          "IndexCheck": 0.027420000000000003,
+          "Index": 0.023280000000000002,
+          "Cast": 0.02458,
+          "BroadcastTo": 0.00148,
+          "IndexPutV2": 0.01088,
+          "Fill": 0.0028399999999999996,
+          "_compute_slot_mapping_kernel": 0.00914,
+          "Sub": 0.006900000000000001,
+          "GatherV2": 0.00846,
+          "GemmaRmsNorm": 0.010199999999999999,
+          "MatMulV2": 3.0264800000000007,
+          "Slice": 0.26811999999999997,
+          "ZerosLike": 0.17394000000000004,
+          "CausalConv1d": 0.43602,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.700019999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17574
+        },
+        "full_attention": {
+          "Add": 0.05418000000000001,
+          "AddRmsNormBias": 0.12622000000000003,
+          "MatMulV2": 0.9893199999999999,
+          "Slice": 59.061,
+          "IndexCheck": 0.07024,
+          "Index": 0.24098,
+          "split_qkv_rmsnorm_mrope_kernel": 0.1056,
+          "ScatterPaKvCache": 0.0727,
+          "FusedInferAttentionScore": 0.5722,
+          "Sigmoid": 0.07180000000000002,
+          "Mul": 0.09352
+        },
+        "mlp": {
+          "MatMulV2": 6.077979999999998,
+          "SwiGlu": 0.44178000000000006
+        },
+        "other": {
+          "MatMulV2": 1.1623599999999998,
+          "ArgMaxV2": 0.03492
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35225,
+        "full_attention": 61.45,
+        "mlp": 6.51375,
+        "other": 1.1475
+      },
+      "device_union_ms": 78.462,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09501999999999998,
+          "AddRmsNormBias": 0.3786400000000001,
+          "IndexCheck": 0.031279999999999995,
+          "Index": 0.02468,
+          "Cast": 0.024979999999999995,
+          "BroadcastTo": 0.00158,
+          "IndexPutV2": 0.009460000000000001,
+          "Fill": 0.00302,
+          "_compute_slot_mapping_kernel": 0.00898,
+          "Sub": 0.007520000000000001,
+          "GatherV2": 0.00828,
+          "GemmaRmsNorm": 0.009859999999999999,
+          "MatMulV2": 3.025119999999999,
+          "Slice": 0.26998,
+          "ZerosLike": 0.17469999999999994,
+          "CausalConv1d": 0.43320000000000003,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67716,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17600000000000002
+        },
+        "full_attention": {
+          "Add": 0.05439999999999999,
+          "AddRmsNormBias": 0.12522,
+          "MatMulV2": 0.9930800000000001,
+          "Slice": 59.05882,
+          "IndexCheck": 0.0688,
+          "Index": 0.23514,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10715999999999998,
+          "ScatterPaKvCache": 0.07211999999999999,
+          "FusedInferAttentionScore": 0.57,
+          "Sigmoid": 0.07416000000000002,
+          "Mul": 0.0931
+        },
+        "mlp": {
+          "MatMulV2": 6.076260000000002,
+          "SwiGlu": 0.4396
+        },
+        "other": {
+          "MatMulV2": 1.11242,
+          "ArgMaxV2": 0.035
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3555,
+        "full_attention": 61.437,
+        "mlp": 6.52025,
+        "other": 1.15375
+      },
+      "device_union_ms": 78.46475,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09545999999999998,
+          "AddRmsNormBias": 0.37568,
+          "IndexCheck": 0.026120000000000004,
+          "Index": 0.023719999999999998,
+          "Cast": 0.025639999999999996,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.01114,
+          "Fill": 0.00304,
+          "_compute_slot_mapping_kernel": 0.00924,
+          "Sub": 0.0076,
+          "GatherV2": 0.00828,
+          "GemmaRmsNorm": 0.0101,
+          "MatMulV2": 3.0290599999999994,
+          "Slice": 0.27004000000000006,
+          "ZerosLike": 0.17437999999999998,
+          "CausalConv1d": 0.43467999999999996,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.678280000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1765
+        },
+        "full_attention": {
+          "Add": 0.054900000000000004,
+          "AddRmsNormBias": 0.12619999999999998,
+          "MatMulV2": 0.9893799999999999,
+          "Slice": 59.0532,
+          "IndexCheck": 0.06722,
+          "Index": 0.23366000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10734,
+          "ScatterPaKvCache": 0.07138000000000001,
+          "FusedInferAttentionScore": 0.56766,
+          "Sigmoid": 0.07554000000000001,
+          "Mul": 0.09276
+        },
+        "mlp": {
+          "MatMulV2": 6.081100000000001,
+          "SwiGlu": 0.4394
+        },
+        "other": {
+          "MatMulV2": 1.11816,
+          "ArgMaxV2": 0.03548
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35675,
+        "full_attention": 61.41875,
+        "mlp": 6.50725,
+        "other": 1.163
+      },
+      "device_union_ms": 78.44475,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09581999999999999,
+          "AddRmsNormBias": 0.37722,
+          "IndexCheck": 0.02654,
+          "Index": 0.02422,
+          "Cast": 0.02512,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.008919999999999999,
+          "Fill": 0.0028799999999999997,
+          "_compute_slot_mapping_kernel": 0.008919999999999999,
+          "Sub": 0.007,
+          "GatherV2": 0.008140000000000001,
+          "GemmaRmsNorm": 0.00982,
+          "MatMulV2": 3.03046,
+          "Slice": 0.27021999999999985,
+          "ZerosLike": 0.17430000000000004,
+          "CausalConv1d": 0.4321399999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.686719999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17502000000000004
+        },
+        "full_attention": {
+          "Add": 0.05490000000000001,
+          "AddRmsNormBias": 0.12646000000000002,
+          "MatMulV2": 0.99278,
+          "Slice": 59.042840000000005,
+          "IndexCheck": 0.0658,
+          "Index": 0.23998,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10624,
+          "ScatterPaKvCache": 0.07211999999999999,
+          "FusedInferAttentionScore": 0.5519599999999999,
+          "Sigmoid": 0.07478,
+          "Mul": 0.09240000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.07088,
+          "SwiGlu": 0.43745999999999996
+        },
+        "other": {
+          "MatMulV2": 1.12664,
+          "ArgMaxV2": 0.03624
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36475,
+        "full_attention": 61.414,
+        "mlp": 6.53175,
+        "other": 1.15175
+      },
+      "device_union_ms": 78.46175,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09528000000000005,
+          "AddRmsNormBias": 0.37845999999999996,
+          "IndexCheck": 0.027620000000000002,
+          "Index": 0.023780000000000003,
+          "Cast": 0.025539999999999997,
+          "BroadcastTo": 0.00184,
+          "IndexPutV2": 0.00908,
+          "Fill": 0.0032,
+          "_compute_slot_mapping_kernel": 0.00906,
+          "Sub": 0.007679999999999999,
+          "GatherV2": 0.008140000000000001,
+          "GemmaRmsNorm": 0.00984,
+          "MatMulV2": 3.0269800000000004,
+          "Slice": 0.27025999999999994,
+          "ZerosLike": 0.17464000000000002,
+          "CausalConv1d": 0.4348599999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.68852,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1764
+        },
+        "full_attention": {
+          "Add": 0.0538,
+          "AddRmsNormBias": 0.12610000000000002,
+          "MatMulV2": 0.98948,
+          "Slice": 59.02793999999998,
+          "IndexCheck": 0.06720000000000001,
+          "Index": 0.2383,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10866,
+          "ScatterPaKvCache": 0.07186000000000001,
+          "FusedInferAttentionScore": 0.56608,
+          "Sigmoid": 0.07486,
+          "Mul": 0.09287999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.094420000000001,
+          "SwiGlu": 0.43810000000000004
+        },
+        "other": {
+          "MatMulV2": 1.11476,
+          "ArgMaxV2": 0.03706
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36375,
+        "full_attention": 61.454,
+        "mlp": 6.51,
+        "other": 1.15225
+      },
+      "device_union_ms": 78.479,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09516,
+          "AddRmsNormBias": 0.37676000000000004,
+          "IndexCheck": 0.02688,
+          "Index": 0.02374,
+          "Cast": 0.0251,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.00898,
+          "Fill": 0.0030800000000000003,
+          "_compute_slot_mapping_kernel": 0.00898,
+          "Sub": 0.0071200000000000005,
+          "GatherV2": 0.009880000000000002,
+          "GemmaRmsNorm": 0.009439999999999999,
+          "MatMulV2": 3.0394200000000002,
+          "Slice": 0.2707400000000001,
+          "ZerosLike": 0.17414000000000002,
+          "CausalConv1d": 0.43318000000000006,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.681619999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17556
+        },
+        "full_attention": {
+          "Add": 0.053899999999999997,
+          "AddRmsNormBias": 0.12619999999999998,
+          "MatMulV2": 0.98926,
+          "Slice": 59.0578,
+          "IndexCheck": 0.06639999999999999,
+          "Index": 0.23976000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10837999999999999,
+          "ScatterPaKvCache": 0.07203999999999999,
+          "FusedInferAttentionScore": 0.5742999999999999,
+          "Sigmoid": 0.07504000000000001,
+          "Mul": 0.09290000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.0716800000000015,
+          "SwiGlu": 0.4382399999999999
+        },
+        "other": {
+          "MatMulV2": 1.11704,
+          "ArgMaxV2": 0.03522
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36525,
+        "full_attention": 61.4195,
+        "mlp": 6.5095,
+        "other": 1.16125
+      },
+      "device_union_ms": 78.454,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09506,
+          "AddRmsNormBias": 0.3785,
+          "IndexCheck": 0.02836,
+          "Index": 0.02472,
+          "Cast": 0.02524,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.011179999999999999,
+          "Fill": 0.00312,
+          "_compute_slot_mapping_kernel": 0.00886,
+          "Sub": 0.0073999999999999995,
+          "GatherV2": 0.00822,
+          "GemmaRmsNorm": 0.009859999999999999,
+          "MatMulV2": 3.0326999999999997,
+          "Slice": 0.27034,
+          "ZerosLike": 0.17508000000000004,
+          "CausalConv1d": 0.43724,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6758999999999995,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17582
+        },
+        "full_attention": {
+          "Add": 0.05524000000000001,
+          "AddRmsNormBias": 0.12529999999999997,
+          "MatMulV2": 0.9906399999999999,
+          "Slice": 59.045019999999994,
+          "IndexCheck": 0.06711999999999999,
+          "Index": 0.23602,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10668000000000001,
+          "ScatterPaKvCache": 0.07174000000000001,
+          "FusedInferAttentionScore": 0.55628,
+          "Sigmoid": 0.07519999999999999,
+          "Mul": 0.09322000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.070740000000001,
+          "SwiGlu": 0.4404199999999999
+        },
+        "other": {
+          "MatMulV2": 1.12568,
+          "ArgMaxV2": 0.0356
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3615,
+        "full_attention": 61.4265,
+        "mlp": 6.52425,
+        "other": 1.1545
+      },
+      "device_union_ms": 78.4655,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09520000000000002,
+          "AddRmsNormBias": 0.378,
+          "IndexCheck": 0.02664,
+          "Index": 0.028739999999999998,
+          "Cast": 0.02574,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.00894,
+          "Fill": 0.0028399999999999996,
+          "_compute_slot_mapping_kernel": 0.00884,
+          "Sub": 0.0075,
+          "GatherV2": 0.00822,
+          "GemmaRmsNorm": 0.01,
+          "MatMulV2": 3.03028,
+          "Slice": 0.27,
+          "ZerosLike": 0.1752,
+          "CausalConv1d": 0.4343000000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.677380000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17654000000000003
+        },
+        "full_attention": {
+          "Add": 0.054560000000000004,
+          "AddRmsNormBias": 0.12532000000000001,
+          "MatMulV2": 0.9880399999999997,
+          "Slice": 59.04262,
+          "IndexCheck": 0.06686,
+          "Index": 0.23544,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10672,
+          "ScatterPaKvCache": 0.07196,
+          "FusedInferAttentionScore": 0.56828,
+          "Sigmoid": 0.07576,
+          "Mul": 0.0925
+        },
+        "mlp": {
+          "MatMulV2": 6.087880000000003,
+          "SwiGlu": 0.4378
+        },
+        "other": {
+          "MatMulV2": 1.11724,
+          "ArgMaxV2": 0.03732
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.359,
+        "full_attention": 61.42025,
+        "mlp": 6.5035,
+        "other": 1.15425
+      },
+      "device_union_ms": 78.43475,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.0967,
+          "AddRmsNormBias": 0.3771600000000001,
+          "IndexCheck": 0.02724,
+          "Index": 0.024460000000000003,
+          "Cast": 0.0248,
+          "BroadcastTo": 0.0016200000000000001,
+          "IndexPutV2": 0.00886,
+          "Fill": 0.00304,
+          "_compute_slot_mapping_kernel": 0.01332,
+          "Sub": 0.00728,
+          "GatherV2": 0.00818,
+          "GemmaRmsNorm": 0.00996,
+          "MatMulV2": 3.0267799999999996,
+          "Slice": 0.26965999999999996,
+          "ZerosLike": 0.17468000000000003,
+          "CausalConv1d": 0.43421999999999994,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67988,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17667999999999998
+        },
+        "full_attention": {
+          "Add": 0.05460000000000002,
+          "AddRmsNormBias": 0.12574000000000002,
+          "MatMulV2": 0.9923399999999999,
+          "Slice": 59.04022,
+          "IndexCheck": 0.06688,
+          "Index": 0.23306000000000002,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10741999999999999,
+          "ScatterPaKvCache": 0.07216,
+          "FusedInferAttentionScore": 0.56268,
+          "Sigmoid": 0.07454000000000001,
+          "Mul": 0.09272
+        },
+        "mlp": {
+          "MatMulV2": 6.063599999999998,
+          "SwiGlu": 0.44082000000000005
+        },
+        "other": {
+          "MatMulV2": 1.11822,
+          "ArgMaxV2": 0.03606
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.37175,
+        "full_attention": 61.43275,
+        "mlp": 6.51225,
+        "other": 1.15525
+      },
+      "device_union_ms": 78.4715,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09514,
+          "AddRmsNormBias": 0.37736000000000003,
+          "IndexCheck": 0.02782,
+          "Index": 0.023759999999999996,
+          "Cast": 0.02476,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.00908,
+          "Fill": 0.00292,
+          "_compute_slot_mapping_kernel": 0.00866,
+          "Sub": 0.00748,
+          "GatherV2": 0.00834,
+          "GemmaRmsNorm": 0.01014,
+          "MatMulV2": 3.0424000000000007,
+          "Slice": 0.2696200000000001,
+          "ZerosLike": 0.17478000000000002,
+          "CausalConv1d": 0.43538000000000004,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.68182,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17584000000000002
+        },
+        "full_attention": {
+          "Add": 0.053620000000000015,
+          "AddRmsNormBias": 0.12616,
+          "MatMulV2": 0.9939800000000001,
+          "Slice": 59.0488,
+          "IndexCheck": 0.06666,
+          "Index": 0.2336,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10698,
+          "ScatterPaKvCache": 0.07260000000000001,
+          "FusedInferAttentionScore": 0.5652,
+          "Sigmoid": 0.07492000000000001,
+          "Mul": 0.0929
+        },
+        "mlp": {
+          "MatMulV2": 6.073600000000002,
+          "SwiGlu": 0.44005999999999995
+        },
+        "other": {
+          "MatMulV2": 1.11866,
+          "ArgMaxV2": 0.03644
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.34325,
+        "full_attention": 61.40325,
+        "mlp": 6.5115,
+        "other": 1.1505
+      },
+      "device_union_ms": 78.408,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09596000000000002,
+          "AddRmsNormBias": 0.37680000000000013,
+          "IndexCheck": 0.02682,
+          "Index": 0.02374,
+          "Cast": 0.0249,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.00932,
+          "Fill": 0.00298,
+          "_compute_slot_mapping_kernel": 0.00912,
+          "Sub": 0.0070599999999999994,
+          "GatherV2": 0.00802,
+          "GemmaRmsNorm": 0.009640000000000001,
+          "MatMulV2": 3.0279000000000007,
+          "Slice": 0.26858,
+          "ZerosLike": 0.17466,
+          "CausalConv1d": 0.43460000000000004,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67288,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17491999999999996
+        },
+        "full_attention": {
+          "Add": 0.05474,
+          "AddRmsNormBias": 0.12588,
+          "MatMulV2": 0.98884,
+          "Slice": 59.032,
+          "IndexCheck": 0.06692000000000001,
+          "Index": 0.23435999999999996,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10728,
+          "ScatterPaKvCache": 0.07216,
+          "FusedInferAttentionScore": 0.55494,
+          "Sigmoid": 0.0749,
+          "Mul": 0.09329999999999998
+        },
+        "mlp": {
+          "MatMulV2": 6.073260000000003,
+          "SwiGlu": 0.43996
+        },
+        "other": {
+          "MatMulV2": 1.11444,
+          "ArgMaxV2": 0.03606
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3525,
+        "full_attention": 61.42775,
+        "mlp": 6.511,
+        "other": 1.1535
+      },
+      "device_union_ms": 78.4435,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09516000000000001,
+          "AddRmsNormBias": 0.37944000000000017,
+          "IndexCheck": 0.026119999999999997,
+          "Index": 0.02486,
+          "Cast": 0.024779999999999993,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.01074,
+          "Fill": 0.0031,
+          "_compute_slot_mapping_kernel": 0.0089,
+          "Sub": 0.00784,
+          "GatherV2": 0.008199999999999999,
+          "GemmaRmsNorm": 0.00984,
+          "MatMulV2": 3.0262199999999995,
+          "Slice": 0.26993999999999996,
+          "ZerosLike": 0.17418,
+          "CausalConv1d": 0.43298,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67806,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17546000000000003
+        },
+        "full_attention": {
+          "Add": 0.05507999999999999,
+          "AddRmsNormBias": 0.12479999999999998,
+          "MatMulV2": 0.9871400000000001,
+          "Slice": 59.05054000000001,
+          "IndexCheck": 0.06644,
+          "Index": 0.23142,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10746000000000001,
+          "ScatterPaKvCache": 0.07196000000000001,
+          "FusedInferAttentionScore": 0.56518,
+          "Sigmoid": 0.07546000000000001,
+          "Mul": 0.09334
+        },
+        "mlp": {
+          "MatMulV2": 6.070539999999998,
+          "SwiGlu": 0.4410199999999999
+        },
+        "other": {
+          "MatMulV2": 1.1162,
+          "ArgMaxV2": 0.03714
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.37425,
+        "full_attention": 61.42075,
+        "mlp": 6.529,
+        "other": 1.1555
+      },
+      "device_union_ms": 78.47775,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09492000000000002,
+          "AddRmsNormBias": 0.37782,
+          "IndexCheck": 0.0312,
+          "Index": 0.02354,
+          "Cast": 0.024860000000000004,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.009,
+          "Fill": 0.00268,
+          "_compute_slot_mapping_kernel": 0.008919999999999999,
+          "Sub": 0.007260000000000001,
+          "GatherV2": 0.008039999999999999,
+          "GemmaRmsNorm": 0.009699999999999999,
+          "MatMulV2": 3.0319599999999998,
+          "Slice": 0.26986000000000004,
+          "ZerosLike": 0.17484,
+          "CausalConv1d": 0.43493999999999994,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.69072,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17617999999999998
+        },
+        "full_attention": {
+          "Add": 0.0545,
+          "AddRmsNormBias": 0.12499999999999999,
+          "MatMulV2": 0.9882199999999999,
+          "Slice": 59.051899999999996,
+          "IndexCheck": 0.06722,
+          "Index": 0.23328,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10721999999999998,
+          "ScatterPaKvCache": 0.07162,
+          "FusedInferAttentionScore": 0.5555800000000001,
+          "Sigmoid": 0.0751,
+          "Mul": 0.09273999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.089279999999998,
+          "SwiGlu": 0.4409
+        },
+        "other": {
+          "MatMulV2": 1.11876,
+          "ArgMaxV2": 0.03682
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3795,
+        "full_attention": 61.434,
+        "mlp": 6.505,
+        "other": 1.153
+      },
+      "device_union_ms": 78.4705,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09540000000000001,
+          "AddRmsNormBias": 0.3768000000000001,
+          "IndexCheck": 0.031039999999999998,
+          "Index": 0.02414,
+          "Cast": 0.024820000000000002,
+          "BroadcastTo": 0.0016,
+          "IndexPutV2": 0.01026,
+          "Fill": 0.00294,
+          "_compute_slot_mapping_kernel": 0.00906,
+          "Sub": 0.00788,
+          "GatherV2": 0.00808,
+          "GemmaRmsNorm": 0.00974,
+          "MatMulV2": 3.0365599999999997,
+          "Slice": 0.26919999999999994,
+          "ZerosLike": 0.17453999999999997,
+          "CausalConv1d": 0.43429999999999996,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6918,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.176
+        },
+        "full_attention": {
+          "Add": 0.054040000000000005,
+          "AddRmsNormBias": 0.1267,
+          "MatMulV2": 0.9903399999999999,
+          "Slice": 59.05442000000001,
+          "IndexCheck": 0.06644000000000001,
+          "Index": 0.23514000000000002,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10618,
+          "ScatterPaKvCache": 0.07168,
+          "FusedInferAttentionScore": 0.5623,
+          "Sigmoid": 0.07496,
+          "Mul": 0.0925
+        },
+        "mlp": {
+          "MatMulV2": 6.06742,
+          "SwiGlu": 0.43936000000000014
+        },
+        "other": {
+          "MatMulV2": 1.1176,
+          "ArgMaxV2": 0.03548
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35975,
+        "full_attention": 61.434,
+        "mlp": 6.51575,
+        "other": 1.1595
+      },
+      "device_union_ms": 78.4675,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09482000000000002,
+          "AddRmsNormBias": 0.3782400000000001,
+          "IndexCheck": 0.026900000000000004,
+          "Index": 0.023880000000000002,
+          "Cast": 0.025459999999999997,
+          "BroadcastTo": 0.00182,
+          "IndexPutV2": 0.00902,
+          "Fill": 0.0029,
+          "_compute_slot_mapping_kernel": 0.00924,
+          "Sub": 0.00792,
+          "GatherV2": 0.00824,
+          "GemmaRmsNorm": 0.01022,
+          "MatMulV2": 3.02902,
+          "Slice": 0.27098000000000005,
+          "ZerosLike": 0.17434000000000002,
+          "CausalConv1d": 0.43191999999999997,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6836199999999995,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17478
+        },
+        "full_attention": {
+          "Add": 0.05475999999999999,
+          "AddRmsNormBias": 0.12638,
+          "MatMulV2": 0.9924,
+          "Slice": 59.0504,
+          "IndexCheck": 0.06667999999999999,
+          "Index": 0.23574,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10611999999999998,
+          "ScatterPaKvCache": 0.07182000000000001,
+          "FusedInferAttentionScore": 0.5656,
+          "Sigmoid": 0.07540000000000001,
+          "Mul": 0.09237999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.077980000000001,
+          "SwiGlu": 0.4404200000000001
+        },
+        "other": {
+          "MatMulV2": 1.12126,
+          "ArgMaxV2": 0.03818
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35775,
+        "full_attention": 61.44275,
+        "mlp": 6.519,
+        "other": 1.1545
+      },
+      "device_union_ms": 78.47325,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09613999999999998,
+          "AddRmsNormBias": 0.3772999999999999,
+          "IndexCheck": 0.026439999999999998,
+          "Index": 0.023579999999999997,
+          "Cast": 0.02504,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.01098,
+          "Fill": 0.0028399999999999996,
+          "_compute_slot_mapping_kernel": 0.00906,
+          "Sub": 0.0071200000000000005,
+          "GatherV2": 0.00796,
+          "GemmaRmsNorm": 0.00984,
+          "MatMulV2": 3.0360600000000004,
+          "Slice": 0.27027999999999985,
+          "ZerosLike": 0.1753,
+          "CausalConv1d": 0.43372,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.675200000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17562
+        },
+        "full_attention": {
+          "Add": 0.054720000000000005,
+          "AddRmsNormBias": 0.12611999999999998,
+          "MatMulV2": 0.9922,
+          "Slice": 59.04869999999999,
+          "IndexCheck": 0.06648,
+          "Index": 0.23848000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10522,
+          "ScatterPaKvCache": 0.07184,
+          "FusedInferAttentionScore": 0.5728000000000001,
+          "Sigmoid": 0.07558000000000001,
+          "Mul": 0.09281999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.079099999999998,
+          "SwiGlu": 0.4407199999999999
+        },
+        "other": {
+          "MatMulV2": 1.1179000000000001,
+          "ArgMaxV2": 0.03656
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.356,
+        "full_attention": 61.43225,
+        "mlp": 6.4935,
+        "other": 1.14925
+      },
+      "device_union_ms": 78.42925,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09464,
+          "AddRmsNormBias": 0.3769800000000001,
+          "IndexCheck": 0.02678,
+          "Index": 0.0258,
+          "Cast": 0.025259999999999998,
+          "BroadcastTo": 0.0016200000000000001,
+          "IndexPutV2": 0.00898,
+          "Fill": 0.00314,
+          "_compute_slot_mapping_kernel": 0.00888,
+          "Sub": 0.00764,
+          "GatherV2": 0.008,
+          "GemmaRmsNorm": 0.00976,
+          "MatMulV2": 3.02886,
+          "Slice": 0.26931999999999995,
+          "ZerosLike": 0.1744,
+          "CausalConv1d": 0.43218000000000006,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.682800000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17589999999999997
+        },
+        "full_attention": {
+          "Add": 0.05476,
+          "AddRmsNormBias": 0.12582,
+          "MatMulV2": 0.9951200000000001,
+          "Slice": 59.055060000000005,
+          "IndexCheck": 0.06707999999999999,
+          "Index": 0.2274,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10606000000000002,
+          "ScatterPaKvCache": 0.07188,
+          "FusedInferAttentionScore": 0.56424,
+          "Sigmoid": 0.07488,
+          "Mul": 0.09254
+        },
+        "mlp": {
+          "MatMulV2": 6.056520000000001,
+          "SwiGlu": 0.44018
+        },
+        "other": {
+          "MatMulV2": 1.1124,
+          "ArgMaxV2": 0.0368
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.34675,
+        "full_attention": 61.4275,
+        "mlp": 6.52025,
+        "other": 1.15625
+      },
+      "device_union_ms": 78.44875,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09475999999999998,
+          "AddRmsNormBias": 0.3774600000000001,
+          "IndexCheck": 0.02804,
+          "Index": 0.02386,
+          "Cast": 0.024900000000000002,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.0107,
+          "Fill": 0.0028,
+          "_compute_slot_mapping_kernel": 0.00906,
+          "Sub": 0.007300000000000001,
+          "GatherV2": 0.00796,
+          "GemmaRmsNorm": 0.01002,
+          "MatMulV2": 3.033139999999999,
+          "Slice": 0.26894000000000007,
+          "ZerosLike": 0.17522,
+          "CausalConv1d": 0.43388,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.668259999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17522000000000001
+        },
+        "full_attention": {
+          "Add": 0.055540000000000006,
+          "AddRmsNormBias": 0.12562,
+          "MatMulV2": 0.9897999999999999,
+          "Slice": 59.05481999999999,
+          "IndexCheck": 0.0668,
+          "Index": 0.22976,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10676,
+          "ScatterPaKvCache": 0.07224,
+          "FusedInferAttentionScore": 0.5618000000000001,
+          "Sigmoid": 0.07474,
+          "Mul": 0.09282
+        },
+        "mlp": {
+          "MatMulV2": 6.081159999999998,
+          "SwiGlu": 0.43978
+        },
+        "other": {
+          "MatMulV2": 1.11782,
+          "ArgMaxV2": 0.038380000000000004
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.34975,
+        "full_attention": 61.4305,
+        "mlp": 6.503,
+        "other": 1.14875
+      },
+      "device_union_ms": 78.43125,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09407999999999998,
+          "AddRmsNormBias": 0.37759999999999994,
+          "IndexCheck": 0.0275,
+          "Index": 0.02414,
+          "Cast": 0.025,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.0089,
+          "Fill": 0.00296,
+          "_compute_slot_mapping_kernel": 0.00904,
+          "Sub": 0.007679999999999999,
+          "GatherV2": 0.008140000000000001,
+          "GemmaRmsNorm": 0.01008,
+          "MatMulV2": 3.033400000000001,
+          "Slice": 0.26926000000000005,
+          "ZerosLike": 0.1748,
+          "CausalConv1d": 0.43145999999999995,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67402,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17614000000000002
+        },
+        "full_attention": {
+          "Add": 0.05399999999999999,
+          "AddRmsNormBias": 0.12533999999999998,
+          "MatMulV2": 0.99122,
+          "Slice": 59.043440000000004,
+          "IndexCheck": 0.06731999999999999,
+          "Index": 0.23516,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10668,
+          "ScatterPaKvCache": 0.0718,
+          "FusedInferAttentionScore": 0.5707600000000002,
+          "Sigmoid": 0.07466,
+          "Mul": 0.09284
+        },
+        "mlp": {
+          "MatMulV2": 6.063579999999999,
+          "SwiGlu": 0.43976
+        },
+        "other": {
+          "MatMulV2": 1.11282,
+          "ArgMaxV2": 0.03608
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36775,
+        "full_attention": 61.43675,
+        "mlp": 6.5175,
+        "other": 1.15975
+      },
+      "device_union_ms": 78.4805,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09464000000000003,
+          "AddRmsNormBias": 0.378,
+          "IndexCheck": 0.02696,
+          "Index": 0.02382,
+          "Cast": 0.02484,
+          "BroadcastTo": 0.0017800000000000001,
+          "IndexPutV2": 0.01106,
+          "Fill": 0.00292,
+          "_compute_slot_mapping_kernel": 0.00914,
+          "Sub": 0.007520000000000001,
+          "GatherV2": 0.00816,
+          "GemmaRmsNorm": 0.01048,
+          "MatMulV2": 3.0368400000000007,
+          "Slice": 0.26949999999999996,
+          "ZerosLike": 0.1745,
+          "CausalConv1d": 0.43156,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.683439999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1761
+        },
+        "full_attention": {
+          "Add": 0.05371999999999999,
+          "AddRmsNormBias": 0.12536000000000003,
+          "MatMulV2": 0.98786,
+          "Slice": 59.05113999999998,
+          "IndexCheck": 0.06742000000000001,
+          "Index": 0.23536000000000004,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10654,
+          "ScatterPaKvCache": 0.0718,
+          "FusedInferAttentionScore": 0.5713400000000001,
+          "Sigmoid": 0.07452000000000002,
+          "Mul": 0.09269999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.07698,
+          "SwiGlu": 0.44132
+        },
+        "other": {
+          "MatMulV2": 1.12076,
+          "ArgMaxV2": 0.0389
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.362,
+        "full_attention": 61.43125,
+        "mlp": 6.525,
+        "other": 1.15675
+      },
+      "device_union_ms": 78.474,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09528,
+          "AddRmsNormBias": 0.37744000000000005,
+          "IndexCheck": 0.02662,
+          "Index": 0.02392,
+          "Cast": 0.025240000000000002,
+          "BroadcastTo": 0.0018,
+          "IndexPutV2": 0.00876,
+          "Fill": 0.0028599999999999997,
+          "_compute_slot_mapping_kernel": 0.01322,
+          "Sub": 0.008,
+          "GatherV2": 0.0081,
+          "GemmaRmsNorm": 0.0099,
+          "MatMulV2": 3.0270999999999995,
+          "Slice": 0.27059999999999995,
+          "ZerosLike": 0.17461999999999994,
+          "CausalConv1d": 0.4347000000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.685440000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1755
+        },
+        "full_attention": {
+          "Add": 0.05468,
+          "AddRmsNormBias": 0.12598,
+          "MatMulV2": 0.9843599999999999,
+          "Slice": 59.049620000000004,
+          "IndexCheck": 0.06672,
+          "Index": 0.23458,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10746,
+          "ScatterPaKvCache": 0.07216,
+          "FusedInferAttentionScore": 0.57008,
+          "Sigmoid": 0.07515999999999999,
+          "Mul": 0.09321999999999998
+        },
+        "mlp": {
+          "MatMulV2": 6.08386,
+          "SwiGlu": 0.44215999999999994
+        },
+        "other": {
+          "MatMulV2": 1.11824,
+          "ArgMaxV2": 0.03848
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35925,
+        "full_attention": 61.43525,
+        "mlp": 6.51875,
+        "other": 1.14925
+      },
+      "device_union_ms": 78.46125,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09426,
+          "AddRmsNormBias": 0.3783800000000001,
+          "IndexCheck": 0.028120000000000003,
+          "Index": 0.02536,
+          "Cast": 0.025280000000000004,
+          "BroadcastTo": 0.0017,
+          "IndexPutV2": 0.01102,
+          "Fill": 0.0031,
+          "_compute_slot_mapping_kernel": 0.00894,
+          "Sub": 0.00786,
+          "GatherV2": 0.0079,
+          "GemmaRmsNorm": 0.009699999999999999,
+          "MatMulV2": 3.0255199999999975,
+          "Slice": 0.26918,
+          "ZerosLike": 0.1748,
+          "CausalConv1d": 0.43945999999999985,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.681680000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17468
+        },
+        "full_attention": {
+          "Add": 0.05432,
+          "AddRmsNormBias": 0.12538,
+          "MatMulV2": 0.99108,
+          "Slice": 59.056999999999995,
+          "IndexCheck": 0.06657999999999999,
+          "Index": 0.22638,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10762,
+          "ScatterPaKvCache": 0.07266,
+          "FusedInferAttentionScore": 0.5693,
+          "Sigmoid": 0.07452,
+          "Mul": 0.09258
+        },
+        "mlp": {
+          "MatMulV2": 6.078640000000002,
+          "SwiGlu": 0.4413399999999999
+        },
+        "other": {
+          "MatMulV2": 1.113,
+          "ArgMaxV2": 0.0363
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.34775,
+        "full_attention": 61.44275,
+        "mlp": 6.533,
+        "other": 1.15275
+      },
+      "device_union_ms": 78.47525,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09549999999999999,
+          "AddRmsNormBias": 0.37710000000000005,
+          "IndexCheck": 0.026260000000000002,
+          "Index": 0.02374,
+          "Cast": 0.02528,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.00894,
+          "Fill": 0.00294,
+          "_compute_slot_mapping_kernel": 0.0087,
+          "Sub": 0.006900000000000001,
+          "GatherV2": 0.00824,
+          "GemmaRmsNorm": 0.0095,
+          "MatMulV2": 3.0288600000000008,
+          "Slice": 0.26904000000000017,
+          "ZerosLike": 0.17484000000000002,
+          "CausalConv1d": 0.4341999999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.676839999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17411999999999997
+        },
+        "full_attention": {
+          "Add": 0.05445999999999999,
+          "AddRmsNormBias": 0.12547999999999998,
+          "MatMulV2": 0.9928600000000001,
+          "Slice": 59.05374,
+          "IndexCheck": 0.06666,
+          "Index": 0.22666,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10844,
+          "ScatterPaKvCache": 0.07168,
+          "FusedInferAttentionScore": 0.577,
+          "Sigmoid": 0.07524,
+          "Mul": 0.09248
+        },
+        "mlp": {
+          "MatMulV2": 6.0959400000000015,
+          "SwiGlu": 0.4389999999999999
+        },
+        "other": {
+          "MatMulV2": 1.11676,
+          "ArgMaxV2": 0.0361
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.34625,
+        "full_attention": 61.42425,
+        "mlp": 6.50825,
+        "other": 1.16075
+      },
+      "device_union_ms": 78.439,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09584,
+          "AddRmsNormBias": 0.37686,
+          "IndexCheck": 0.026920000000000003,
+          "Index": 0.0241,
+          "Cast": 0.024820000000000002,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.00886,
+          "Fill": 0.00294,
+          "_compute_slot_mapping_kernel": 0.009179999999999999,
+          "Sub": 0.00746,
+          "GatherV2": 0.008039999999999999,
+          "GemmaRmsNorm": 0.009460000000000001,
+          "MatMulV2": 3.0302200000000012,
+          "Slice": 0.26982,
+          "ZerosLike": 0.1741,
+          "CausalConv1d": 0.43326000000000003,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.674460000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17502
+        },
+        "full_attention": {
+          "Add": 0.05407999999999999,
+          "AddRmsNormBias": 0.12632000000000002,
+          "MatMulV2": 0.99038,
+          "Slice": 59.04414000000001,
+          "IndexCheck": 0.06667999999999999,
+          "Index": 0.23324,
+          "split_qkv_rmsnorm_mrope_kernel": 0.1064,
+          "ScatterPaKvCache": 0.07247999999999999,
+          "FusedInferAttentionScore": 0.56504,
+          "Sigmoid": 0.07497999999999999,
+          "Mul": 0.09268
+        },
+        "mlp": {
+          "MatMulV2": 6.072820000000001,
+          "SwiGlu": 0.43677999999999995
+        },
+        "other": {
+          "MatMulV2": 1.12446,
+          "ArgMaxV2": 0.0363
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35375,
+        "full_attention": 61.44275,
+        "mlp": 6.52025,
+        "other": 1.15475
+      },
+      "device_union_ms": 78.46975,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09602,
+          "AddRmsNormBias": 0.37733999999999995,
+          "IndexCheck": 0.026900000000000004,
+          "Index": 0.023719999999999998,
+          "Cast": 0.024520000000000004,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.0107,
+          "Fill": 0.0028399999999999996,
+          "_compute_slot_mapping_kernel": 0.0088,
+          "Sub": 0.007719999999999999,
+          "GatherV2": 0.00796,
+          "GemmaRmsNorm": 0.00968,
+          "MatMulV2": 3.031280000000001,
+          "Slice": 0.2715600000000001,
+          "ZerosLike": 0.17432,
+          "CausalConv1d": 0.43258,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67572,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17576
+        },
+        "full_attention": {
+          "Add": 0.05439999999999999,
+          "AddRmsNormBias": 0.1255,
+          "MatMulV2": 0.9939600000000001,
+          "Slice": 59.05488,
+          "IndexCheck": 0.06708000000000001,
+          "Index": 0.24095999999999998,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10705999999999999,
+          "ScatterPaKvCache": 0.07226000000000002,
+          "FusedInferAttentionScore": 0.5609,
+          "Sigmoid": 0.07452,
+          "Mul": 0.09301999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.079899999999998,
+          "SwiGlu": 0.4396999999999999
+        },
+        "other": {
+          "MatMulV2": 1.1185999999999998,
+          "ArgMaxV2": 0.03624
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3445,
+        "full_attention": 61.44675,
+        "mlp": 6.51725,
+        "other": 1.1645
+      },
+      "device_union_ms": 78.47225,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09676,
+          "AddRmsNormBias": 0.37675999999999993,
+          "IndexCheck": 0.02732,
+          "Index": 0.02356,
+          "Cast": 0.02474,
+          "BroadcastTo": 0.00182,
+          "IndexPutV2": 0.011859999999999999,
+          "Fill": 0.00294,
+          "_compute_slot_mapping_kernel": 0.00898,
+          "Sub": 0.00676,
+          "GatherV2": 0.00816,
+          "GemmaRmsNorm": 0.00984,
+          "MatMulV2": 3.0215800000000006,
+          "Slice": 0.26962000000000014,
+          "ZerosLike": 0.17405999999999996,
+          "CausalConv1d": 0.43748000000000015,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67546,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17482
+        },
+        "full_attention": {
+          "Add": 0.05464,
+          "AddRmsNormBias": 0.12613999999999997,
+          "MatMulV2": 0.9927199999999999,
+          "Slice": 59.05002,
+          "IndexCheck": 0.06668,
+          "Index": 0.2442,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10748,
+          "ScatterPaKvCache": 0.07186,
+          "FusedInferAttentionScore": 0.5678399999999999,
+          "Sigmoid": 0.07452,
+          "Mul": 0.09348000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.079,
+          "SwiGlu": 0.43928
+        },
+        "other": {
+          "MatMulV2": 1.12906,
+          "ArgMaxV2": 0.03542
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35,
+        "full_attention": 61.444,
+        "mlp": 6.514,
+        "other": 1.15175
+      },
+      "device_union_ms": 78.45975,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09476,
+          "AddRmsNormBias": 0.378,
+          "IndexCheck": 0.02676,
+          "Index": 0.025799999999999997,
+          "Cast": 0.025199999999999997,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.00902,
+          "Fill": 0.00314,
+          "_compute_slot_mapping_kernel": 0.00934,
+          "Sub": 0.007940000000000001,
+          "GatherV2": 0.00844,
+          "GemmaRmsNorm": 0.00982,
+          "MatMulV2": 3.025800000000001,
+          "Slice": 0.26974,
+          "ZerosLike": 0.17486,
+          "CausalConv1d": 0.43544,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6761599999999985,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17614
+        },
+        "full_attention": {
+          "Add": 0.05332,
+          "AddRmsNormBias": 0.12626,
+          "MatMulV2": 0.9908599999999999,
+          "Slice": 59.0508,
+          "IndexCheck": 0.06645999999999999,
+          "Index": 0.2365,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10734,
+          "ScatterPaKvCache": 0.07235999999999998,
+          "FusedInferAttentionScore": 0.57398,
+          "Sigmoid": 0.075,
+          "Mul": 0.09333999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.077820000000001,
+          "SwiGlu": 0.43866
+        },
+        "other": {
+          "MatMulV2": 1.11522,
+          "ArgMaxV2": 0.0366
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3665,
+        "full_attention": 61.4465,
+        "mlp": 6.521,
+        "other": 1.15425
+      },
+      "device_union_ms": 78.487,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09501999999999997,
+          "AddRmsNormBias": 0.37693999999999994,
+          "IndexCheck": 0.025119999999999996,
+          "Index": 0.02382,
+          "Cast": 0.025099999999999997,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.0091,
+          "Fill": 0.00276,
+          "_compute_slot_mapping_kernel": 0.00898,
+          "Sub": 0.007539999999999999,
+          "GatherV2": 0.00808,
+          "GemmaRmsNorm": 0.01018,
+          "MatMulV2": 3.03636,
+          "Slice": 0.27033999999999997,
+          "ZerosLike": 0.17534,
+          "CausalConv1d": 0.43568,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.684259999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17507999999999999
+        },
+        "full_attention": {
+          "Add": 0.054719999999999984,
+          "AddRmsNormBias": 0.1252,
+          "MatMulV2": 0.9910800000000002,
+          "Slice": 59.06633999999999,
+          "IndexCheck": 0.06682,
+          "Index": 0.23922,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10708000000000001,
+          "ScatterPaKvCache": 0.07127999999999998,
+          "FusedInferAttentionScore": 0.56038,
+          "Sigmoid": 0.07468000000000001,
+          "Mul": 0.09272
+        },
+        "mlp": {
+          "MatMulV2": 6.082840000000001,
+          "SwiGlu": 0.43995999999999985
+        },
+        "other": {
+          "MatMulV2": 1.11834,
+          "ArgMaxV2": 0.03598
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.37175,
+        "full_attention": 61.45425,
+        "mlp": 6.51625,
+        "other": 1.151
+      },
+      "device_union_ms": 78.493,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09628,
+          "AddRmsNormBias": 0.3771999999999999,
+          "IndexCheck": 0.027540000000000002,
+          "Index": 0.02404,
+          "Cast": 0.02528,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.014839999999999999,
+          "Fill": 0.0028799999999999997,
+          "_compute_slot_mapping_kernel": 0.00888,
+          "Sub": 0.008280000000000001,
+          "GatherV2": 0.0086,
+          "GemmaRmsNorm": 0.009980000000000001,
+          "MatMulV2": 3.0319000000000003,
+          "Slice": 0.2690000000000001,
+          "ZerosLike": 0.17464,
+          "CausalConv1d": 0.43522,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.683900000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17547999999999997
+        },
+        "full_attention": {
+          "Add": 0.054020000000000006,
+          "AddRmsNormBias": 0.12566,
+          "MatMulV2": 0.9867600000000001,
+          "Slice": 59.06345999999999,
+          "IndexCheck": 0.06631999999999999,
+          "Index": 0.24202,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10746,
+          "ScatterPaKvCache": 0.07152,
+          "FusedInferAttentionScore": 0.5734600000000001,
+          "Sigmoid": 0.07479999999999999,
+          "Mul": 0.09212000000000002
+        },
+        "mlp": {
+          "MatMulV2": 6.079779999999998,
+          "SwiGlu": 0.43861999999999995
+        },
+        "other": {
+          "MatMulV2": 1.1136,
+          "ArgMaxV2": 0.03744
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3475,
+        "full_attention": 61.42875,
+        "mlp": 6.506,
+        "other": 1.15675
+      },
+      "device_union_ms": 78.4375,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09494000000000002,
+          "AddRmsNormBias": 0.3772599999999999,
+          "IndexCheck": 0.02816,
+          "Index": 0.02414,
+          "Cast": 0.024640000000000002,
+          "BroadcastTo": 0.00172,
+          "IndexPutV2": 0.00902,
+          "Fill": 0.00282,
+          "_compute_slot_mapping_kernel": 0.0087,
+          "Sub": 0.0074,
+          "GatherV2": 0.0081,
+          "GemmaRmsNorm": 0.009720000000000001,
+          "MatMulV2": 3.0230199999999994,
+          "Slice": 0.27101999999999987,
+          "ZerosLike": 0.17411999999999997,
+          "CausalConv1d": 0.4329,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.68142,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17518
+        },
+        "full_attention": {
+          "Add": 0.05437999999999999,
+          "AddRmsNormBias": 0.12604,
+          "MatMulV2": 0.9909799999999999,
+          "Slice": 59.03922000000001,
+          "IndexCheck": 0.06708,
+          "Index": 0.2438,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10762,
+          "ScatterPaKvCache": 0.07186,
+          "FusedInferAttentionScore": 0.56246,
+          "Sigmoid": 0.07514,
+          "Mul": 0.09283999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.068740000000001,
+          "SwiGlu": 0.43870000000000003
+        },
+        "other": {
+          "MatMulV2": 1.11966,
+          "ArgMaxV2": 0.03694
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3415,
+        "full_attention": 61.4385,
+        "mlp": 6.516,
+        "other": 1.1465
+      },
+      "device_union_ms": 78.4415,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09622,
+          "AddRmsNormBias": 0.37699999999999995,
+          "IndexCheck": 0.02682,
+          "Index": 0.02364,
+          "Cast": 0.02444,
+          "BroadcastTo": 0.0017800000000000001,
+          "IndexPutV2": 0.010320000000000001,
+          "Fill": 0.00302,
+          "_compute_slot_mapping_kernel": 0.00886,
+          "Sub": 0.00752,
+          "GatherV2": 0.008119999999999999,
+          "GemmaRmsNorm": 0.00954,
+          "MatMulV2": 3.0239000000000016,
+          "Slice": 0.2700999999999999,
+          "ZerosLike": 0.17448,
+          "CausalConv1d": 0.4345,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.673879999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17492000000000002
+        },
+        "full_attention": {
+          "Add": 0.05358,
+          "AddRmsNormBias": 0.12506,
+          "MatMulV2": 0.98944,
+          "Slice": 59.04823999999999,
+          "IndexCheck": 0.06667999999999999,
+          "Index": 0.24488,
+          "split_qkv_rmsnorm_mrope_kernel": 0.1066,
+          "ScatterPaKvCache": 0.07228,
+          "FusedInferAttentionScore": 0.56424,
+          "Sigmoid": 0.0752,
+          "Mul": 0.09330000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.07962,
+          "SwiGlu": 0.43938000000000005
+        },
+        "other": {
+          "MatMulV2": 1.11098,
+          "ArgMaxV2": 0.0354
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3605,
+        "full_attention": 61.44675,
+        "mlp": 6.507,
+        "other": 1.1575
+      },
+      "device_union_ms": 78.471,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09373999999999999,
+          "AddRmsNormBias": 0.37700000000000017,
+          "IndexCheck": 0.02692,
+          "Index": 0.024640000000000002,
+          "Cast": 0.024979999999999995,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.01474,
+          "Fill": 0.00302,
+          "_compute_slot_mapping_kernel": 0.00912,
+          "Sub": 0.0077,
+          "GatherV2": 0.00792,
+          "GemmaRmsNorm": 0.00948,
+          "MatMulV2": 3.035499999999999,
+          "Slice": 0.2707799999999999,
+          "ZerosLike": 0.17493999999999998,
+          "CausalConv1d": 0.43498000000000003,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.673979999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17520000000000005
+        },
+        "full_attention": {
+          "Add": 0.054959999999999995,
+          "AddRmsNormBias": 0.12482000000000001,
+          "MatMulV2": 0.9916,
+          "Slice": 59.06066,
+          "IndexCheck": 0.0663,
+          "Index": 0.24124,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10746,
+          "ScatterPaKvCache": 0.07191999999999998,
+          "FusedInferAttentionScore": 0.5622999999999999,
+          "Sigmoid": 0.07522,
+          "Mul": 0.09286
+        },
+        "mlp": {
+          "MatMulV2": 6.071479999999999,
+          "SwiGlu": 0.4378600000000001
+        },
+        "other": {
+          "MatMulV2": 1.12032,
+          "ArgMaxV2": 0.03718
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3735,
+        "full_attention": 61.4215,
+        "mlp": 6.50325,
+        "other": 1.16425
+      },
+      "device_union_ms": 78.46225,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09523999999999998,
+          "AddRmsNormBias": 0.37678000000000006,
+          "IndexCheck": 0.028,
+          "Index": 0.0235,
+          "Cast": 0.02594,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.009,
+          "Fill": 0.0027800000000000004,
+          "_compute_slot_mapping_kernel": 0.00888,
+          "Sub": 0.00718,
+          "GatherV2": 0.00818,
+          "GemmaRmsNorm": 0.009460000000000001,
+          "MatMulV2": 3.04476,
+          "Slice": 0.2717199999999999,
+          "ZerosLike": 0.17437999999999998,
+          "CausalConv1d": 0.43178,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6831200000000015,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1767
+        },
+        "full_attention": {
+          "Add": 0.054380000000000005,
+          "AddRmsNormBias": 0.12548,
+          "MatMulV2": 0.9919399999999999,
+          "Slice": 59.0472,
+          "IndexCheck": 0.06656000000000001,
+          "Index": 0.22822000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10447999999999999,
+          "ScatterPaKvCache": 0.07203999999999999,
+          "FusedInferAttentionScore": 0.5674600000000001,
+          "Sigmoid": 0.07494,
+          "Mul": 0.09264000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.0663599999999995,
+          "SwiGlu": 0.43866
+        },
+        "other": {
+          "MatMulV2": 1.12728,
+          "ArgMaxV2": 0.037079999999999995
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.364,
+        "full_attention": 61.428,
+        "mlp": 6.50625,
+        "other": 1.15325
+      },
+      "device_union_ms": 78.45025,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09509999999999999,
+          "AddRmsNormBias": 0.3769,
+          "IndexCheck": 0.02862,
+          "Index": 0.023899999999999998,
+          "Cast": 0.02554,
+          "BroadcastTo": 0.00166,
+          "IndexPutV2": 0.008960000000000001,
+          "Fill": 0.00304,
+          "_compute_slot_mapping_kernel": 0.00922,
+          "Sub": 0.007819999999999999,
+          "GatherV2": 0.008140000000000001,
+          "GemmaRmsNorm": 0.00954,
+          "MatMulV2": 3.02992,
+          "Slice": 0.27002,
+          "ZerosLike": 0.17442,
+          "CausalConv1d": 0.43274,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6865,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17542000000000002
+        },
+        "full_attention": {
+          "Add": 0.053759999999999995,
+          "AddRmsNormBias": 0.12558,
+          "MatMulV2": 0.9903200000000002,
+          "Slice": 59.047140000000006,
+          "IndexCheck": 0.06688,
+          "Index": 0.23668000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10575999999999999,
+          "ScatterPaKvCache": 0.07198,
+          "FusedInferAttentionScore": 0.56326,
+          "Sigmoid": 0.07522,
+          "Mul": 0.0928
+        },
+        "mlp": {
+          "MatMulV2": 6.068779999999996,
+          "SwiGlu": 0.43984
+        },
+        "other": {
+          "MatMulV2": 1.11742,
+          "ArgMaxV2": 0.03572
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.344,
+        "full_attention": 61.43525,
+        "mlp": 6.5285,
+        "other": 1.159
+      },
+      "device_union_ms": 78.46575,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09444000000000002,
+          "AddRmsNormBias": 0.37848000000000015,
+          "IndexCheck": 0.027219999999999998,
+          "Index": 0.02858,
+          "Cast": 0.02572,
+          "BroadcastTo": 0.00172,
+          "IndexPutV2": 0.00902,
+          "Fill": 0.00296,
+          "_compute_slot_mapping_kernel": 0.00866,
+          "Sub": 0.0077599999999999995,
+          "GatherV2": 0.0081,
+          "GemmaRmsNorm": 0.010320000000000001,
+          "MatMulV2": 3.0156999999999994,
+          "Slice": 0.26916,
+          "ZerosLike": 0.1745,
+          "CausalConv1d": 0.4338799999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6807,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17506
+        },
+        "full_attention": {
+          "Add": 0.053279999999999994,
+          "AddRmsNormBias": 0.12689999999999999,
+          "MatMulV2": 0.9895000000000002,
+          "Slice": 59.050319999999985,
+          "IndexCheck": 0.06674,
+          "Index": 0.23276,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10590000000000002,
+          "ScatterPaKvCache": 0.07266000000000002,
+          "FusedInferAttentionScore": 0.57126,
+          "Sigmoid": 0.0748,
+          "Mul": 0.09331999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.086559999999999,
+          "SwiGlu": 0.44208000000000003
+        },
+        "other": {
+          "MatMulV2": 1.1233199999999999,
+          "ArgMaxV2": 0.03582
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35725,
+        "full_attention": 61.42,
+        "mlp": 6.52125,
+        "other": 1.15175
+      },
+      "device_union_ms": 78.4495,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09626000000000003,
+          "AddRmsNormBias": 0.37762,
+          "IndexCheck": 0.02768,
+          "Index": 0.023600000000000003,
+          "Cast": 0.02532,
+          "BroadcastTo": 0.0018,
+          "IndexPutV2": 0.008539999999999999,
+          "Fill": 0.00294,
+          "_compute_slot_mapping_kernel": 0.009,
+          "Sub": 0.007159999999999999,
+          "GatherV2": 0.00828,
+          "GemmaRmsNorm": 0.00996,
+          "MatMulV2": 3.0338400000000005,
+          "Slice": 0.26976,
+          "ZerosLike": 0.17394000000000004,
+          "CausalConv1d": 0.43302000000000007,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67918,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17588
+        },
+        "full_attention": {
+          "Add": 0.05372,
+          "AddRmsNormBias": 0.12594000000000002,
+          "MatMulV2": 0.9838600000000001,
+          "Slice": 59.04458,
+          "IndexCheck": 0.06792000000000001,
+          "Index": 0.23546,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10740000000000001,
+          "ScatterPaKvCache": 0.07186000000000001,
+          "FusedInferAttentionScore": 0.5641,
+          "Sigmoid": 0.0752,
+          "Mul": 0.09298
+        },
+        "mlp": {
+          "MatMulV2": 6.081919999999999,
+          "SwiGlu": 0.44104
+        },
+        "other": {
+          "MatMulV2": 1.1145399999999999,
+          "ArgMaxV2": 0.037340000000000005
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36975,
+        "full_attention": 61.43725,
+        "mlp": 6.5105,
+        "other": 1.159
+      },
+      "device_union_ms": 78.47475,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09637999999999995,
+          "AddRmsNormBias": 0.37778,
+          "IndexCheck": 0.02666,
+          "Index": 0.02496,
+          "Cast": 0.02518,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.008919999999999999,
+          "Fill": 0.0032199999999999998,
+          "_compute_slot_mapping_kernel": 0.00908,
+          "Sub": 0.00774,
+          "GatherV2": 0.00816,
+          "GemmaRmsNorm": 0.00982,
+          "MatMulV2": 3.04694,
+          "Slice": 0.26830000000000004,
+          "ZerosLike": 0.17404000000000006,
+          "CausalConv1d": 0.43362,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67752,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17514000000000002
+        },
+        "full_attention": {
+          "Add": 0.05378,
+          "AddRmsNormBias": 0.12478000000000002,
+          "MatMulV2": 0.9907999999999999,
+          "Slice": 59.052960000000006,
+          "IndexCheck": 0.06706000000000002,
+          "Index": 0.22776000000000002,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10791999999999999,
+          "ScatterPaKvCache": 0.07248,
+          "FusedInferAttentionScore": 0.57484,
+          "Sigmoid": 0.07477999999999999,
+          "Mul": 0.09323999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.072680000000002,
+          "SwiGlu": 0.43817999999999996
+        },
+        "other": {
+          "MatMulV2": 1.12042,
+          "ArgMaxV2": 0.03848
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36325,
+        "full_attention": 61.43325,
+        "mlp": 6.506,
+        "other": 1.15625
+      },
+      "device_union_ms": 78.458,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09564,
+          "AddRmsNormBias": 0.37610000000000005,
+          "IndexCheck": 0.02754,
+          "Index": 0.02382,
+          "Cast": 0.024900000000000002,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.00898,
+          "Fill": 0.003,
+          "_compute_slot_mapping_kernel": 0.008919999999999999,
+          "Sub": 0.00732,
+          "GatherV2": 0.00802,
+          "GemmaRmsNorm": 0.00994,
+          "MatMulV2": 3.0379,
+          "Slice": 0.27033999999999997,
+          "ZerosLike": 0.17448000000000005,
+          "CausalConv1d": 0.43508,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.68112,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17490000000000003
+        },
+        "full_attention": {
+          "Add": 0.054939999999999996,
+          "AddRmsNormBias": 0.12422000000000001,
+          "MatMulV2": 0.9866999999999998,
+          "Slice": 59.06466,
+          "IndexCheck": 0.06656000000000001,
+          "Index": 0.22612,
+          "split_qkv_rmsnorm_mrope_kernel": 0.1066,
+          "ScatterPaKvCache": 0.07180000000000002,
+          "FusedInferAttentionScore": 0.5670599999999999,
+          "Sigmoid": 0.07476,
+          "Mul": 0.093
+        },
+        "mlp": {
+          "MatMulV2": 6.07054,
+          "SwiGlu": 0.4369200000000001
+        },
+        "other": {
+          "MatMulV2": 1.1191,
+          "ArgMaxV2": 0.037340000000000005
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.353,
+        "full_attention": 61.43475,
+        "mlp": 6.51025,
+        "other": 1.15625
+      },
+      "device_union_ms": 78.4535,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09443999999999998,
+          "AddRmsNormBias": 0.37748000000000015,
+          "IndexCheck": 0.02716,
+          "Index": 0.02398,
+          "Cast": 0.024800000000000003,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.0109,
+          "Fill": 0.0028399999999999996,
+          "_compute_slot_mapping_kernel": 0.00908,
+          "Sub": 0.00762,
+          "GatherV2": 0.0086,
+          "GemmaRmsNorm": 0.009460000000000001,
+          "MatMulV2": 3.0276999999999994,
+          "Slice": 0.2691200000000001,
+          "ZerosLike": 0.17432000000000003,
+          "CausalConv1d": 0.4353600000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6774000000000004,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17596
+        },
+        "full_attention": {
+          "Add": 0.05457999999999999,
+          "AddRmsNormBias": 0.12613999999999997,
+          "MatMulV2": 0.9900000000000001,
+          "Slice": 59.04636,
+          "IndexCheck": 0.06702,
+          "Index": 0.23132,
+          "split_qkv_rmsnorm_mrope_kernel": 0.106,
+          "ScatterPaKvCache": 0.07206,
+          "FusedInferAttentionScore": 0.5767599999999999,
+          "Sigmoid": 0.07479999999999999,
+          "Mul": 0.0925
+        },
+        "mlp": {
+          "MatMulV2": 6.070199999999998,
+          "SwiGlu": 0.44137999999999994
+        },
+        "other": {
+          "MatMulV2": 1.11998,
+          "ArgMaxV2": 0.0363
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35125,
+        "full_attention": 61.4505,
+        "mlp": 6.51625,
+        "other": 1.156
+      },
+      "device_union_ms": 78.473,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09526000000000005,
+          "AddRmsNormBias": 0.37639999999999985,
+          "IndexCheck": 0.026619999999999998,
+          "Index": 0.02392,
+          "Cast": 0.024960000000000003,
+          "BroadcastTo": 0.00182,
+          "IndexPutV2": 0.00906,
+          "Fill": 0.00298,
+          "_compute_slot_mapping_kernel": 0.00878,
+          "Sub": 0.0076,
+          "GatherV2": 0.00802,
+          "GemmaRmsNorm": 0.00954,
+          "MatMulV2": 3.034559999999999,
+          "Slice": 0.27007999999999993,
+          "ZerosLike": 0.1747,
+          "CausalConv1d": 0.43186,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67584,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17534
+        },
+        "full_attention": {
+          "Add": 0.05492,
+          "AddRmsNormBias": 0.12621999999999997,
+          "MatMulV2": 0.9891,
+          "Slice": 59.061339999999994,
+          "IndexCheck": 0.06732,
+          "Index": 0.23271999999999998,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10833999999999999,
+          "ScatterPaKvCache": 0.07221999999999999,
+          "FusedInferAttentionScore": 0.5714400000000001,
+          "Sigmoid": 0.0748,
+          "Mul": 0.09276000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.080379999999999,
+          "SwiGlu": 0.43784000000000006
+        },
+        "other": {
+          "MatMulV2": 1.11974,
+          "ArgMaxV2": 0.0362
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35125,
+        "full_attention": 61.415,
+        "mlp": 6.49925,
+        "other": 1.154
+      },
+      "device_union_ms": 78.4175,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09456,
+          "AddRmsNormBias": 0.3767,
+          "IndexCheck": 0.028059999999999998,
+          "Index": 0.02374,
+          "Cast": 0.02534,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.01294,
+          "Fill": 0.00298,
+          "_compute_slot_mapping_kernel": 0.00872,
+          "Sub": 0.0075,
+          "GatherV2": 0.00796,
+          "GemmaRmsNorm": 0.00982,
+          "MatMulV2": 3.0288200000000005,
+          "Slice": 0.26929999999999993,
+          "ZerosLike": 0.17449999999999996,
+          "CausalConv1d": 0.4337200000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67338,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17496
+        },
+        "full_attention": {
+          "Add": 0.0541,
+          "AddRmsNormBias": 0.12572,
+          "MatMulV2": 0.98706,
+          "Slice": 59.04042,
+          "IndexCheck": 0.06609999999999999,
+          "Index": 0.2419,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10566,
+          "ScatterPaKvCache": 0.07248,
+          "FusedInferAttentionScore": 0.55702,
+          "Sigmoid": 0.07464,
+          "Mul": 0.09286
+        },
+        "mlp": {
+          "MatMulV2": 6.060220000000002,
+          "SwiGlu": 0.43986
+        },
+        "other": {
+          "MatMulV2": 1.117,
+          "ArgMaxV2": 0.037079999999999995
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3545,
+        "full_attention": 61.431,
+        "mlp": 6.51575,
+        "other": 1.15325
+      },
+      "device_union_ms": 78.45275,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09380000000000001,
+          "AddRmsNormBias": 0.37796,
+          "IndexCheck": 0.02768,
+          "Index": 0.02472,
+          "Cast": 0.024540000000000003,
+          "BroadcastTo": 0.00186,
+          "IndexPutV2": 0.01082,
+          "Fill": 0.0033200000000000005,
+          "_compute_slot_mapping_kernel": 0.0089,
+          "Sub": 0.007959999999999998,
+          "GatherV2": 0.008199999999999999,
+          "GemmaRmsNorm": 0.0104,
+          "MatMulV2": 3.0355799999999995,
+          "Slice": 0.27040000000000003,
+          "ZerosLike": 0.17407999999999998,
+          "CausalConv1d": 0.4333199999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67302,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17588000000000004
+        },
+        "full_attention": {
+          "Add": 0.054299999999999994,
+          "AddRmsNormBias": 0.12464000000000003,
+          "MatMulV2": 0.99478,
+          "Slice": 59.04088,
+          "IndexCheck": 0.06625999999999999,
+          "Index": 0.23833999999999997,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10597999999999999,
+          "ScatterPaKvCache": 0.07184,
+          "FusedInferAttentionScore": 0.5691999999999999,
+          "Sigmoid": 0.0748,
+          "Mul": 0.09254
+        },
+        "mlp": {
+          "MatMulV2": 6.07772,
+          "SwiGlu": 0.44008
+        },
+        "other": {
+          "MatMulV2": 1.11782,
+          "ArgMaxV2": 0.03538
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.36325,
+        "full_attention": 61.425,
+        "mlp": 6.51775,
+        "other": 1.154
+      },
+      "device_union_ms": 78.45875,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09542,
+          "AddRmsNormBias": 0.3773600000000002,
+          "IndexCheck": 0.0265,
+          "Index": 0.02366,
+          "Cast": 0.02524,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.00858,
+          "Fill": 0.0027400000000000002,
+          "_compute_slot_mapping_kernel": 0.00888,
+          "Sub": 0.007719999999999999,
+          "GatherV2": 0.00822,
+          "GemmaRmsNorm": 0.0099,
+          "MatMulV2": 3.0404399999999994,
+          "Slice": 0.2702399999999998,
+          "ZerosLike": 0.17426000000000003,
+          "CausalConv1d": 0.43361999999999995,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67584,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17588000000000004
+        },
+        "full_attention": {
+          "Add": 0.0548,
+          "AddRmsNormBias": 0.12546000000000002,
+          "MatMulV2": 0.9890800000000001,
+          "Slice": 59.04142,
+          "IndexCheck": 0.0664,
+          "Index": 0.23858,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10636,
+          "ScatterPaKvCache": 0.07168000000000001,
+          "FusedInferAttentionScore": 0.5662200000000001,
+          "Sigmoid": 0.07555999999999999,
+          "Mul": 0.09256
+        },
+        "mlp": {
+          "MatMulV2": 6.0789,
+          "SwiGlu": 0.4398200000000001
+        },
+        "other": {
+          "MatMulV2": 1.11842,
+          "ArgMaxV2": 0.03562
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.37875,
+        "full_attention": 61.4255,
+        "mlp": 6.51525,
+        "other": 1.15075
+      },
+      "device_union_ms": 78.4685,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09552000000000001,
+          "AddRmsNormBias": 0.37661999999999995,
+          "IndexCheck": 0.026580000000000003,
+          "Index": 0.02424,
+          "Cast": 0.024860000000000007,
+          "BroadcastTo": 0.0016,
+          "IndexPutV2": 0.01464,
+          "Fill": 0.00292,
+          "_compute_slot_mapping_kernel": 0.00916,
+          "Sub": 0.006979999999999999,
+          "GatherV2": 0.008140000000000001,
+          "GemmaRmsNorm": 0.009980000000000001,
+          "MatMulV2": 3.039639999999999,
+          "Slice": 0.27097999999999994,
+          "ZerosLike": 0.17391999999999996,
+          "CausalConv1d": 0.4318399999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.691380000000001,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17518000000000003
+        },
+        "full_attention": {
+          "Add": 0.05474,
+          "AddRmsNormBias": 0.1254,
+          "MatMulV2": 0.9898800000000001,
+          "Slice": 59.040040000000005,
+          "IndexCheck": 0.06672,
+          "Index": 0.24214000000000002,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10516,
+          "ScatterPaKvCache": 0.07192,
+          "FusedInferAttentionScore": 0.56572,
+          "Sigmoid": 0.07482,
+          "Mul": 0.09246000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.076020000000002,
+          "SwiGlu": 0.43996
+        },
+        "other": {
+          "MatMulV2": 1.1134000000000002,
+          "ArgMaxV2": 0.037340000000000005
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.3565,
+        "full_attention": 61.4465,
+        "mlp": 6.5115,
+        "other": 1.151
+      },
+      "device_union_ms": 78.46325,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09588000000000002,
+          "AddRmsNormBias": 0.37700000000000017,
+          "IndexCheck": 0.027039999999999998,
+          "Index": 0.02388,
+          "Cast": 0.0253,
+          "BroadcastTo": 0.00174,
+          "IndexPutV2": 0.00904,
+          "Fill": 0.00296,
+          "_compute_slot_mapping_kernel": 0.0088,
+          "Sub": 0.00758,
+          "GatherV2": 0.0081,
+          "GemmaRmsNorm": 0.01044,
+          "MatMulV2": 3.02918,
+          "Slice": 0.26871999999999996,
+          "ZerosLike": 0.17392000000000002,
+          "CausalConv1d": 0.4344800000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.68196,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17531999999999998
+        },
+        "full_attention": {
+          "Add": 0.053840000000000006,
+          "AddRmsNormBias": 0.1256,
+          "MatMulV2": 0.9901199999999999,
+          "Slice": 59.056340000000006,
+          "IndexCheck": 0.06766,
+          "Index": 0.24187999999999998,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10672,
+          "ScatterPaKvCache": 0.0724,
+          "FusedInferAttentionScore": 0.56678,
+          "Sigmoid": 0.07465999999999999,
+          "Mul": 0.09304000000000001
+        },
+        "mlp": {
+          "MatMulV2": 6.074299999999999,
+          "SwiGlu": 0.43787999999999994
+        },
+        "other": {
+          "MatMulV2": 1.11452,
+          "ArgMaxV2": 0.03648
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35875,
+        "full_attention": 61.43625,
+        "mlp": 6.514,
+        "other": 1.153
+      },
+      "device_union_ms": 78.45975,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09650000000000002,
+          "AddRmsNormBias": 0.377,
+          "IndexCheck": 0.0269,
+          "Index": 0.02348,
+          "Cast": 0.024979999999999995,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.00904,
+          "Fill": 0.0030600000000000002,
+          "_compute_slot_mapping_kernel": 0.00906,
+          "Sub": 0.00696,
+          "GatherV2": 0.00786,
+          "GemmaRmsNorm": 0.00974,
+          "MatMulV2": 3.0322199999999997,
+          "Slice": 0.27082,
+          "ZerosLike": 0.1746,
+          "CausalConv1d": 0.4356400000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6772,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17509999999999998
+        },
+        "full_attention": {
+          "Add": 0.05474000000000001,
+          "AddRmsNormBias": 0.12646000000000002,
+          "MatMulV2": 0.9858000000000002,
+          "Slice": 59.0433,
+          "IndexCheck": 0.06675999999999999,
+          "Index": 0.24208,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10665999999999999,
+          "ScatterPaKvCache": 0.0719,
+          "FusedInferAttentionScore": 0.5728800000000001,
+          "Sigmoid": 0.07556,
+          "Mul": 0.09268
+        },
+        "mlp": {
+          "MatMulV2": 6.073620000000002,
+          "SwiGlu": 0.4409999999999999
+        },
+        "other": {
+          "MatMulV2": 1.1178,
+          "ArgMaxV2": 0.03532
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35225,
+        "full_attention": 61.47075,
+        "mlp": 6.5115,
+        "other": 1.15625
+      },
+      "device_union_ms": 78.4895,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09486,
+          "AddRmsNormBias": 0.37778,
+          "IndexCheck": 0.02618,
+          "Index": 0.02582,
+          "Cast": 0.02506,
+          "BroadcastTo": 0.0016799999999999999,
+          "IndexPutV2": 0.0108,
+          "Fill": 0.0031,
+          "_compute_slot_mapping_kernel": 0.00904,
+          "Sub": 0.00752,
+          "GatherV2": 0.00808,
+          "GemmaRmsNorm": 0.00996,
+          "MatMulV2": 3.033220000000001,
+          "Slice": 0.27037999999999995,
+          "ZerosLike": 0.17413999999999993,
+          "CausalConv1d": 0.43548000000000014,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67058,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17556
+        },
+        "full_attention": {
+          "Add": 0.05478,
+          "AddRmsNormBias": 0.12536,
+          "MatMulV2": 0.99754,
+          "Slice": 59.07279999999999,
+          "IndexCheck": 0.06596,
+          "Index": 0.24105999999999997,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10578,
+          "ScatterPaKvCache": 0.07226,
+          "FusedInferAttentionScore": 0.56976,
+          "Sigmoid": 0.07433999999999999,
+          "Mul": 0.09309999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.074980000000004,
+          "SwiGlu": 0.4396
+        },
+        "other": {
+          "MatMulV2": 1.12048,
+          "ArgMaxV2": 0.03578
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.35125,
+        "full_attention": 61.43775,
+        "mlp": 6.51325,
+        "other": 1.161
+      },
+      "device_union_ms": 78.462,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09526000000000001,
+          "AddRmsNormBias": 0.37748000000000015,
+          "IndexCheck": 0.026160000000000003,
+          "Index": 0.023399999999999997,
+          "Cast": 0.02546,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.00894,
+          "Fill": 0.0028799999999999997,
+          "_compute_slot_mapping_kernel": 0.00902,
+          "Sub": 0.006860000000000001,
+          "GatherV2": 0.00786,
+          "GemmaRmsNorm": 0.009880000000000002,
+          "MatMulV2": 3.0274400000000012,
+          "Slice": 0.26985999999999993,
+          "ZerosLike": 0.17457999999999999,
+          "CausalConv1d": 0.4335600000000001,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.67986,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.1757
+        },
+        "full_attention": {
+          "Add": 0.054119999999999994,
+          "AddRmsNormBias": 0.12522,
+          "MatMulV2": 0.9894400000000001,
+          "Slice": 59.04953999999999,
+          "IndexCheck": 0.06724,
+          "Index": 0.23917999999999998,
+          "split_qkv_rmsnorm_mrope_kernel": 0.107,
+          "ScatterPaKvCache": 0.07224000000000001,
+          "FusedInferAttentionScore": 0.5688199999999999,
+          "Sigmoid": 0.07546,
+          "Mul": 0.0928
+        },
+        "mlp": {
+          "MatMulV2": 6.072379999999999,
+          "SwiGlu": 0.44126
+        },
+        "other": {
+          "MatMulV2": 1.1246800000000001,
+          "ArgMaxV2": 0.03632
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.34275,
+        "full_attention": 61.43225,
+        "mlp": 6.50475,
+        "other": 1.161
+      },
+      "device_union_ms": 78.4395,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09422000000000001,
+          "AddRmsNormBias": 0.37679999999999997,
+          "IndexCheck": 0.028419999999999997,
+          "Index": 0.02398,
+          "Cast": 0.024919999999999998,
+          "BroadcastTo": 0.00164,
+          "IndexPutV2": 0.008960000000000001,
+          "Fill": 0.0030600000000000002,
+          "_compute_slot_mapping_kernel": 0.009179999999999999,
+          "Sub": 0.00762,
+          "GatherV2": 0.008140000000000001,
+          "GemmaRmsNorm": 0.00932,
+          "MatMulV2": 3.0285200000000017,
+          "Slice": 0.2698599999999999,
+          "ZerosLike": 0.17442,
+          "CausalConv1d": 0.4306999999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.6727799999999995,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17558
+        },
+        "full_attention": {
+          "Add": 0.05491999999999999,
+          "AddRmsNormBias": 0.12596000000000002,
+          "MatMulV2": 0.99172,
+          "Slice": 59.05035999999999,
+          "IndexCheck": 0.0665,
+          "Index": 0.23768,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10543999999999999,
+          "ScatterPaKvCache": 0.07192,
+          "FusedInferAttentionScore": 0.56478,
+          "Sigmoid": 0.07465999999999998,
+          "Mul": 0.09262
+        },
+        "mlp": {
+          "MatMulV2": 6.069759999999999,
+          "SwiGlu": 0.43698
+        },
+        "other": {
+          "MatMulV2": 1.1220599999999998,
+          "ArgMaxV2": 0.038979999999999994
+        }
+      }
+    },
+    {
+      "device_ms": {
+        "gdn": 9.351,
+        "full_attention": 61.4335,
+        "mlp": 6.51725,
+        "other": 1.15175
+      },
+      "device_union_ms": 78.4525,
+      "op_duration_ms": {
+        "gdn": {
+          "Add": 0.09514,
+          "AddRmsNormBias": 0.3771400000000001,
+          "IndexCheck": 0.027059999999999997,
+          "Index": 0.023840000000000004,
+          "Cast": 0.02508,
+          "BroadcastTo": 0.0019,
+          "IndexPutV2": 0.01102,
+          "Fill": 0.00292,
+          "_compute_slot_mapping_kernel": 0.00912,
+          "Sub": 0.00766,
+          "GatherV2": 0.008119999999999999,
+          "GemmaRmsNorm": 0.009779999999999999,
+          "MatMulV2": 3.0264600000000006,
+          "Slice": 0.27040000000000003,
+          "ZerosLike": 0.17452,
+          "CausalConv1d": 0.4321999999999999,
+          "d_recurrent_gated_delta_rule_packed_decode_kernel": 4.680299999999999,
+          "_layer_norm_fwd_1pass_kernel_npu": 0.17423999999999998
+        },
+        "full_attention": {
+          "Add": 0.05515999999999999,
+          "AddRmsNormBias": 0.12586,
+          "MatMulV2": 0.9926199999999998,
+          "Slice": 59.05221999999999,
+          "IndexCheck": 0.06695999999999999,
+          "Index": 0.23696000000000003,
+          "split_qkv_rmsnorm_mrope_kernel": 0.10713999999999999,
+          "ScatterPaKvCache": 0.07225999999999999,
+          "FusedInferAttentionScore": 0.5611999999999999,
+          "Sigmoid": 0.07474,
+          "Mul": 0.09219999999999999
+        },
+        "mlp": {
+          "MatMulV2": 6.0777399999999995,
+          "SwiGlu": 0.4410199999999999
+        },
+        "other": {
+          "MatMulV2": 1.1155599999999999,
+          "ArgMaxV2": 0.03624
+        }
+      }
+    }
+  ],
+  "notes": [
+    "Device steps use non-overlapping 32-layer patterns and must contain vocab projection or ArgMax.",
+    "Known capture/prepare kernels and long GDN-only slices are excluded from replay accounting.",
+    "host_estimate is baseline TPOT minus device union, not a per-step host trace measurement.",
+    "Category device times use interval unions; op durations explain composition and need not sum to the unions.",
+    "The final complete step is discarded because it lacks a following step boundary."
+  ]
+}
