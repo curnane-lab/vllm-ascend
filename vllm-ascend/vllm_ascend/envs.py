@@ -87,6 +87,7 @@ env_variables: dict[str, Callable[[], Any]] = {
     # (safe for Ascend 910B/A3). Set to a positive value to override when
     # auto-detection is unavailable or for debugging UB overflow issues.
     "VLLM_ASCEND_ROPE_UB_SIZE_KB": lambda: int(os.getenv("VLLM_ASCEND_ROPE_UB_SIZE_KB") or 0),
+
     # Enable LeapQuant per-window recurrent-state quantization for GDN decode
     # (arXiv:2609.38166). 0 (default): dense fp32 state. 1: eager torch path
     # (accuracy validation, slow). 2: Triton-Ascend step kernel + torch flush.
