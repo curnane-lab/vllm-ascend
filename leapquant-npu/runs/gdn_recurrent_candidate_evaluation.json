@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "model": "/data/f00538480/Qwen3.5-4B",
+  "device": "Ascend910B3",
+  "batch": 64,
+  "graph_mode": "FULL_DECODE_ONLY",
+  "baseline": {
+    "name": "FP32 alias dense BV32",
+    "tpot_ms": 26.332319378049025,
+    "target_speedup_for_1_10x": 1.358937028155184
+  },
+  "candidates": [
+    {
+      "name": "BF16 state storage",
+      "tpot_ms": 24.4143785710635,
+      "speedup_vs_baseline": 1.078560537320341,
+      "exact_token_matches_vs_fp32": 9,
+      "requests": 64,
+      "repeat_exact_matches": 11,
+      "decision": "reject: unstable trajectories and target not met"
+    },
+    {
+      "name": "FP32 recurrent BV64",
+      "tpot_ms": 23.44990948872042,
+      "speedup_vs_baseline": 1.122906274583677,
+      "exact_token_matches_vs_bv32": 15,
+      "requests": 64,
+      "repeat_matches": false,
+      "decision": "reject: incorrect trajectories and target not met; BV128 not started"
+    }
+  ],
+  "conclusion": "Keep the FP32 alias dense BV32 baseline. No candidate passed correctness, so no candidate enters full-window or production performance delivery."
+}

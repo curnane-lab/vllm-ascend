@@ -8,6 +8,7 @@ from pathlib import Path
 import torch_npu  # noqa: F401
 from torch_npu.npu import mstx
 from vllm import LLM, SamplingParams
+from vllm.model_executor.layers.mamba.gdn import qwen_gdn_linear_attn as qwen_gdn
 
 from vllm_ascend.worker.worker import NPUWorker
 
@@ -113,6 +114,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--trace-dir", type=Path, required=True)
     parser.add_argument("--eager", action="store_true")
+    parser.add_argument("--mamba-ssm-cache-dtype", choices=["float32", "float16", "bfloat16"], default=None)
+    parser.add_argument("--recurrent-bv", type=int, choices=[32, 64, 128], default=32)
     args = parser.parse_args()
     args.output = args.output.resolve()
     args.trace_dir = args.trace_dir.resolve()
@@ -120,6 +123,15 @@ def main():
     _install_step_markers()
     if os.getenv("CACHE_VIEW_DEBUG"):
         _install_cache_view_debug()
+    if args.recurrent_bv != 32:
+        from gdn_recurrent_candidates import fused_recurrent_gated_delta_rule_packed_decode_bv
+
+        recurrent_bv = args.recurrent_bv
+
+        def packed(*args, **kwargs):
+            return fused_recurrent_gated_delta_rule_packed_decode_bv(*args, bv=recurrent_bv, **kwargs)
+
+        qwen_gdn.fused_recurrent_gated_delta_rule_packed_decode = packed
 
     llm = LLM(
         model=args.model,
@@ -132,6 +144,7 @@ def main():
         limit_mm_per_prompt={"image": 0},
         enable_prefix_caching=False,
         disable_log_stats=False,
+        **({"mamba_ssm_cache_dtype": args.mamba_ssm_cache_dtype} if args.mamba_ssm_cache_dtype else {}),
     )
 
     def sampling(tokens):
@@ -155,6 +168,8 @@ def main():
         "tokens": args.tokens,
         "decode_steps": args.tokens - 1,
         "mode": "dense MR V2, FULL graph, prefix cache off, fixed length",
+        "mamba_ssm_cache_dtype": args.mamba_ssm_cache_dtype or "float32",
+        "recurrent_bv": args.recurrent_bv,
         "token_trajectories_match": baseline_tokens == profile_tokens,
         "baseline": baseline,
         "profile": profile,
