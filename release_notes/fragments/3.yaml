@@ -1,0 +1,7 @@
+pr: 3
+entries:
+  - category: config
+    text: >-
+      Added experimental GDN switches VLLM_ASCEND_GDN_LEAPQUANT,
+      VLLM_ASCEND_GDN_LQ_STEP_V2, and VLLM_ASCEND_GDN_POOL_IO. All default
+      to off, so dense prefill and decode stay unchanged until they are set.
