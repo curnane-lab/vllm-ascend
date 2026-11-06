@@ -72,6 +72,25 @@ env_variables: dict[str, Callable[[], Any]] = {
     # Control the aclrtMemcpyBatchAsync compile path for KV cache offloading.
     # "1": force enable, "0": force disable, None: auto-detect from CANN headers.
     "VLLM_ASCEND_ENABLE_BATCH_MEMCPY": lambda: os.getenv("VLLM_ASCEND_ENABLE_BATCH_MEMCPY", None),
+    # Enable LeapQuant per-window recurrent-state quantization for GDN decode
+    # (arXiv:2609.38166). 0 (default): dense fp32 state. 1: eager torch path
+    # (accuracy validation, slow). 2: Triton-Ascend step kernel + torch flush.
+    # 3: Triton-Ascend step kernel + AscendC flush (falls back to torch flush
+    # when the custom op is unavailable or during graph capture).
+    # Valid values: 0, 1, 2, 3. Not sensitive.
+    "VLLM_ASCEND_GDN_LEAPQUANT": lambda: int(os.getenv("VLLM_ASCEND_GDN_LEAPQUANT", "0")),
+    # M2-D2 step v2: replace the Triton LeapQuant decode step with the
+    # three-op AscendC pipeline (AIV dequant staging -> AIC cube GEMV -> AIV
+    # epilogue) in gdn.py. Only effective when VLLM_ASCEND_GDN_LEAPQUANT is
+    # also set (2 or 3); falls back to the Triton step whenever a custom op
+    # is unavailable or returns False. Default 0 (off). Not sensitive.
+    "VLLM_ASCEND_GDN_LQ_STEP_V2": lambda: int(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2", "0")),
+    # Experimental GDN prefill indexed state-pool I/O (prototype only).
+    # 0 (default): use the standard compact prefill path. 1: route prefill
+    # through the pool-I/O adapter in gdn_pool_io.py (still performs
+    # gather/transpose/scatter internally; requires native operator support
+    # for real speedup). Not sensitive.
+    "VLLM_ASCEND_GDN_POOL_IO": lambda: int(os.getenv("VLLM_ASCEND_GDN_POOL_IO", "0")),
 }
 
 # end-env-vars-definition
