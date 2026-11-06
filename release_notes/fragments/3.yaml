@@ -4,4 +4,6 @@ entries:
     text: >-
       Added experimental GDN switches VLLM_ASCEND_GDN_LEAPQUANT,
       VLLM_ASCEND_GDN_LQ_STEP_V2, and VLLM_ASCEND_GDN_POOL_IO. All default
-      to off, so dense prefill and decode stay unchanged until they are set.
+      to off. Setting VLLM_ASCEND_GDN_POOL_IO=1 sends a single bfloat16
+      prefill sequence through the pool-I/O adapter; other batches stay on
+      the existing prefill path.

@@ -86,10 +86,10 @@ env_variables: dict[str, Callable[[], Any]] = {
     # is unavailable or returns False. Default 0 (off). Not sensitive.
     "VLLM_ASCEND_GDN_LQ_STEP_V2": lambda: int(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2", "0")),
     # Experimental GDN prefill indexed state-pool I/O (prototype only).
-    # 0 (default): use the standard compact prefill path. 1: route prefill
-    # through the pool-I/O adapter in gdn_pool_io.py (still performs
-    # gather/transpose/scatter internally; requires native operator support
-    # for real speedup). Not sensitive.
+    # 0 (default): use the standard compact prefill path. 1: for one bfloat16
+    # prefill sequence, route through gdn_pool_io.py. The adapter still
+    # gathers, transposes, and scatters a compact state block. Multi-sequence
+    # batches stay on the compact path. Not sensitive.
     "VLLM_ASCEND_GDN_POOL_IO": lambda: int(os.getenv("VLLM_ASCEND_GDN_POOL_IO", "0")),
 }
 
