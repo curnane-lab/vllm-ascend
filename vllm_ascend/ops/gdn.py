@@ -38,6 +38,7 @@ from vllm.v1.attention.backend import AttentionBackend, AttentionMetadata  # typ
 from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
 from vllm.v1.attention.backends.utils import PAD_SLOT_ID
 
+from vllm_ascend import envs
 from vllm_ascend.attention.utils import (
     maybe_save_kv_layer_to_connector,
     wait_for_kv_layer_from_connector,
@@ -46,6 +47,7 @@ from vllm_ascend.device.device_op import DeviceOperator
 from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
 from vllm_ascend.distributed.kv_transfer.kv_pool.ascend_store.attention_fence import record_attention_compute_start
 from vllm_ascend.ops.gdn_attn_builder import AscendGDNFusedAttentionBackend
+from vllm_ascend.ops.gdn_pool_io import run_indexed_pool_prefill, single_sequence_pool_batch, supports_pool_io
 from vllm_ascend.ops.triton.fla.chunk import chunk_gated_delta_rule
 from vllm_ascend.ops.triton.fla.fused_qkvzba_split_reshape import fused_qkvzba_split_reshape_cat
 from vllm_ascend.ops.triton.fla.utils import clear_ssm_states
@@ -812,6 +814,34 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
             # Gate on the model dtype so fp16 models (e.g. ColQwen3.5) fall back
             # to the Triton pipeline instead of hitting an aclnn dtype error.
             supports_fused_dtype = query_non_spec.dtype == torch.bfloat16
+            pool_attn_out = None
+            if (
+                envs.VLLM_ASCEND_GDN_POOL_IO == 1
+                and supports_fused_dtype
+                and get_pcp_group().world_size == 1
+                and single_sequence_pool_batch(
+                    query_non_spec,
+                    prefill_query_start_loc,
+                    prefill_state_indices,
+                )
+                and supports_pool_io(
+                    ssm_state,
+                    prefill_state_indices,
+                    prefill_has_initial_state,
+                    query_non_spec.device,
+                )
+            ):
+                pool_attn_out = run_indexed_pool_prefill(
+                    q=query_non_spec,
+                    k=key_non_spec,
+                    v=value_non_spec,
+                    g=g_non_spec,
+                    beta=beta_non_spec,
+                    ssm_state=ssm_state,
+                    state_indices=prefill_state_indices,
+                    has_initial_state=prefill_has_initial_state,
+                    scale=key_non_spec.shape[-1] ** -0.5,
+                )
             use_fla_gdn_prefill = (
                 supports_fused_dtype
                 and get_pcp_group().world_size == 1
@@ -822,13 +852,16 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
             # dispatch on the Triton-compatible path even when its availability
             # probe was cached globally.
             use_fused_chunk = (
-                fla_gdn_prefill_op is None
+                pool_attn_out is None
+                and fla_gdn_prefill_op is None
                 and supports_fused_dtype
                 and query_non_spec.device.type != "cpu"
                 and AscendGatedDeltaNetAttention._probe_fused_chunk()
                 and get_pcp_group().world_size == 1
             )
-            if fla_gdn_prefill_op is not None:
+            if pool_attn_out is not None:
+                core_attn_out_non_spec = pool_attn_out
+            elif fla_gdn_prefill_op is not None:
                 initial_state = gather_ssm_states(
                     ssm_state,
                     prefill_state_indices,
