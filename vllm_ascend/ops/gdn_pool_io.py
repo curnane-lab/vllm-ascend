@@ -17,17 +17,18 @@
 
 """Indexed state-pool I/O for GDN prefill.
 
-Prototype adapter. The fused kernel still consumes a compact state block, so
-this path gathers selected pool rows, transposes them into the kernel layout,
-and scatters the final state back. Direct slot addressing needs a native
-operator. Padded pool rows go through the same gather/scatter kernels as the
-compact prefill path, which read only the selected slots.
+Tries the AscendC ``GdnPoolPrefill`` op first. That launch reads and writes
+pool slots directly. When the custom library is missing, this falls back to a
+compact block: gather the selected rows, transpose them into the fused-kernel
+layout, and scatter the final state. Padded rows use the same gather/scatter
+kernels as the compact prefill path.
 """
 
 from __future__ import annotations
 
 import torch
 
+from vllm_ascend.ops.gdn_pool_prefill_ascendc import gdn_pool_prefill_ascendc
 from vllm_ascend.ops.triton.mamba.state_index import gather_ssm_states, scatter_ssm_states_
 
 _POOL_ALIGNMENT_BYTES = 64
@@ -92,6 +93,22 @@ def indexed_pool_prefill(
     Returns:
         (output, None) where output is [B, T, Hv, Dv] BSND.
     """
+    native_out = gdn_pool_prefill_ascendc(
+        src_pool=ssm_state,
+        dst_pool=ssm_state,
+        src_slots=src_slots,
+        dst_slots=dst_slots,
+        has_initial_state=has_initial_state,
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        scale=scale,
+    )
+    if native_out is not None:
+        return native_out, None
+
     fused_fwd = _get_ctypes_fused_fwd()
 
     # The operator reads a contiguous [B, Hv, Dk, Dv] block. Gather only the
@@ -162,31 +179,29 @@ def run_indexed_pool_prefill(
 ) -> torch.Tensor | None:
     """Adapt one production BSND prefill sequence onto ``indexed_pool_prefill``.
 
-    ``q``/``k``/``v`` arrive as ``[1, T, H, D]``. The ctypes kernel does not
-    apply Q/K L2 norm, matching ``use_qk_l2norm_in_kernel=False``, so norm is
-    applied here. Returns ``None`` when the ctypes wrapper is unavailable so
-    the caller can keep the compact prefill path.
+    ``q``/``k``/``v`` arrive as ``[1, T, H, D]``. The fallback ctypes kernel does
+    not apply Q/K L2 norm, matching ``use_qk_l2norm_in_kernel=False``, so norm
+    is applied here before either the AscendC op or that fallback. Returns
+    ``None`` when neither op is available so the caller keeps the compact path.
     """
-    try:
-        _get_ctypes_fused_fwd()
-    except ImportError:
-        return None
-
     from vllm.third_party.flash_linear_attention.ops.l2norm import l2norm_fwd
 
     q_bnsd = l2norm_fwd(q.contiguous()).transpose(1, 2).contiguous()
     k_bnsd = l2norm_fwd(k.contiguous()).transpose(1, 2).contiguous()
     v_bnsd = v.transpose(1, 2).contiguous()
-    output, _ = indexed_pool_prefill(
-        q_bnsd,
-        k_bnsd,
-        v_bnsd,
-        g.to(torch.float32).contiguous(),
-        beta.to(v.dtype).contiguous(),
-        ssm_state,
-        state_indices,
-        state_indices,
-        has_initial_state,
-        scale,
-    )
+    try:
+        output, _ = indexed_pool_prefill(
+            q_bnsd,
+            k_bnsd,
+            v_bnsd,
+            g.to(torch.float32).contiguous(),
+            beta.to(v.dtype).contiguous(),
+            ssm_state,
+            state_indices,
+            state_indices,
+            has_initial_state,
+            scale,
+        )
+    except ImportError:
+        return None
     return output

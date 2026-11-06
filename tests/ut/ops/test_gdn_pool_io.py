@@ -89,6 +89,7 @@ def test_indexed_pool_prefill_scatters_transposed_final_state(monkeypatch):
         assert kwargs["chunk_size"] == 64
         return torch.full((1, query.shape[2], 2, 3), 7), torch.ones(1, 2, 5, 3)
 
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.gdn_pool_prefill_ascendc", lambda **kwargs: None)
     monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.gather_ssm_states", fake_gather)
     monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.scatter_ssm_states_", fake_scatter)
     monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_ctypes_fused_fwd", lambda: fake_fwd)
@@ -102,10 +103,86 @@ def test_indexed_pool_prefill_scatters_transposed_final_state(monkeypatch):
     torch.testing.assert_close(scattered["source"], expected)
 
 
+def test_indexed_pool_prefill_prefers_native_op(monkeypatch):
+    native = torch.zeros(1, 4, 2, 3)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.gdn_pool_prefill_ascendc", lambda **kwargs: native)
+
+    def fail_gather(*args, **kwargs):
+        raise AssertionError("compact gather should not run when the native op returns")
+
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.gather_ssm_states", fail_gather)
+    pool = torch.zeros(2, 2, 3, 5)
+    slots = torch.tensor([1], dtype=torch.int32)
+    output, extra = indexed_pool_prefill(
+        torch.zeros(1, 2, 4, 5),
+        torch.zeros(1, 2, 4, 5),
+        torch.zeros(1, 2, 4, 3),
+        torch.zeros(1, 4, 2),
+        torch.zeros(1, 4, 2),
+        pool,
+        slots,
+        slots,
+        torch.tensor([True]),
+        0.5,
+    )
+    assert output is native
+    assert extra is None
+
+
+def test_opapi_candidates_keep_prototype_and_custom_opp(monkeypatch, tmp_path):
+    from vllm_ascend.ops import gdn_pool_prefill_ascendc as binding
+
+    prototype = tmp_path / "proto.so"
+    custom_root = tmp_path / "custom"
+    custom_lib = custom_root / "op_api" / "lib" / "libcust_opapi.so"
+    prototype.write_bytes(b"")
+    custom_lib.parent.mkdir(parents=True)
+    custom_lib.write_bytes(b"")
+    monkeypatch.setattr(binding, "_PROTOTYPE_OPAPI", str(prototype))
+    monkeypatch.setenv("ASCEND_CUSTOM_OPP_PATH", str(custom_root))
+
+    found = binding._opapi_candidates()
+
+    assert found == [str(prototype), str(custom_lib)]
+
+
+def test_ascendc_pool_prefill_returns_none_without_library(monkeypatch):
+    from vllm_ascend.ops import gdn_pool_prefill_ascendc as binding
+
+    monkeypatch.setattr(binding, "_AVAILABLE", None)
+    monkeypatch.setattr(binding, "_BINDING", None)
+    monkeypatch.setattr(binding, "_opapi_candidates", lambda: [])
+    monkeypatch.setattr(binding, "_capturing", lambda: False)
+    slots = torch.tensor([0], dtype=torch.int32)
+    pool = torch.zeros(1, 1, 4, 4, dtype=torch.bfloat16)
+    query = torch.zeros(1, 1, 2, 4, dtype=torch.bfloat16)
+    value = torch.zeros(1, 1, 2, 4, dtype=torch.bfloat16)
+    gate = torch.zeros(1, 2, 1)
+
+    assert (
+        binding.gdn_pool_prefill_ascendc(
+            pool,
+            pool,
+            slots,
+            slots,
+            torch.tensor([False]),
+            query,
+            query,
+            value,
+            gate,
+            gate.to(torch.bfloat16),
+            0.5,
+        )
+        is None
+    )
+    assert binding._AVAILABLE is False
+
+
 def test_run_indexed_pool_prefill_skips_missing_ctypes_op(monkeypatch):
     def missing():
         raise ImportError("ctypes fused prefill is unavailable")
 
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.gdn_pool_prefill_ascendc", lambda **kwargs: None)
     monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_ctypes_fused_fwd", missing)
     query = torch.zeros(1, 2, 1, 4)
     value = torch.zeros(1, 2, 1, 4)

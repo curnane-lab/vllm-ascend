@@ -87,7 +87,8 @@ env_variables: dict[str, Callable[[], Any]] = {
     "VLLM_ASCEND_GDN_LQ_STEP_V2": lambda: int(os.getenv("VLLM_ASCEND_GDN_LQ_STEP_V2", "0")),
     # Experimental GDN prefill indexed state-pool I/O (prototype only).
     # 0 (default): use the standard compact prefill path. 1: for one bfloat16
-    # prefill sequence, route through gdn_pool_io.py. The adapter still
+    # prefill sequence, route through gdn_pool_io.py. That path calls the
+    # AscendC GdnPoolPrefill op when libcust_opapi.so exports it, and otherwise
     # gathers, transposes, and scatters a compact state block. Multi-sequence
     # batches stay on the compact path. Not sensitive.
     "VLLM_ASCEND_GDN_POOL_IO": lambda: int(os.getenv("VLLM_ASCEND_GDN_POOL_IO", "0")),

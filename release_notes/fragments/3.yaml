@@ -5,5 +5,6 @@ entries:
       Added experimental GDN switches VLLM_ASCEND_GDN_LEAPQUANT,
       VLLM_ASCEND_GDN_LQ_STEP_V2, and VLLM_ASCEND_GDN_POOL_IO. All default
       to off. Setting VLLM_ASCEND_GDN_POOL_IO=1 sends a single bfloat16
-      prefill sequence through the pool-I/O adapter; other batches stay on
-      the existing prefill path.
+      prefill sequence through the pool-I/O adapter, using the AscendC
+      GdnPoolPrefill op when it is installed and the compact state path
+      otherwise. Other batches stay on the existing prefill path.
