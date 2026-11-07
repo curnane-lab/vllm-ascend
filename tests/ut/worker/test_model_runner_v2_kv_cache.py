@@ -7,11 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 import torch
 from vllm.v1.core.kv_cache_utils import KVCacheBlockCopy
+from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig
 from vllm.v1.worker.gpu import model_runner as upstream
 
 from vllm_ascend.patch.worker import patch_model_runner  # noqa: F401
 from vllm_ascend.utils import vllm_version_is
+from vllm_ascend.worker.v2.model_runner import NPUModelRunner
 
 
 @pytest.mark.parametrize("is_profiling", [False, True])
@@ -123,3 +125,39 @@ def test_mrv2_block_copy_preserves_segmented_mamba_storage():
     torch.testing.assert_close(ssm[2], before_ssm[0])
     torch.testing.assert_close(conv[:2], before_conv[:2])
     torch.testing.assert_close(ssm[:2], before_ssm[:2])
+
+
+def test_update_requests_applies_gdn_temporal_cow_elision_once():
+    runner = NPUModelRunner.__new__(NPUModelRunner)
+    runner.kv_cache_config = MagicMock()
+    runner.kv_cache_config.num_blocks = 8
+    runner.kv_caches = [torch.empty(2, 2)]
+    runner.kv_block_zeroer = MagicMock()
+    runner.attn_groups = []
+    runner.compilation_config = MagicMock()
+    runner.compilation_config.static_forward_context = {}
+    copies = [KVCacheBlockCopy(src_block_id=1, dst_block_id=2)]
+    scheduler_output = SchedulerOutput.make_empty()
+    scheduler_output.new_block_ids_to_zero = [2]
+    scheduler_output.kv_cache_block_copies = copies
+
+    with (
+        patch(
+            "vllm_ascend.ops.gdn_pool_io.prepare_gdn_pool_prefill_cow",
+            return_value={101},
+        ) as prepare,
+        patch("vllm_ascend.worker.utils.copy_kv_cache_blocks_inplace") as copy,
+        patch.object(upstream.GPUModelRunner, "update_requests") as parent_update,
+    ):
+        NPUModelRunner.update_requests(runner, scheduler_output)
+
+    runner.kv_block_zeroer.zero_block_ids.assert_called_once_with([2])
+    prepare.assert_called_once_with(
+        runner.attn_groups,
+        runner.compilation_config.static_forward_context,
+        copies,
+    )
+    assert copy.call_args.kwargs["skip_data_ptrs"] == {101}
+    forwarded = parent_update.call_args.args[0]
+    assert forwarded.new_block_ids_to_zero == []
+    assert forwarded.kv_cache_block_copies == []

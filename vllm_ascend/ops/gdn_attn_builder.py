@@ -33,6 +33,7 @@ from vllm.v1.attention.backends.utils import (
 from vllm.v1.kv_cache_interface import AttentionSpec, KVCacheSpec
 
 from vllm_ascend.device.hardware_profile import get_current_hardware_profile
+from vllm_ascend.ops.gdn_pool_io import map_prefill_source_indices
 from vllm_ascend.ops.triton.fla.utils import (
     prepare_chunk_indices,
     prepare_chunk_offsets,
@@ -442,6 +443,10 @@ class AscendGDNAttentionMetadataBuilder(GDNAttentionMetadataBuilder):
             self.non_spec_actual_seq_lengths = torch.empty(
                 (sequence_index_capacity + 1,), dtype=torch.int32, device=device
             )
+        self._gdn_pool_prefill_cow_copies = ()
+
+    def set_gdn_pool_prefill_cow(self, copies) -> None:
+        self._gdn_pool_prefill_cow_copies = tuple(copies)
 
     def _init_reorder_batch_threshold(
         self,
@@ -1059,6 +1064,14 @@ class AscendGDNAttentionMetadataBuilder(GDNAttentionMetadataBuilder):
         return self._finalize_metadata(attn_metadata)
 
     def _finalize_metadata(self, metadata: GDNAttentionMetadata, fused: bool = False) -> GDNAttentionMetadata:
+        if metadata.prefill_state_indices is None:
+            metadata.prefill_src_state_indices = None
+        else:
+            metadata.prefill_src_state_indices = map_prefill_source_indices(
+                metadata.prefill_state_indices,
+                self._gdn_pool_prefill_cow_copies,
+            )
+        metadata.gdn_pool_temporal_cow_elided = bool(self._gdn_pool_prefill_cow_copies)
         return metadata
 
     def _build_prefill_has_initial_state(
@@ -1331,6 +1344,7 @@ class AscendGDNHostMetadataBuilder(AscendGDNAttentionMetadataBuilder):
         return metadata
 
     def _finalize_metadata(self, metadata: GDNAttentionMetadata, fused: bool = False) -> GDNAttentionMetadata:
+        metadata = super()._finalize_metadata(metadata, fused=fused)
         if self._conv_output_buffer is not None:
             # Layers in this group consume the same decode rows in sequence.
             # Clear once per step, including inactive captured branches: rows

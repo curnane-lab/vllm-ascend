@@ -783,6 +783,32 @@ class NPUModelRunner(GPUModelRunner):
                 "scheduled locally — a request sent directly to the decode node)."
             )
 
+    def update_requests(self, scheduler_output: SchedulerOutput) -> None:
+        from vllm_ascend.ops.gdn_pool_io import prepare_gdn_pool_prefill_cow
+        from vllm_ascend.worker.utils import copy_kv_cache_blocks_inplace
+
+        temporal_cow_skip = prepare_gdn_pool_prefill_cow(
+            self.attn_groups,
+            self.compilation_config.static_forward_context,
+            scheduler_output.kv_cache_block_copies,
+        )
+        if scheduler_output.kv_cache_block_copies:
+            if scheduler_output.new_block_ids_to_zero:
+                assert self.kv_block_zeroer is not None
+                self.kv_block_zeroer.zero_block_ids(scheduler_output.new_block_ids_to_zero)
+            copy_kv_cache_blocks_inplace(
+                self.kv_caches,
+                self.kv_cache_config.num_blocks,
+                scheduler_output.kv_cache_block_copies,
+                skip_data_ptrs=temporal_cow_skip,
+            )
+            scheduler_output = replace(
+                scheduler_output,
+                new_block_ids_to_zero=[],
+                kv_cache_block_copies=[],
+            )
+        super().update_requests(scheduler_output)
+
     def _prepare_inputs_impl(
         self,
         scheduler_output: SchedulerOutput,

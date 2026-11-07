@@ -1934,3 +1934,26 @@ def test_adaptive_fused_descriptors_keep_prepared_conv_indices():
     assert spec.spec_causal_conv1d.cache_indices.data_ptr() == prepared_conv_indices.data_ptr()
     assert spec.spec_causal_conv1d.query_start_loc is metadata.spec_query_start_loc
     assert spec.spec_causal_conv1d.num_accepted_tokens.tolist() == [9, 1]
+
+
+def test_gdn_pool_prefill_metadata_preserves_source_slots():
+    builder = AscendGDNAttentionMetadataBuilder.__new__(AscendGDNAttentionMetadataBuilder)
+    builder.set_gdn_pool_prefill_cow(
+        [
+            SimpleNamespace(src_block_id=5, dst_block_id=40),
+            SimpleNamespace(src_block_id=5, dst_block_id=41),
+        ]
+    )
+    metadata = SimpleNamespace(prefill_state_indices=torch.tensor([40, 41, 42], dtype=torch.int64))
+
+    result = builder._finalize_metadata(metadata)
+
+    assert result.gdn_pool_temporal_cow_elided
+    assert result.prefill_src_state_indices.dtype == torch.int32
+    assert result.prefill_src_state_indices.tolist() == [5, 5, 42]
+    assert result.prefill_state_indices.tolist() == [40, 41, 42]
+
+    builder.set_gdn_pool_prefill_cow(())
+    result = builder._finalize_metadata(metadata)
+    assert not result.gdn_pool_temporal_cow_elided
+    assert result.prefill_src_state_indices.tolist() == [40, 41, 42]
