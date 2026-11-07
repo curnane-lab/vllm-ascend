@@ -57,3 +57,19 @@ class TestEnvVariables(TestBase):
         for var_name in self.env_vars:
             with self.subTest(var=var_name):
                 getattr(envs_ascend, var_name)
+
+    def test_gdn_experimental_switches_default_off(self):
+        gdn_env_names = ("VLLM_ASCEND_GDN_POOL_IO",)
+        saved = {name: os.environ.get(name) for name in gdn_env_names}
+        try:
+            for name in gdn_env_names:
+                os.environ.pop(name, None)
+                self.assertEqual(getattr(envs_ascend, name), 0)
+                os.environ[name] = "2"
+                self.assertEqual(getattr(envs_ascend, name), 2)
+        finally:
+            for name, original in saved.items():
+                if original is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = original

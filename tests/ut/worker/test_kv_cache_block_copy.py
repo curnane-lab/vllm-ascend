@@ -235,3 +235,21 @@ def test_copy_kv_cache_blocks_copies_combined_kv_with_leading_pair_axis(num_bloc
         copy_kv_cache_blocks_inplace([cache], num_blocks, copies)
 
         torch.testing.assert_close(raw_storage, expected, rtol=0, atol=0)
+
+
+def test_copy_kv_cache_blocks_can_elide_only_gdn_temporal_state():
+    num_blocks = 4
+    conv = torch.arange(8, dtype=torch.float32).view(num_blocks, 2)
+    temporal = torch.arange(12, dtype=torch.float32).view(num_blocks, 3) + 20
+    conv_before = conv.clone()
+    temporal_before = temporal.clone()
+
+    copy_kv_cache_blocks_inplace(
+        [[conv, temporal]],
+        num_blocks,
+        [KVCacheBlockCopy(src_block_id=1, dst_block_id=3)],
+        skip_data_ptrs={temporal.data_ptr()},
+    )
+
+    torch.testing.assert_close(conv[3], conv_before[1])
+    torch.testing.assert_close(temporal, temporal_before)

@@ -72,6 +72,13 @@ env_variables: dict[str, Callable[[], Any]] = {
     # Control the aclrtMemcpyBatchAsync compile path for KV cache offloading.
     # "1": force enable, "0": force disable, None: auto-detect from CANN headers.
     "VLLM_ASCEND_ENABLE_BATCH_MEMCPY": lambda: os.getenv("VLLM_ASCEND_ENABLE_BATCH_MEMCPY", None),
+    # Experimental GDN prefill indexed state-pool I/O. 0 (default): use the
+    # standard compact prefill path and full CoW. 1: when the indexed operator
+    # is installed and the BF16 pool layout is eligible, read temporal states
+    # from source slots, write independent destinations, and elide temporal CoW.
+    # Convolution-state CoW remains enabled. Unsupported batches and older
+    # kernels retain the legacy path. Not sensitive.
+    "VLLM_ASCEND_GDN_POOL_IO": lambda: int(os.getenv("VLLM_ASCEND_GDN_POOL_IO", "0")),
 }
 
 # end-env-vars-definition
