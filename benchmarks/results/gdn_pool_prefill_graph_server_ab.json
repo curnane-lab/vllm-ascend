@@ -1,0 +1,126 @@
+{
+  "model": "Qwen3.5-4B",
+  "hardware": "Ascend 910B3",
+  "requested_graph_mode": "FULL_AND_PIECEWISE",
+  "measurement": "Same-card serial A/B with no counters or Event instrumentation; startup, compilation, and graph capture are excluded from timed rounds.",
+  "cases": {
+    "single_request_output1": {
+      "clients": 1,
+      "output_tokens": 1,
+      "capture_sizes": [1],
+      "legacy_ttft_ms": 121.85713,
+      "pool_ttft_ms": 112.207,
+      "ttft_reduction_percent": 7.919216544817697,
+      "legacy_wall_ms": 122.7633,
+      "pool_wall_ms": 112.817,
+      "wall_reduction_percent": 8.102014201312613,
+      "matched_output_requests": 3,
+      "total_output_requests": 3
+    },
+    "concurrent64_output1": {
+      "clients": 64,
+      "output_tokens": 1,
+      "capture_sizes": [1, 2, 4, 8, 16, 32, 48, 64],
+      "legacy_ttft_ms": 1273.983275,
+      "pool_ttft_ms": 1133.335795,
+      "ttft_reduction_percent": 11.039978527190641,
+      "legacy_wall_ms": 2106.26248,
+      "pool_wall_ms": 1933.61144,
+      "wall_reduction_percent": 8.1970334485567,
+      "matched_output_requests": 186,
+      "total_output_requests": 192
+    },
+    "concurrent64_output16_chunk512_legacy_first": {
+      "clients": 64,
+      "output_tokens": 16,
+      "chunk_size": 512,
+      "capture_sizes": [1, 2, 4, 8, 16, 32, 48, 64],
+      "legacy_ttft_ms": 2062.611525,
+      "pool_ttft_ms": 1823.736265,
+      "ttft_reduction_percent": 11.581204560563085,
+      "legacy_wall_ms": 3827.17015,
+      "pool_wall_ms": 3438.92715,
+      "wall_reduction_percent": 10.144388276021644,
+      "legacy_tpot_median_ms": 106.17955,
+      "pool_tpot_median_ms": 95.00340866666667,
+      "matched_output_requests": 170,
+      "total_output_requests": 192
+    },
+    "concurrent64_output16_chunk512_pool_first": {
+      "clients": 64,
+      "output_tokens": 16,
+      "chunk_size": 512,
+      "capture_sizes": [1, 2, 4, 8, 16, 32, 48, 64],
+      "legacy_ttft_ms": 1858.141225,
+      "pool_ttft_ms": 1736.24683,
+      "ttft_reduction_percent": 6.560017794126494,
+      "legacy_wall_ms": 3465.46314,
+      "pool_wall_ms": 3234.90948,
+      "wall_reduction_percent": 6.6528960397483905,
+      "legacy_tpot_median_ms": 96.44484333333332,
+      "pool_tpot_median_ms": 92.56199066666667,
+      "matched_output_requests": 170,
+      "total_output_requests": 192
+    },
+    "concurrent8_shared_prefix_cow_output1": {
+      "clients": 8,
+      "output_tokens": 1,
+      "chunk_size": 448,
+      "prefix_match_unit": 64,
+      "capture_sizes": [1, 2, 4, 8],
+      "legacy_ttft_ms": 330.148225,
+      "pool_ttft_ms": 303.565855,
+      "ttft_reduction_percent": 8.051647104872373,
+      "legacy_wall_ms": 336.779505,
+      "pool_wall_ms": 309.014185,
+      "wall_reduction_percent": 8.244361544506685,
+      "cached_tokens": {
+        "legacy": [448],
+        "pool": [448]
+      },
+      "matched_output_requests": 16,
+      "total_output_requests": 16
+    }
+  },
+  "graph_vs_previous_eager": {
+    "single_request_output1_ttft_change_percent": {
+      "legacy": 11.935070985738916,
+      "pool": 17.460761445795224
+    },
+    "concurrent64_output1_ttft_change_percent": {
+      "legacy": 12.864843996877774,
+      "pool": 20.642739154514512
+    },
+    "concurrent64_output16_legacy_first_ttft_change_percent": {
+      "legacy": 16.5417471665275,
+      "pool": 20.0721734827942
+    },
+    "concurrent64_output16_legacy_first_wall_change_percent": {
+      "legacy": -14.236663929719583,
+      "pool": -12.040958986150185
+    },
+    "concurrent64_output16_legacy_first_tpot_change_percent": {
+      "legacy": -13.683120830748551,
+      "pool": -11.900835082422812
+    }
+  },
+  "verification": {
+    "timed_server_arms": 10,
+    "all_effective_modes_matched": true,
+    "all_full_and_piecewise_captures_finished": true,
+    "instrumentation_enabled": false,
+    "runtime_dispatch_separately_instrumented": false
+  },
+  "startup_retry": {
+    "scenario": "single_request_output1",
+    "error": "Available KV cache memory was -29.26 GiB during startup; no timed requests ran.",
+    "retry": "The same NPU and configuration succeeded; the first memory-profiling failure was not root-caused."
+  },
+  "notes": [
+    "Graph-versus-eager comparisons use measurements collected at different times and are not interleaved.",
+    "The reverse-order 16-token case is retained to expose execution-order and run-to-run variation.",
+    "FULL primarily covers uniform decode; mixed prefill uses PIECEWISE. Padding, input copies, and graph-wrapper costs were not separately profiled.",
+    "Request output-ID equality is reported rather than assumed; numerical paths are not claimed to be bitwise equivalent.",
+    "The shared-prefix case confirms equal cached-token counts, but does not independently instrument every graph-mode copy decision."
+  ]
+}
