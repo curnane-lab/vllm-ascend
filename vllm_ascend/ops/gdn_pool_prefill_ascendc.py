@@ -19,8 +19,9 @@
 
 Calls the custom op ``GdnPoolPrefill`` in ``libcust_opapi.so``. One launch
 reads initial recurrent states from source pool slots and writes final states
-to destination pool slots. ``None`` means the caller should keep the compact
-gather/scatter path.
+to destination pool slots. ``None`` means the operator was not launched and the
+caller may keep the compact gather/scatter path. Launch failures raise instead
+of falling back because the destination pool may already be partially written.
 
 The loaded library handle is process-lifetime state. The first caller searches
 once; a miss stays a miss until the process restarts. Later calls only read
@@ -134,7 +135,9 @@ def gdn_pool_prefill_ascendc(
     beta: bf16 [B, T, Hv] BTH.
 
     Returns:
-        output bf16 [B, T, Hv, Dv] BSND, or None when the op cannot run.
+        output bf16 [B, T, Hv, Dv] BSND, or None only when no launch was
+        attempted (graph capture or no compatible library). Raises RuntimeError
+        after a failed launch because the destination contents are unknown.
     """
     if _capturing():
         return None
@@ -185,8 +188,8 @@ def gdn_pool_prefill_ascendc(
             ctypes.c_int64(src_slot_stride),
             ctypes.c_int64(dst_slot_stride),
         )
-    except Exception:
-        return None
+    except Exception as error:
+        raise RuntimeError("aclnnGdnPoolPrefill failed; the destination pool may be partially written") from error
     if ret != 0:
-        return None
+        raise RuntimeError(f"aclnnGdnPoolPrefill returned {ret}; the destination pool may be partially written")
     return out

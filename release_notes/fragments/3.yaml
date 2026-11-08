@@ -15,3 +15,12 @@ entries:
       per-prefill metadata reuse and shape-gated Q/K/V layout preparation for
       eligible BF16 inputs. Unsupported shapes and layouts retain the original
       indexed pool path. Graph capture retains the original pool preparation.
+  - category: dependency
+    text: >-
+      Documented a reproducible build of the optional indexed GDN pool operator
+      from sgl-kernel-npu PR 970 at commit a967b3c, including the CANN 9.2 and
+      Python 3.12 build inputs and wheel/library hashes.
+  - category: bugfix
+    text: >-
+      GDN AscendC launch failures now raise an error instead of falling back to
+      another prefill after the destination pool may have been partially written.

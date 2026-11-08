@@ -1,0 +1,38 @@
+{
+  "operator": "torch.ops.npu.chunk_gated_delta_rule_pool",
+  "source": {
+    "pull_request": "https://github.com/sgl-project/sgl-kernel-npu/pull/970",
+    "state_when_recorded": "open",
+    "repository": "https://github.com/curnane-lab/sgl-kernel-npu",
+    "branch": "npu/gdn-pool-prefill-io",
+    "commit": "a967b3cfb804dc5e9da88814d50483b7a1963401",
+    "base_commit": "26ec66efe01f8acef43db55da679107702876b23"
+  },
+  "reproduce": {
+    "steps": [
+      "git clone --branch npu/gdn-pool-prefill-io https://github.com/curnane-lab/sgl-kernel-npu.git",
+      "cd sgl-kernel-npu && git checkout a967b3cfb804dc5e9da88814d50483b7a1963401 && git submodule update --init --recursive",
+      "./build.sh -a kernels Ascend910B1",
+      "python -m pip install output/sgl_kernel_npu-2026.9.0-cp312-cp312-linux_aarch64.whl"
+    ],
+    "cann": "9.2.0",
+    "python": "3.12.13",
+    "torch_npu": "2.10.0.post7",
+    "validated_device": "Ascend910B3"
+  },
+  "artifacts": {
+    "wheel": "output/sgl_kernel_npu-2026.9.0-cp312-cp312-linux_aarch64.whl",
+    "wheel_sha256": "dc95a58689aaf2efb08ae53eb3cb8053573305674e9e8034c3c4630758d35696",
+    "library_member": "sgl_kernel_npu/lib/libsgl_kernel_npu.so",
+    "library_sha256": "5438a13d04869e04f931d69e02bfe86d17cebddf1ca146cbbfc8a8061a6ad599",
+    "runtime_library_sha256": "5438a13d04869e04f931d69e02bfe86d17cebddf1ca146cbbfc8a8061a6ad599",
+    "runtime_matches_clean_build": true
+  },
+  "validation": {
+    "full_cmake_build": "passed",
+    "command": "python -m pytest tests/python/sgl_kernel_npu/test_chunk_gated_delta_rule_pool.py -q",
+    "result": "5 passed on Ascend910B3",
+    "coverage": "Shared sources, independent destinations, fresh/padding rows, complete live outputs, distinct pools, destination-layout rejection, and graph replay with changed indices"
+  },
+  "dependency_boundary": "The source PR is still open. Do not treat the operator as available in an upstream sgl-kernel-npu release until that PR merges; vllm-ascend keeps this path opt-in and falls back when the operator is absent."
+}

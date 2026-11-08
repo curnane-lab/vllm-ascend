@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM Ascend project
 
+from types import SimpleNamespace
+
+import pytest
 import torch
 from vllm.v1.core.kv_cache_utils import KVCacheBlockCopy
 
@@ -184,6 +187,44 @@ def test_ascendc_pool_prefill_returns_none_without_library(monkeypatch):
         is None
     )
     assert binding._AVAILABLE is False
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("launch failed"), 17])
+def test_ascendc_pool_prefill_does_not_fallback_after_launch_failure(monkeypatch, failure):
+    from vllm_ascend.ops import gdn_pool_prefill_ascendc as binding
+
+    def call(*args):
+        if isinstance(failure, Exception):
+            raise failure
+        return failure
+
+    runtime = SimpleNamespace(call=call)
+    library = SimpleNamespace(
+        aclnnGdnPoolPrefillGetWorkspaceSize=object(),
+        aclnnGdnPoolPrefill=object(),
+    )
+    monkeypatch.setattr(binding, "_capturing", lambda: False)
+    monkeypatch.setattr(binding, "_binding", lambda: (runtime, None, library))
+    slots = torch.tensor([0], dtype=torch.int32)
+    pool = torch.zeros(1, 1, 4, 4, dtype=torch.bfloat16)
+    query = torch.zeros(1, 1, 2, 4, dtype=torch.bfloat16)
+    value = torch.zeros(1, 1, 2, 4, dtype=torch.bfloat16)
+    gate = torch.zeros(1, 2, 1)
+
+    with pytest.raises(RuntimeError, match="may be partially written"):
+        binding.gdn_pool_prefill_ascendc(
+            pool,
+            pool,
+            slots,
+            slots,
+            torch.tensor([False]),
+            query,
+            query,
+            value,
+            gate,
+            gate.to(torch.bfloat16),
+            0.5,
+        )
 
 
 def test_run_indexed_pool_prefill_skips_missing_ctypes_op(monkeypatch):
