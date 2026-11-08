@@ -46,3 +46,28 @@ export VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION=0
 ```
 
 Use BF16 Mamba SSM cache. Unsupported layouts, filtered-sequence metadata, missing operators, or disabled pool I/O return to the existing production path before a native launch. Numerical and serving evidence is recorded separately under `benchmarks/results`; it does not establish upstream merge readiness.
+
+## Validation
+
+Set `GDN_PHASE6_RUNTIME` to the installer's runtime directory, `VLLM_SOURCE_DIR` to the matching vLLM checkout, and `GDN_VLLM_OPP` to the matching vLLM-Ascend `custom_transformer` vendor directory. From the vLLM-Ascend checkout:
+
+```bash
+export PYTHONPATH="$GDN_PHASE6_RUNTIME:$PWD/benchmarks/gdn_pool_native:$PWD:$VLLM_SOURCE_DIR:${PYTHONPATH}"
+python benchmarks/gdn_pool_native/verify_phase6_consistency.py --output /tmp/gdn_pool_matrix.json
+python benchmarks/gdn_pool_native/bench_phase6_pool.py --output /tmp/gdn_pool_micro.json
+mkdir -p /tmp/gdn_pool_results/results
+(cd /tmp/gdn_pool_results && python /path/to/vllm-ascend/benchmarks/gdn_pool_native/verify_phase6_vllm_adapter.py)
+```
+
+The matrix requires bitwise attention and complete-pool state equality with the production FLA path, including cached/fresh, alias/independent destinations, multi-sequence, short/tail, and padded-pool cases. The microbenchmark uses 384 cached tokens, five warmups, and 20 samples.
+
+Run the service experiment with the same runtime for both arms:
+
+```bash
+GDN_RESULTS_DIR=/tmp/gdn_pool_server_results \
+VLLM_SOURCE_DIR=/path/to/vllm \
+GDN_VLLM_OPP=/path/to/custom_transformer \
+bash benchmarks/gdn_pool_native/run_server_ab.sh
+```
+
+The default protocol is Qwen3.5-4B, chunk size 512, 384+128 prompt tokens, 16 greedy output tokens, BF16 cache, full temporal cache copies, and layout fusion disabled. It runs eager and `FULL_AND_PIECEWISE`, one and 64 clients, five trials per launch direction, and five rounds per server. All request output IDs must match, all timed samples are retained, and graph replay must be observed by the test-only `run_fullgraph` probe. Use `verify_server_correctness.py` to check the separate 32-token eager/graph results.

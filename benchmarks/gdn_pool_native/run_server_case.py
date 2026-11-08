@@ -55,7 +55,10 @@ def main():
                     "GDN_PHASE6_FULL_OPP": "1",
                     "GDN_PHASE6_FULL_OP_API": str(FULL_OP_API),
                     "ASCEND_CUSTOM_OPP_PATH": ":".join(map(str, custom_paths)),
-                    "PYTHONPATH": f"{Path(__file__).parent / 'phase6_runtime'}:{environment.get('PYTHONPATH', '')}",
+                    "PYTHONPATH": (
+                        f"{os.environ.get('GDN_PHASE6_SITE_DIR', str(Path(__file__).parent / 'phase6_runtime'))}:"
+                        f"{environment.get('PYTHONPATH', '')}"
+                    ),
                     "LD_LIBRARY_PATH": (
                         f"{REPO_DIR / 'vllm_ascend'}:{REPO_DIR / 'vllm_ascend/lib'}:"
                         f"{OP_API.parent}:{environment.get('LD_LIBRARY_PATH', '')}"

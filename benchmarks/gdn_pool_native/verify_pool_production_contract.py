@@ -8,9 +8,12 @@ from types import SimpleNamespace
 
 import torch
 import torch_npu
+
+import vllm_ascend.ops.gdn  # noqa: F401, isort: skip
 from fla_npu.ops.ascendc import chunk_gated_delta_rule_fwd
 
-from vllm_ascend.device.device_op import DeviceOperator
+from vllm_ascend.device.device_op import DeviceOperator  # isort: skip
+
 from vllm_ascend.device.hardware_profile import get_current_hardware_profile
 from vllm_ascend.ops import gdn_pool_io as pool_io
 from vllm_ascend.ops.gdn import _get_fla_gdn_prefill_op

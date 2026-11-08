@@ -1,9 +1,9 @@
 {
   "comparison": "Direct production chunk_gated_delta_rule_fwd plus gather/scatter versus the Phase6 indexed pool entry, identical normalized inputs.",
   "requirements": "bitwise output and full-pool state equality; source, unselected slots and pool padding preserved",
-  "library": "/data/f00538480/gdn-vllm-profile/fla_pool_repro/runtime/libfla_npu_stable.so",
+  "library": "/data/f00538480/gdn-vllm-profile/fla_pool_final/runtime/libfla_npu_stable.so",
   "library_sha256": "cacb54561e676dbc4087ff999176ce5cbaa9eb32781feb323decc7afb12b111e",
-  "fla_npu": "/data/f00538480/gdn-vllm-profile/fla_pool_repro/runtime/fla_npu/__init__.py",
+  "fla_npu": "/data/f00538480/gdn-vllm-profile/fla_pool_final/runtime/fla_npu/__init__.py",
   "torch_npu": "2.10.0.post7",
   "backend": "stable",
   "passed": 17,
