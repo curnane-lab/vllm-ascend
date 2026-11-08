@@ -32,7 +32,12 @@ from vllm.model_executor.layers.mamba.gdn.base import GatedDeltaNetAttention
 from vllm.v1.core.kv_cache_utils import KVCacheBlockCopy
 
 from vllm_ascend import envs
-from vllm_ascend.ops.gdn_pool_prefill_ascendc import gdn_pool_prefill_ascendc
+from vllm_ascend.ops.gdn_pool_layout import (
+    GDNPoolPrefillMetadata,
+    prepare_gdn_pool_prefill_metadata,
+    prepare_pool_qkv,
+)
+from vllm_ascend.ops.gdn_pool_prefill_ascendc import _capturing, gdn_pool_prefill_ascendc
 from vllm_ascend.ops.triton.mamba.state_index import gather_ssm_states, scatter_ssm_states_
 
 _POOL_ALIGNMENT_BYTES = 64
@@ -235,23 +240,47 @@ def run_indexed_pool_prefill(
     *,
     dst_slots: torch.Tensor | None = None,
     cu_seqlens: torch.Tensor | None = None,
+    pool_metadata: GDNPoolPrefillMetadata | None = None,
 ) -> torch.Tensor | None:
     """Run packed BSND prefill through indexed I/O or a legacy adapter."""
     from vllm.third_party.flash_linear_attention.ops.l2norm import l2norm_fwd
 
-    src_slots = state_indices.to(device=ssm_state.device, dtype=torch.int32).contiguous()
-    if dst_slots is None:
-        dst_slots = src_slots
-    else:
-        dst_slots = dst_slots.to(device=ssm_state.device, dtype=torch.int32).contiguous()
-    has_initial_state = has_initial_state.to(device=ssm_state.device, dtype=torch.bool).contiguous()
-
     pool_op = _get_pool_prefill_op()
+    use_layout_fusion = (
+        envs.VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION == 1
+        and pool_op is not None
+        and cu_seqlens is not None
+        and not _capturing()
+    )
+    if use_layout_fusion:
+        if pool_metadata is None:
+            pool_metadata = prepare_gdn_pool_prefill_metadata(
+                state_indices,
+                dst_slots,
+                has_initial_state,
+                cu_seqlens,
+                device=ssm_state.device,
+            )
+        src_slots = pool_metadata.src_slots
+        dst_slots = pool_metadata.dst_slots
+        has_initial_state = pool_metadata.has_initial_state
+    else:
+        src_slots = state_indices.to(device=ssm_state.device, dtype=torch.int32).contiguous()
+        if dst_slots is None:
+            dst_slots = src_slots
+        else:
+            dst_slots = dst_slots.to(device=ssm_state.device, dtype=torch.int32).contiguous()
+        has_initial_state = has_initial_state.to(device=ssm_state.device, dtype=torch.bool).contiguous()
+
     if pool_op is not None and cu_seqlens is not None:
-        query = l2norm_fwd(q.contiguous()).squeeze(0).contiguous()
-        key = l2norm_fwd(k.contiguous()).squeeze(0).contiguous()
-        value = v.squeeze(0).contiguous()
-        actual_seq_lengths = torch.diff(cu_seqlens).to(torch.int32).contiguous()
+        if use_layout_fusion:
+            query, key, value = prepare_pool_qkv(q, k, v, src_slots.shape[0])
+            actual_seq_lengths = pool_metadata.actual_seq_lengths
+        else:
+            query = l2norm_fwd(q.contiguous()).squeeze(0).contiguous()
+            key = l2norm_fwd(k.contiguous()).squeeze(0).contiguous()
+            value = v.squeeze(0).contiguous()
+            actual_seq_lengths = torch.diff(cu_seqlens).to(torch.int32).contiguous()
         output = pool_op(
             query,
             key,

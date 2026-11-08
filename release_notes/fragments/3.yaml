@@ -8,3 +8,10 @@ entries:
       operator is installed. Temporal copy-on-write is elided while convolution
       history is preserved; older kernels and unsupported layouts keep the
       legacy prefill and full copy-on-write path.
+  - category: config
+    text: >-
+      Added the experimental GDN pool switch VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION.
+      It defaults to off. Setting it to 1 together with GDN_POOL_IO enables
+      per-prefill metadata reuse and shape-gated Q/K/V layout preparation for
+      eligible BF16 inputs. Unsupported shapes and layouts retain the original
+      indexed pool path. Graph capture retains the original pool preparation.

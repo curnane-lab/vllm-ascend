@@ -32,8 +32,10 @@ from vllm.v1.attention.backends.utils import (
 )
 from vllm.v1.kv_cache_interface import AttentionSpec, KVCacheSpec
 
+from vllm_ascend import envs
 from vllm_ascend.device.hardware_profile import get_current_hardware_profile
 from vllm_ascend.ops.gdn_pool_io import map_prefill_source_indices
+from vllm_ascend.ops.gdn_pool_layout import prepare_gdn_pool_prefill_metadata
 from vllm_ascend.ops.triton.fla.utils import (
     prepare_chunk_indices,
     prepare_chunk_offsets,
@@ -1064,6 +1066,7 @@ class AscendGDNAttentionMetadataBuilder(GDNAttentionMetadataBuilder):
         return self._finalize_metadata(attn_metadata)
 
     def _finalize_metadata(self, metadata: GDNAttentionMetadata, fused: bool = False) -> GDNAttentionMetadata:
+        metadata.gdn_pool_prefill_metadata = None
         if metadata.prefill_state_indices is None:
             metadata.prefill_src_state_indices = None
         else:
@@ -1072,6 +1075,19 @@ class AscendGDNAttentionMetadataBuilder(GDNAttentionMetadataBuilder):
                 self._gdn_pool_prefill_cow_copies,
             )
         metadata.gdn_pool_temporal_cow_elided = bool(self._gdn_pool_prefill_cow_copies)
+        if (
+            metadata.prefill_state_indices is not None
+            and getattr(metadata, "prefill_has_initial_state", None) is not None
+            and getattr(metadata, "prefill_query_start_loc", None) is not None
+            and envs.VLLM_ASCEND_GDN_POOL_IO == 1
+            and envs.VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION == 1
+        ):
+            metadata.gdn_pool_prefill_metadata = prepare_gdn_pool_prefill_metadata(
+                metadata.prefill_src_state_indices,
+                metadata.prefill_state_indices,
+                metadata.prefill_has_initial_state,
+                metadata.prefill_query_start_loc,
+            )
         return metadata
 
     def _build_prefill_has_initial_state(

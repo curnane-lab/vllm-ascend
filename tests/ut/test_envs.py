@@ -59,7 +59,10 @@ class TestEnvVariables(TestBase):
                 getattr(envs_ascend, var_name)
 
     def test_gdn_experimental_switches_default_off(self):
-        gdn_env_names = ("VLLM_ASCEND_GDN_POOL_IO",)
+        gdn_env_names = (
+            "VLLM_ASCEND_GDN_POOL_IO",
+            "VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION",
+        )
         saved = {name: os.environ.get(name) for name in gdn_env_names}
         try:
             for name in gdn_env_names:

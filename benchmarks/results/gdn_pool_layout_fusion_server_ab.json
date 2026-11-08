@@ -1,0 +1,743 @@
+{
+  "implementation": "Repository GDN pool layout fusion; no prototype sitecustomize was loaded.",
+  "baseline": "VLLM_ASCEND_GDN_POOL_IO=1 and VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION=0",
+  "candidate": "VLLM_ASCEND_GDN_POOL_IO=1 and VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION=1",
+  "default": "Both switches default to 0.",
+  "model": "Qwen3.5-4B",
+  "hardware": "Ascend 910B3, physical NPU 2, serial A/B",
+  "mode": "eager, BF16, chunk 512, 384 prefix tokens plus 128 suffix tokens, output 1",
+  "protocol": "Five rounds in each launch order per arm; no outlier rounds removed; no instrumentation during timing.",
+  "single_output1": {
+    "source": "/data/f00538480/gdn-vllm-profile/results/repo_fusion_single_c1_o1_ab.json",
+    "workload": {
+      "clients": 1,
+      "rounds": 5,
+      "prefix_tokens": 384,
+      "suffix_tokens_per_request": 128,
+      "output_tokens_per_request": 1,
+      "warmup": "one cold, two hot, and one full-shape batch"
+    },
+    "server": {
+      "chunked_prefill_size": 512,
+      "max_num_seqs": 1,
+      "max_model_len": 4096,
+      "mamba_block_size": 128,
+      "mamba_ssm_cache_dtype": "bfloat16",
+      "mamba_backend": "TRITON",
+      "prefix_match_unit": null,
+      "enforce_eager": true,
+      "instrumentation_enabled": false,
+      "requested_cudagraph_mode": "NONE",
+      "cudagraph_capture_sizes": [],
+      "effective_cudagraph_modes_in_log": [],
+      "piecewise_capture_observed": false,
+      "full_capture_observed": false,
+      "graph_capture_finished": false,
+      "acl_graph_replay_observed": false
+    },
+    "variants": {
+      "hoisted": "pool-only metadata computed once per forward in the attention metadata builder",
+      "joint": "one Q/K L2 call when total prefill tokens <= 512; per-layer slot metadata retained",
+      "both": "per-forward metadata plus thresholded joint Q/K L2",
+      "adaptive": "per-forward metadata, fused head-first Q/K/V for one sequence up to 512 tokens, otherwise thresholded joint Q/K L2",
+      "adaptive_v2": "per-forward metadata; Q/K/V fusion for <=2 rows, Q/K-only fusion for 3 rows, joint L2 for larger <=512-token batches",
+      "adaptive_v3": "adaptive_v2 with the specialized Q/K kernel (block=64) for 3-4 rows up to 512 tokens"
+    },
+    "directions": {
+      "forward": {
+        "original": {
+          "wall_median_ms": 93.87825,
+          "wall_reduction_vs_original_percent": 0.0,
+          "ttft_median_ms": 93.26093,
+          "ttft_reduction_vs_original_percent": 0.0,
+          "wall_min_ms": 93.55385,
+          "wall_max_ms": 94.17774,
+          "wall_samples_ms": [
+            94.17774,
+            93.62258,
+            93.87825,
+            93.88206,
+            93.55385
+          ],
+          "output_match_vs_original": {
+            "matched": 5,
+            "total": 5
+          },
+          "paired_vs_original": {
+            "request_pairs": 5,
+            "ttft_reduction_percent_median": 0.0,
+            "ttft_saved_ms_median": 0.0,
+            "wall_reduction_percent_median": 0.0,
+            "wall_saved_ms_median": 0.0,
+            "wall_reduction_percent_samples": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "adaptive_v3": {
+          "wall_median_ms": 87.57894,
+          "wall_reduction_vs_original_percent": 6.7100846042613576,
+          "ttft_median_ms": 86.84367,
+          "ttft_reduction_vs_original_percent": 6.8809736295788575,
+          "wall_min_ms": 87.33478,
+          "wall_max_ms": 88.16908,
+          "wall_samples_ms": [
+            87.33478,
+            88.16908,
+            87.86755,
+            87.57894,
+            87.49832
+          ],
+          "output_match_vs_original": {
+            "matched": 5,
+            "total": 5
+          },
+          "paired_vs_original": {
+            "request_pairs": 5,
+            "ttft_reduction_percent_median": 6.567467472088461,
+            "ttft_saved_ms_median": 6.103160000000003,
+            "wall_reduction_percent_median": 6.472774770893974,
+            "wall_saved_ms_median": 6.05552999999999,
+            "wall_reduction_percent_samples": [
+              7.266005746156157,
+              5.8249836738103244,
+              6.402654501974636,
+              6.713870573355541,
+              6.472774770893974
+            ]
+          }
+        }
+      },
+      "reverse": {
+        "original": {
+          "wall_median_ms": 95.49364,
+          "wall_reduction_vs_original_percent": 0.0,
+          "ttft_median_ms": 94.68974,
+          "ttft_reduction_vs_original_percent": 0.0,
+          "wall_min_ms": 95.20393,
+          "wall_max_ms": 96.12544,
+          "wall_samples_ms": [
+            96.09155,
+            96.12544,
+            95.2814,
+            95.49364,
+            95.20393
+          ],
+          "output_match_vs_original": {
+            "matched": 5,
+            "total": 5
+          },
+          "paired_vs_original": {
+            "request_pairs": 5,
+            "ttft_reduction_percent_median": 0.0,
+            "ttft_saved_ms_median": 0.0,
+            "wall_reduction_percent_median": 0.0,
+            "wall_saved_ms_median": 0.0,
+            "wall_reduction_percent_samples": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "adaptive_v3": {
+          "wall_median_ms": 89.85072,
+          "wall_reduction_vs_original_percent": 5.909210288768973,
+          "ttft_median_ms": 89.06646,
+          "ttft_reduction_vs_original_percent": 5.938637068810193,
+          "wall_min_ms": 87.9247,
+          "wall_max_ms": 90.25259,
+          "wall_samples_ms": [
+            87.9247,
+            88.59474,
+            89.85072,
+            90.25259,
+            89.96994
+          ],
+          "output_match_vs_original": {
+            "matched": 5,
+            "total": 5
+          },
+          "paired_vs_original": {
+            "request_pairs": 5,
+            "ttft_reduction_percent_median": 5.797955394875832,
+            "ttft_saved_ms_median": 5.481870000000001,
+            "wall_reduction_percent_median": 5.699622381703051,
+            "wall_saved_ms_median": 5.4306800000000095,
+            "wall_reduction_percent_samples": [
+              8.49903035178431,
+              7.83424242323364,
+              5.699622381703051,
+              5.488375979803473,
+              5.497661703671275
+            ]
+          }
+        }
+      },
+      "combined": {
+        "original": {
+          "wall_median_ms": 94.69083499999999,
+          "wall_reduction_vs_original_percent": 0.0,
+          "ttft_median_ms": 94.03725,
+          "ttft_reduction_vs_original_percent": 0.0,
+          "wall_min_ms": 93.55385,
+          "wall_max_ms": 96.12544,
+          "wall_samples_ms": [
+            94.17774,
+            93.62258,
+            93.87825,
+            93.88206,
+            93.55385,
+            96.09155,
+            96.12544,
+            95.2814,
+            95.49364,
+            95.20393
+          ],
+          "output_match_vs_original": {
+            "matched": 10,
+            "total": 10
+          },
+          "paired_vs_original": {
+            "request_pairs": 10,
+            "ttft_reduction_percent_median": 0.0,
+            "ttft_saved_ms_median": 0.0,
+            "wall_reduction_percent_median": 0.0,
+            "wall_saved_ms_median": 0.0,
+            "wall_reduction_percent_samples": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "adaptive_v3": {
+          "wall_median_ms": 88.04688999999999,
+          "wall_reduction_vs_original_percent": 7.016460463148311,
+          "ttft_median_ms": 87.36248499999999,
+          "ttft_reduction_vs_original_percent": 7.098001058091352,
+          "wall_min_ms": 87.33478,
+          "wall_max_ms": 90.25259,
+          "wall_samples_ms": [
+            87.33478,
+            88.16908,
+            87.86755,
+            87.57894,
+            87.49832,
+            87.9247,
+            88.59474,
+            89.85072,
+            90.25259,
+            89.96994
+          ],
+          "output_match_vs_original": {
+            "matched": 10,
+            "total": 10
+          },
+          "paired_vs_original": {
+            "request_pairs": 10,
+            "ttft_reduction_percent_median": 6.540939084521884,
+            "ttft_saved_ms_median": 6.089280000000002,
+            "wall_reduction_percent_median": 6.437714636434305,
+            "wall_saved_ms_median": 6.033114999999995,
+            "wall_reduction_percent_samples": [
+              7.266005746156157,
+              5.8249836738103244,
+              6.402654501974636,
+              6.713870573355541,
+              6.472774770893974,
+              8.49903035178431,
+              7.83424242323364,
+              5.699622381703051,
+              5.488375979803473,
+              5.497661703671275
+            ]
+          }
+        }
+      }
+    },
+    "per_round": {
+      "forward": {
+        "original": {
+          "wall_ms": [
+            94.17774,
+            93.62258,
+            93.87825,
+            93.88206,
+            93.55385
+          ],
+          "ttft_median_ms": [
+            93.54514,
+            92.97968,
+            93.26093,
+            93.27257,
+            92.93019
+          ],
+          "after_first_token_median_ms": [
+            0.14236999999999966,
+            0.1393499999999932,
+            0.1381099999999975,
+            0.13585999999999387,
+            0.14159000000000788
+          ]
+        },
+        "adaptive_v3": {
+          "wall_ms": [
+            87.33478,
+            88.16908,
+            87.86755,
+            87.57894,
+            87.49832
+          ],
+          "ttft_median_ms": [
+            86.65175,
+            87.49454,
+            87.18553,
+            86.84367,
+            86.82703
+          ],
+          "after_first_token_median_ms": [
+            0.16809999999999548,
+            0.15131999999999834,
+            0.1551900000000046,
+            0.1636400000000009,
+            0.1652000000000129
+          ]
+        }
+      },
+      "reverse": {
+        "original": {
+          "wall_ms": [
+            96.09155,
+            96.12544,
+            95.2814,
+            95.49364,
+            95.20393
+          ],
+          "ttft_median_ms": [
+            95.33021,
+            95.33724,
+            94.54833,
+            94.68974,
+            94.52936
+          ],
+          "after_first_token_median_ms": [
+            0.16082000000000107,
+            0.14935000000001253,
+            0.1398799999999909,
+            0.15178000000000225,
+            0.138149999999996
+          ]
+        },
+        "adaptive_v3": {
+          "wall_ms": [
+            87.9247,
+            88.59474,
+            89.85072,
+            90.25259,
+            89.96994
+          ],
+          "ttft_median_ms": [
+            87.23043,
+            87.84304,
+            89.06646,
+            89.22859,
+            89.19118
+          ],
+          "after_first_token_median_ms": [
+            0.15075000000000216,
+            0.17175999999999192,
+            0.16510999999999854,
+            0.1622300000000081,
+            0.16922999999999888
+          ]
+        }
+      }
+    }
+  },
+  "concurrent64_output1": {
+    "source": "/data/f00538480/gdn-vllm-profile/results/repo_fusion_concurrent_c64_o1_ab.json",
+    "workload": {
+      "clients": 64,
+      "rounds": 5,
+      "prefix_tokens": 384,
+      "suffix_tokens_per_request": 128,
+      "output_tokens_per_request": 1,
+      "warmup": "one cold, two hot, and one full-shape batch"
+    },
+    "server": {
+      "chunked_prefill_size": 512,
+      "max_num_seqs": 64,
+      "max_model_len": 4096,
+      "mamba_block_size": 128,
+      "mamba_ssm_cache_dtype": "bfloat16",
+      "mamba_backend": "TRITON",
+      "prefix_match_unit": null,
+      "enforce_eager": true,
+      "instrumentation_enabled": false,
+      "requested_cudagraph_mode": "NONE",
+      "cudagraph_capture_sizes": [],
+      "effective_cudagraph_modes_in_log": [],
+      "piecewise_capture_observed": false,
+      "full_capture_observed": false,
+      "graph_capture_finished": false,
+      "acl_graph_replay_observed": false
+    },
+    "variants": {
+      "hoisted": "pool-only metadata computed once per forward in the attention metadata builder",
+      "joint": "one Q/K L2 call when total prefill tokens <= 512; per-layer slot metadata retained",
+      "both": "per-forward metadata plus thresholded joint Q/K L2",
+      "adaptive": "per-forward metadata, fused head-first Q/K/V for one sequence up to 512 tokens, otherwise thresholded joint Q/K L2",
+      "adaptive_v2": "per-forward metadata; Q/K/V fusion for <=2 rows, Q/K-only fusion for 3 rows, joint L2 for larger <=512-token batches",
+      "adaptive_v3": "adaptive_v2 with the specialized Q/K kernel (block=64) for 3-4 rows up to 512 tokens"
+    },
+    "directions": {
+      "forward": {
+        "original": {
+          "wall_median_ms": 1723.98286,
+          "wall_reduction_vs_original_percent": 0.0,
+          "ttft_median_ms": 1001.534915,
+          "ttft_reduction_vs_original_percent": 0.0,
+          "wall_min_ms": 1663.28999,
+          "wall_max_ms": 1725.56196,
+          "wall_samples_ms": [
+            1663.28999,
+            1704.47679,
+            1725.56196,
+            1724.16949,
+            1723.98286
+          ],
+          "output_match_vs_original": {
+            "matched": 320,
+            "total": 320
+          },
+          "paired_vs_original": {
+            "request_pairs": 320,
+            "ttft_reduction_percent_median": 0.0,
+            "ttft_saved_ms_median": 0.0,
+            "wall_reduction_percent_median": 0.0,
+            "wall_saved_ms_median": 0.0,
+            "wall_reduction_percent_samples": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "adaptive_v3": {
+          "wall_median_ms": 1546.08898,
+          "wall_reduction_vs_original_percent": 10.3187731228372,
+          "ttft_median_ms": 898.2296699999999,
+          "ttft_reduction_vs_original_percent": 10.31469232403146,
+          "wall_min_ms": 1541.1401,
+          "wall_max_ms": 1675.21901,
+          "wall_samples_ms": [
+            1543.42069,
+            1546.08898,
+            1541.1401,
+            1675.21901,
+            1553.10939
+          ],
+          "output_match_vs_original": {
+            "matched": 320,
+            "total": 320
+          },
+          "paired_vs_original": {
+            "request_pairs": 320,
+            "ttft_reduction_percent_median": 8.39574352081191,
+            "ttft_saved_ms_median": 74.04360500000001,
+            "wall_reduction_percent_median": 9.292459183325107,
+            "wall_saved_ms_median": 158.38780999999994,
+            "wall_reduction_percent_samples": [
+              7.206758936846613,
+              9.292459183325107,
+              10.68764056435273,
+              2.8390758729874066,
+              9.911552716945227
+            ]
+          }
+        }
+      },
+      "reverse": {
+        "original": {
+          "wall_median_ms": 1626.89222,
+          "wall_reduction_vs_original_percent": 0.0,
+          "ttft_median_ms": 946.10655,
+          "ttft_reduction_vs_original_percent": 0.0,
+          "wall_min_ms": 1622.98558,
+          "wall_max_ms": 1641.10252,
+          "wall_samples_ms": [
+            1641.10252,
+            1622.98558,
+            1623.93583,
+            1626.89222,
+            1629.83267
+          ],
+          "output_match_vs_original": {
+            "matched": 320,
+            "total": 320
+          },
+          "paired_vs_original": {
+            "request_pairs": 320,
+            "ttft_reduction_percent_median": 0.0,
+            "ttft_saved_ms_median": 0.0,
+            "wall_reduction_percent_median": 0.0,
+            "wall_saved_ms_median": 0.0,
+            "wall_reduction_percent_samples": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "adaptive_v3": {
+          "wall_median_ms": 1506.4935,
+          "wall_reduction_vs_original_percent": 7.400534498837297,
+          "ttft_median_ms": 890.29765,
+          "ttft_reduction_vs_original_percent": 5.898796493904412,
+          "wall_min_ms": 1488.58497,
+          "wall_max_ms": 1629.45784,
+          "wall_samples_ms": [
+            1629.45784,
+            1528.63743,
+            1506.4935,
+            1488.58497,
+            1503.58678
+          ],
+          "output_match_vs_original": {
+            "matched": 320,
+            "total": 320
+          },
+          "paired_vs_original": {
+            "request_pairs": 320,
+            "ttft_reduction_percent_median": 7.098468217385467,
+            "ttft_saved_ms_median": 58.537469999999985,
+            "wall_reduction_percent_median": 7.231956326747213,
+            "wall_saved_ms_median": 117.44232999999986,
+            "wall_reduction_percent_samples": [
+              0.7095644457361439,
+              5.81324635059296,
+              7.231956326747213,
+              8.501316085954347,
+              7.745941796589461
+            ]
+          }
+        }
+      },
+      "combined": {
+        "original": {
+          "wall_median_ms": 1652.1962549999998,
+          "wall_reduction_vs_original_percent": 0.0,
+          "ttft_median_ms": 999.832795,
+          "ttft_reduction_vs_original_percent": 0.0,
+          "wall_min_ms": 1622.98558,
+          "wall_max_ms": 1725.56196,
+          "wall_samples_ms": [
+            1663.28999,
+            1704.47679,
+            1725.56196,
+            1724.16949,
+            1723.98286,
+            1641.10252,
+            1622.98558,
+            1623.93583,
+            1626.89222,
+            1629.83267
+          ],
+          "output_match_vs_original": {
+            "matched": 640,
+            "total": 640
+          },
+          "paired_vs_original": {
+            "request_pairs": 640,
+            "ttft_reduction_percent_median": 0.0,
+            "ttft_saved_ms_median": 0.0,
+            "wall_reduction_percent_median": 0.0,
+            "wall_saved_ms_median": 0.0,
+            "wall_reduction_percent_samples": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "adaptive_v3": {
+          "wall_median_ms": 1542.280395,
+          "wall_reduction_vs_original_percent": 6.652712089581625,
+          "ttft_median_ms": 898.12821,
+          "ttft_reduction_vs_original_percent": 10.172159335901764,
+          "wall_min_ms": 1488.58497,
+          "wall_max_ms": 1675.21901,
+          "wall_samples_ms": [
+            1543.42069,
+            1546.08898,
+            1541.1401,
+            1675.21901,
+            1553.10939,
+            1629.45784,
+            1528.63743,
+            1506.4935,
+            1488.58497,
+            1503.58678
+          ],
+          "output_match_vs_original": {
+            "matched": 640,
+            "total": 640
+          },
+          "paired_vs_original": {
+            "request_pairs": 640,
+            "ttft_reduction_percent_median": 7.490662549645344,
+            "ttft_saved_ms_median": 66.32675499999999,
+            "wall_reduction_percent_median": 7.488949061668337,
+            "wall_saved_ms_median": 123.05759499999999,
+            "wall_reduction_percent_samples": [
+              7.206758936846613,
+              9.292459183325107,
+              10.68764056435273,
+              2.8390758729874066,
+              9.911552716945227,
+              0.7095644457361439,
+              5.81324635059296,
+              7.231956326747213,
+              8.501316085954347,
+              7.745941796589461
+            ]
+          }
+        }
+      }
+    },
+    "per_round": {
+      "forward": {
+        "original": {
+          "wall_ms": [
+            1663.28999,
+            1704.47679,
+            1725.56196,
+            1724.16949,
+            1723.98286
+          ],
+          "ttft_median_ms": [
+            969.6332,
+            976.443985,
+            1002.871255,
+            1000.6830749999999,
+            1002.16001
+          ],
+          "after_first_token_median_ms": [
+            0.11452500000001464,
+            0.13072500000009768,
+            0.13107500000000982,
+            0.1313250000000039,
+            0.13363500000014028
+          ]
+        },
+        "adaptive_v3": {
+          "wall_ms": [
+            1543.42069,
+            1546.08898,
+            1541.1401,
+            1675.21901,
+            1553.10939
+          ],
+          "ttft_median_ms": [
+            895.053,
+            898.2296699999999,
+            891.265035,
+            973.508705,
+            897.72396
+          ],
+          "after_first_token_median_ms": [
+            0.10804000000007363,
+            0.10917000000006283,
+            0.14179000000007136,
+            0.14312999999995668,
+            0.15042499999998427
+          ]
+        }
+      },
+      "reverse": {
+        "original": {
+          "wall_ms": [
+            1641.10252,
+            1622.98558,
+            1623.93583,
+            1626.89222,
+            1629.83267
+          ],
+          "ttft_median_ms": [
+            955.0659,
+            942.329425,
+            936.7547050000001,
+            946.10655,
+            937.245815
+          ],
+          "after_first_token_median_ms": [
+            0.1263100000000179,
+            0.1281950000000336,
+            0.12982500000001096,
+            0.1310100000000034,
+            0.14024499999999307
+          ]
+        },
+        "adaptive_v3": {
+          "wall_ms": [
+            1629.45784,
+            1528.63743,
+            1506.4935,
+            1488.58497,
+            1503.58678
+          ],
+          "ttft_median_ms": [
+            949.44067,
+            890.29765,
+            871.40822,
+            853.20901,
+            865.548865
+          ],
+          "after_first_token_median_ms": [
+            0.14598500000002446,
+            0.11835999999988189,
+            0.11916999999994005,
+            0.12027000000000498,
+            0.11878500000000258
+          ]
+        }
+      }
+    }
+  },
+  "verification": {
+    "cpu": "203 passed, 1 deselected for an unrelated Glm5NextTextConfig import error in the installed transformers",
+    "npu": "17 passed, including 12 zero-tolerance original-pool comparisons across B1/B2/B3/B4 and with/without initial state",
+    "format": "format.sh ci passed all available hooks; shellcheck is not installed on this host",
+    "capture": "Graph capture explicitly retains the original pool preparation path"
+  },
+  "boundaries": [
+    "Performance results are eager-mode results on Ascend 910B3, not A5 results.",
+    "The original pool's pre-existing numerical difference from the legacy FLA path is not resolved by this change.",
+    "B32 numerical behavior is not addressed and is not a target of the layout-fusion switch."
+  ]
+}

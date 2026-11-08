@@ -12,6 +12,11 @@ from vllm_ascend.ops.gdn_pool_io import (
     single_sequence_pool_batch,
     supports_pool_io,
 )
+from vllm_ascend.ops.gdn_pool_layout import (
+    prepare_gdn_pool_prefill_metadata,
+    prepare_pool_qkv,
+    supports_fused_layout,
+)
 
 _POOL_ALIGNMENT_BYTES = 64
 
@@ -318,3 +323,147 @@ def test_supports_pool_io_rejects_noncontiguous_destination_heads():
     has_initial_state = torch.tensor([True])
 
     assert not supports_pool_io(pool, indices, has_initial_state, pool.device)
+
+
+def _shared_qkv(tokens, dtype=torch.bfloat16):
+    mixed = torch.zeros(64, tokens, 128, dtype=dtype)
+    return tuple(part.transpose(0, 1).unsqueeze(0) for part in mixed.split((16, 16, 32), dim=0))
+
+
+def test_fused_layout_requires_shared_bf16_head_dim_128():
+    q, k, v = _shared_qkv(4)
+    assert supports_fused_layout(q, k, v)
+    assert supports_fused_layout(q, k, k)
+    assert not supports_fused_layout(q, k, v.clone())
+
+    q_fp32, k_fp32, v_fp32 = _shared_qkv(4, dtype=torch.float32)
+    assert not supports_fused_layout(q_fp32, k_fp32, v_fp32)
+
+    mixed = torch.zeros(64, 4, 64, dtype=torch.bfloat16)
+    q_small, k_small, v_small = (part.transpose(0, 1).unsqueeze(0) for part in mixed.split((16, 16, 32), dim=0))
+    assert not supports_fused_layout(q_small, k_small, v_small)
+
+
+def test_prepare_pool_qkv_selects_shape_specific_path(monkeypatch):
+    q, k, v = _shared_qkv(4)
+    calls = []
+
+    def fake_qkv(query, key, value):
+        calls.append("qkv")
+        return query.squeeze(0), key.squeeze(0), value.squeeze(0)
+
+    def fake_qk(query, key, value):
+        calls.append("qk")
+        return query.squeeze(0), key.squeeze(0), value.squeeze(0)
+
+    def fake_l2norm(value):
+        calls.append("l2")
+        return value
+
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_layout.fused_head_first_qkv", fake_qkv)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_layout.fused_head_first_qk", fake_qk)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_layout.l2norm_fwd", fake_l2norm)
+
+    for rows in (1, 2, 3, 4, 5):
+        query, key, value = prepare_pool_qkv(q, k, v, rows)
+        assert query.shape == key.shape == (4, 16, 128)
+        assert value.shape == (4, 32, 128)
+    long_q, long_k, long_v = _shared_qkv(513)
+    prepare_pool_qkv(long_q, long_k, long_v, 1)
+    assert calls == ["qkv", "qkv", "qk", "qk", "l2", "l2", "l2"]
+
+
+def test_run_indexed_pool_prefill_reuses_precomputed_metadata(monkeypatch):
+    calls = {}
+
+    def fake_pool_op(*args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return torch.zeros(4, 1, 4)
+
+    def fake_prepare_qkv(q, k, v, rows):
+        calls["rows"] = rows
+        return q.squeeze(0), k.squeeze(0), v.squeeze(0)
+
+    def fail_diff(*args, **kwargs):
+        raise AssertionError("actual_seq_lengths must come from precomputed metadata")
+
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_IO", "1")
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION", "1")
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_pool_prefill_op", lambda: fake_pool_op)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.prepare_pool_qkv", fake_prepare_qkv)
+    metadata = prepare_gdn_pool_prefill_metadata(
+        torch.tensor([5, 5], dtype=torch.int64),
+        torch.tensor([17, 29], dtype=torch.int64),
+        torch.tensor([True, False]),
+        torch.tensor([0, 2, 4], dtype=torch.int32),
+    )
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.torch.diff", fail_diff)
+    query = torch.ones(1, 4, 1, 4, dtype=torch.bfloat16)
+    value = torch.ones_like(query)
+    gate = torch.zeros(1, 4, 1)
+    pool = torch.zeros(32, 1, 4, 4, dtype=torch.bfloat16)
+
+    output = run_indexed_pool_prefill(
+        query,
+        query,
+        value,
+        gate,
+        gate,
+        pool,
+        torch.tensor([5, 5], dtype=torch.int64),
+        torch.tensor([True, False]),
+        0.5,
+        dst_slots=torch.tensor([17, 29], dtype=torch.int64),
+        cu_seqlens=torch.tensor([0, 2, 4], dtype=torch.int32),
+        pool_metadata=metadata,
+    )
+
+    assert calls["rows"] == 2
+    assert calls["args"][4].tolist() == [5, 5]
+    assert calls["args"][5].tolist() == [17, 29]
+    assert calls["kwargs"]["actual_seq_lengths"].tolist() == [2, 2]
+    assert calls["kwargs"]["has_initial_state"].tolist() == [True, False]
+    assert output.shape == (1, 4, 1, 4)
+
+
+def test_layout_fusion_retains_original_pool_preparation_during_capture(monkeypatch):
+    calls = {}
+
+    def fake_pool_op(*args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return torch.zeros(4, 1, 4)
+
+    def fail_prepare_qkv(*args, **kwargs):
+        raise AssertionError("layout fusion must not run during graph capture")
+
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_IO", "1")
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION", "1")
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._capturing", lambda: True)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_pool_prefill_op", lambda: fake_pool_op)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.prepare_pool_qkv", fail_prepare_qkv)
+    monkeypatch.setattr("vllm.third_party.flash_linear_attention.ops.l2norm.l2norm_fwd", lambda value: value)
+    query = torch.ones(1, 4, 1, 4, dtype=torch.bfloat16)
+    value = torch.ones_like(query)
+    gate = torch.zeros(1, 4, 1)
+    pool = torch.zeros(32, 1, 4, 4, dtype=torch.bfloat16)
+
+    output = run_indexed_pool_prefill(
+        query,
+        query,
+        value,
+        gate,
+        gate,
+        pool,
+        torch.tensor([5, 5], dtype=torch.int64),
+        torch.tensor([True, False]),
+        0.5,
+        dst_slots=torch.tensor([17, 29], dtype=torch.int64),
+        cu_seqlens=torch.tensor([0, 2, 4], dtype=torch.int32),
+    )
+
+    assert calls["args"][4].tolist() == [5, 5]
+    assert calls["args"][5].tolist() == [17, 29]
+    assert calls["kwargs"]["actual_seq_lengths"].tolist() == [2, 2]
+    assert output.shape == (1, 4, 1, 4)

@@ -1957,3 +1957,28 @@ def test_gdn_pool_prefill_metadata_preserves_source_slots():
     result = builder._finalize_metadata(metadata)
     assert not result.gdn_pool_temporal_cow_elided
     assert result.prefill_src_state_indices.tolist() == [40, 41, 42]
+
+
+def test_gdn_pool_layout_metadata_is_precomputed_only_when_enabled(monkeypatch):
+    builder = AscendGDNAttentionMetadataBuilder.__new__(AscendGDNAttentionMetadataBuilder)
+    builder.set_gdn_pool_prefill_cow([SimpleNamespace(src_block_id=5, dst_block_id=40)])
+    metadata = SimpleNamespace(
+        prefill_state_indices=torch.tensor([40, 41], dtype=torch.int64),
+        prefill_has_initial_state=torch.tensor([True, False]),
+        prefill_query_start_loc=torch.tensor([0, 128, 256], dtype=torch.int32),
+    )
+
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION", "1")
+    result = builder._finalize_metadata(metadata)
+    assert result.gdn_pool_prefill_metadata is None
+
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_IO", "1")
+    result = builder._finalize_metadata(metadata)
+    prepared = result.gdn_pool_prefill_metadata
+    assert prepared.src_slots.tolist() == [5, 41]
+    assert prepared.dst_slots.tolist() == [40, 41]
+    assert prepared.src_slots.dtype == torch.int32
+    assert prepared.dst_slots.dtype == torch.int32
+    assert prepared.has_initial_state.dtype == torch.bool
+    assert prepared.has_initial_state.tolist() == [True, False]
+    assert prepared.actual_seq_lengths.tolist() == [128, 128]

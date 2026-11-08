@@ -79,6 +79,15 @@ env_variables: dict[str, Callable[[], Any]] = {
     # Convolution-state CoW remains enabled. Unsupported batches and older
     # kernels retain the legacy path. Not sensitive.
     "VLLM_ASCEND_GDN_POOL_IO": lambda: int(os.getenv("VLLM_ASCEND_GDN_POOL_IO", "0")),
+    # Experimental GDN pool metadata reuse and Q/K/V layout fusion. 0 (default):
+    # retain the original indexed pool preparation. 1: with GDN_POOL_IO=1,
+    # precompute pool metadata once per prefill and fuse eligible BF16,
+    # 128-dimensional-head inputs of at most 512 tokens. One or two rows use
+    # fused Q/K/V preparation, three or four rows use specialized Q/K
+    # preparation, and other small batches use joint L2 normalization.
+    # Unsupported shapes and layouts retain the original pool path. Graph
+    # capture also retains the original pool preparation. Not sensitive.
+    "VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION": lambda: int(os.getenv("VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION", "0")),
 }
 
 # end-env-vars-definition

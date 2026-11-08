@@ -181,3 +181,72 @@ def test_run_indexed_pool_prefill_matches_legacy_with_independent_slots():
     torch.testing.assert_close(output, ref_out.unsqueeze(0), rtol=0, atol=0)
     torch.testing.assert_close(actual, reference, rtol=0, atol=0)
     torch.testing.assert_close(actual[5], pool[5], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("has_initial", [True, False])
+@pytest.mark.parametrize("batch,tokens", [(1, 128), (1, 384), (1, 512), (2, 128), (3, 128), (4, 128)])
+def test_pool_layout_fusion_matches_original_pool(monkeypatch, batch, tokens, has_initial):
+    pytest.importorskip("sgl_kernel_npu")
+    from vllm_ascend.ops import gdn_pool_io
+    from vllm_ascend.ops.gdn_pool_layout import prepare_gdn_pool_prefill_metadata
+
+    gdn_pool_io._get_pool_prefill_op.cache_clear()
+    if gdn_pool_io._get_pool_prefill_op() is None:
+        pytest.skip("indexed pool operator is unavailable")
+    device = "npu:0"
+    torch.npu.set_device(device)
+    torch.manual_seed(20261108 + batch + tokens + int(has_initial))
+    total = batch * tokens
+    mixed = torch.randn(64, total, _HEAD_DIM, device=device, dtype=torch.bfloat16)
+    q, k, v = (part.transpose(0, 1).unsqueeze(0) for part in mixed.split((_HK, _HK, _HV), dim=0))
+    beta = torch.rand(1, total, _HV, device=device, dtype=torch.bfloat16)
+    g = -torch.rand(1, total, _HV, device=device, dtype=torch.float32)
+    cu = torch.arange(0, total + 1, tokens, dtype=torch.int32, device=device)
+    src = torch.arange(3, 3 + batch, dtype=torch.int32, device=device)
+    dst = torch.arange(17, 17 + batch, dtype=torch.int32, device=device)
+    initial_mask = torch.full((batch,), has_initial, dtype=torch.bool, device=device)
+
+    def make_pool():
+        row_size = _HV * _HEAD_DIM * _HEAD_DIM
+        storage = 0.05 * torch.randn(40, 786432, device=device, dtype=torch.bfloat16)
+        return storage[:, :row_size].view(40, _HV, _HEAD_DIM, _HEAD_DIM)
+
+    reference = make_pool()
+    actual = make_pool()
+    actual.copy_(reference)
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_IO", "1")
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION", "0")
+    expected_output = gdn_pool_io.run_indexed_pool_prefill(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        reference,
+        src,
+        initial_mask,
+        _HEAD_DIM**-0.5,
+        dst_slots=dst,
+        cu_seqlens=cu,
+    )
+    monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION", "1")
+    metadata = prepare_gdn_pool_prefill_metadata(src, dst, initial_mask, cu)
+    actual_output = gdn_pool_io.run_indexed_pool_prefill(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        actual,
+        src,
+        initial_mask,
+        _HEAD_DIM**-0.5,
+        dst_slots=dst,
+        cu_seqlens=cu,
+        pool_metadata=metadata,
+    )
+    torch.npu.synchronize()
+    assert expected_output is not None
+    assert actual_output is not None
+    torch.testing.assert_close(actual_output, expected_output, rtol=0, atol=0)
+    torch.testing.assert_close(actual, reference, rtol=0, atol=0)
