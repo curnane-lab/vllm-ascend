@@ -118,6 +118,7 @@ for item in metadata[1:]:
         "stable_stream", "stable_library_sha256", "op_api_sha256",
         "pool_op_api_sha256", "kernel_sha256", "full_op_api_sha256",
         "vllm_op_api_sha256", "layout_fusion", "cow_elision", "git_head",
+        "sync_scheduling", "prefix_cache", "fla_backend",
     ):
         if item[field] != first[field]:
             raise RuntimeError(f"runtime mismatch: {field}")

@@ -70,6 +70,11 @@ def main():
             environment.pop("GDN_GRAPH_REPLAY_FILE", None)
             if any("FULL_AND_PIECEWISE" in argument for argument in command):
                 environment["GDN_GRAPH_REPLAY_FILE"] = str(output.with_suffix(".replay.log"))
+            if os.environ.get("GDN_SYNC_SCHEDULING") == "1":
+                command.append("--no-async-scheduling")
+            if os.environ.get("GDN_DISABLE_PREFIX_CACHE") == "1":
+                command = [argument for argument in command if argument != "--enable-prefix-caching"]
+                command.append("--disable-prefix-caching")
         return original_popen(command, *args, **kwargs)
 
     benchmark.subprocess.Popen = popen
@@ -88,6 +93,9 @@ def main():
     result["phase6_pool"] = {
         "operator": "fla_npu.ops.ascendc.npu_chunk_gated_delta_rule_fwd_pool",
         "stable_stream": "accessor",
+        "sync_scheduling": os.environ.get("GDN_SYNC_SCHEDULING") == "1",
+        "prefix_cache": os.environ.get("GDN_DISABLE_PREFIX_CACHE") != "1",
+        "fla_backend": os.environ.get("FLA_NPU_STABLE_ABI", "stable"),
         "stable_library": str(STABLE),
         "stable_library_sha256": file_sha256(STABLE),
         "op_api": str(OP_API),

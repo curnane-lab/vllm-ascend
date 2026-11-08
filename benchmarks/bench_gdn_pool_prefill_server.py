@@ -35,6 +35,10 @@ def summarize(samples):
 
 
 def invoke(url, model, rid, input_ids, output_len):
+    stagger_ms = int(os.environ.get("GDN_CLIENT_STAGGER_MS", "0"))
+    request_index = rid.rsplit("-", 1)[-1]
+    if stagger_ms and request_index.isdigit():
+        time.sleep(int(request_index) * stagger_ms / 1000)
     payload = json.dumps(
         {
             "model": model,
@@ -405,6 +409,7 @@ def main():
             "prefix_match_unit": args.prefix_match_unit,
             "enforce_eager": args.graph_mode == "NONE",
             "instrumentation_enabled": args.instrument,
+            "client_stagger_ms": int(os.environ.get("GDN_CLIENT_STAGGER_MS", "0")),
             **graph_capture_metadata(server_log, args.graph_mode, capture_sizes),
         },
         "workload": {
