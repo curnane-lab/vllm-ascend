@@ -127,7 +127,7 @@ def test_mrv2_block_copy_preserves_segmented_mamba_storage():
     torch.testing.assert_close(ssm[:2], before_ssm[:2])
 
 
-def test_update_requests_applies_gdn_temporal_cow_elision_once():
+def test_update_requests_prepares_pool_metadata_and_copies_once():
     runner = NPUModelRunner.__new__(NPUModelRunner)
     runner.kv_cache_config = MagicMock()
     runner.kv_cache_config.num_blocks = 8
@@ -144,7 +144,7 @@ def test_update_requests_applies_gdn_temporal_cow_elision_once():
     with (
         patch(
             "vllm_ascend.ops.gdn_pool_io.prepare_gdn_pool_prefill_cow",
-            return_value={101},
+            return_value=None,
         ) as prepare,
         patch("vllm_ascend.worker.utils.copy_kv_cache_blocks_inplace") as copy,
         patch.object(upstream.GPUModelRunner, "update_requests") as parent_update,
@@ -157,7 +157,7 @@ def test_update_requests_applies_gdn_temporal_cow_elision_once():
         runner.compilation_config.static_forward_context,
         copies,
     )
-    assert copy.call_args.kwargs["skip_data_ptrs"] == {101}
+    assert "skip_data_ptrs" not in copy.call_args.kwargs
     forwarded = parent_update.call_args.args[0]
     assert forwarded.new_block_ids_to_zero == []
     assert forwarded.kv_cache_block_copies == []

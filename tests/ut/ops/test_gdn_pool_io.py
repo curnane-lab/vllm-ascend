@@ -314,15 +314,44 @@ def test_run_indexed_pool_prefill_uses_independent_slots(monkeypatch):
     assert output.shape == (1, 4, 1, 4)
 
 
-def test_prepare_gdn_pool_prefill_cow_unifies_copy_and_fallback(monkeypatch):
+def test_native_pool_uses_prepared_running_slots(monkeypatch):
+    calls = {}
+
+    def fake_pool_op(*args, **kwargs):
+        calls["args"] = args
+        return torch.zeros(2, 1, 4)
+
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_pool_prefill_op", lambda: fake_pool_op)
+    query = torch.ones(1, 2, 1, 4, dtype=torch.bfloat16)
+    pool = torch.zeros(32, 1, 4, 4, dtype=torch.bfloat16)
+    running_slots = torch.tensor([18], dtype=torch.int64)
+
+    run_indexed_pool_prefill(
+        query,
+        query,
+        query,
+        torch.zeros(1, 2, 1),
+        torch.zeros(1, 2, 1),
+        pool,
+        running_slots,
+        torch.tensor([True]),
+        0.5,
+        dst_slots=running_slots,
+        cu_seqlens=torch.tensor([0, 2], dtype=torch.int32),
+    )
+
+    args = calls["args"]
+    assert args[3] is pool
+    assert args[4].tolist() == [18]
+    assert args[5].tolist() == [18]
+
+
+def test_prepare_gdn_pool_prefill_cow_retains_all_copies(monkeypatch):
     monkeypatch.setenv("VLLM_ASCEND_GDN_POOL_IO", "1")
     monkeypatch.setattr(
         "vllm_ascend.ops.gdn_pool_io._get_pool_prefill_op",
         lambda: object(),
     )
-
-    class FakeGDN:
-        pass
 
     class Builder:
         copies = ()
@@ -337,22 +366,14 @@ def test_prepare_gdn_pool_prefill_cow_unifies_copy_and_fallback(monkeypatch):
         def get_metadata_builder(self, _):
             return self.builder
 
-    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.GatedDeltaNetAttention", FakeGDN)
-    pool = _aligned_bf16_pool(4, 2, 4, 8)
-    conv = torch.zeros(4, 2, 3)
-    layer = FakeGDN()
-    layer.kv_cache = [conv, pool]
     group = Group()
     copy = KVCacheBlockCopy(src_block_id=1, dst_block_id=3)
 
-    skipped = prepare_gdn_pool_prefill_cow([[group]], {"layer": layer}, [copy])
-
-    assert skipped == {pool.data_ptr()}
-    assert group.builder.copies == (copy,)
+    assert prepare_gdn_pool_prefill_cow([[group]], {}, [copy]) is None
+    assert group.builder.copies == ()
 
     monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_pool_prefill_op", lambda: None)
-    skipped = prepare_gdn_pool_prefill_cow([[group]], {"layer": layer}, [copy])
-    assert skipped == set()
+    assert prepare_gdn_pool_prefill_cow([[group]], {}, [copy]) is None
     assert group.builder.copies == ()
 
 

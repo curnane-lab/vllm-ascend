@@ -237,7 +237,7 @@ def test_copy_kv_cache_blocks_copies_combined_kv_with_leading_pair_axis(num_bloc
         torch.testing.assert_close(raw_storage, expected, rtol=0, atol=0)
 
 
-def test_copy_kv_cache_blocks_can_elide_only_gdn_temporal_state():
+def test_copy_kv_cache_blocks_preserves_all_state_segments():
     num_blocks = 4
     conv = torch.arange(8, dtype=torch.float32).view(num_blocks, 2)
     temporal = torch.arange(12, dtype=torch.float32).view(num_blocks, 3) + 20
@@ -248,8 +248,39 @@ def test_copy_kv_cache_blocks_can_elide_only_gdn_temporal_state():
         [[conv, temporal]],
         num_blocks,
         [KVCacheBlockCopy(src_block_id=1, dst_block_id=3)],
-        skip_data_ptrs={temporal.data_ptr()},
     )
 
     torch.testing.assert_close(conv[3], conv_before[1])
-    torch.testing.assert_close(temporal, temporal_before)
+    torch.testing.assert_close(temporal[3], temporal_before[1])
+    torch.testing.assert_close(conv[:3], conv_before[:3])
+    torch.testing.assert_close(temporal[:3], temporal_before[:3])
+
+
+def test_copy_kv_cache_blocks_preserves_aliased_views_with_distinct_geometry():
+    storage = torch.arange(16, dtype=torch.float32)
+    fa_view = storage.view(4, 4)
+    temporal_view = storage.view(4, 2, 2)
+    assert fa_view.data_ptr() == temporal_view.data_ptr()
+    fa_before = fa_view.clone()
+    temporal_before = temporal_view.clone()
+
+    copy_kv_cache_blocks_inplace(
+        [fa_view, temporal_view],
+        4,
+        [KVCacheBlockCopy(src_block_id=0, dst_block_id=2)],
+    )
+
+    torch.testing.assert_close(fa_view[2], fa_before[0])
+    torch.testing.assert_close(temporal_view[2], temporal_before[0])
+
+
+def test_copy_kv_cache_blocks_preserves_checkpoint_before_align_migration():
+    cache = torch.arange(48, dtype=torch.float32).view(24, 2)
+    checkpoint_source = cache[5].clone()
+    copy_kv_cache_blocks_inplace([cache], 24, [KVCacheBlockCopy(src_block_id=5, dst_block_id=17)])
+    copy_kv_cache_blocks_inplace([cache], 24, [KVCacheBlockCopy(src_block_id=17, dst_block_id=18)])
+
+    cache[5].fill_(-1)
+
+    torch.testing.assert_close(cache[17], checkpoint_source)
+    torch.testing.assert_close(cache[18], checkpoint_source)

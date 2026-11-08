@@ -5,9 +5,9 @@ entries:
       Added the experimental GDN prefill switch VLLM_ASCEND_GDN_POOL_IO.
       It defaults to off. Setting it to 1 enables indexed source/destination
       state-pool I/O for eligible packed BF16 prefill batches when the indexed
-      operator is installed. Temporal copy-on-write is elided while convolution
-      history is preserved; older kernels and unsupported layouts keep the
-      legacy prefill and full copy-on-write path.
+      operator is installed. Native pool reads prepared running slots while all
+      temporal copies are retained, including checkpoint saves and alignment
+      migrations. Older kernels and unsupported layouts keep the legacy prefill.
   - category: config
     text: >-
       Added the experimental GDN pool switch VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION.

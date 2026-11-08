@@ -1017,7 +1017,7 @@ class NPUModelRunner(GPUModelRunner):
         self._apply_pp_sampled_tokens_from_scheduler_output(scheduler_output)
         from vllm_ascend.ops.gdn_pool_io import prepare_gdn_pool_prefill_cow
 
-        temporal_cow_skip = prepare_gdn_pool_prefill_cow(
+        prepare_gdn_pool_prefill_cow(
             self.attn_groups,
             self.compilation_config.static_forward_context,
             scheduler_output.kv_cache_block_copies,
@@ -1034,7 +1034,6 @@ class NPUModelRunner(GPUModelRunner):
                 self.kv_caches,
                 self.kv_cache_config.num_blocks,
                 scheduler_output.kv_cache_block_copies,
-                skip_data_ptrs=temporal_cow_skip,
             )
             scheduler_output = replace(
                 scheduler_output,

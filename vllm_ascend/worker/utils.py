@@ -26,8 +26,6 @@ def copy_kv_cache_blocks_inplace(
     kv_caches: Iterable[torch.Tensor | Sequence[torch.Tensor | None] | None],
     num_blocks: int,
     kv_cache_block_copies: Sequence[KVCacheBlockCopy],
-    *,
-    skip_data_ptrs: set[int] | None = None,
 ) -> None:
     """Copy logical cache blocks for Ascend's segmented cache layout.
 
@@ -37,8 +35,6 @@ def copy_kv_cache_blocks_inplace(
     that complete storage as ``[num_blocks, page_size]`` therefore copies the
     wrong byte ranges. Copy every tensor segment as ``num_blocks`` complete
     physical pages instead. A page may span multiple kernel-level cache blocks.
-    ``skip_data_ptrs`` is used only by GDN indexed prefill, which reads temporal
-    states from the original source slots instead of materializing their CoW.
     """
     if not kv_cache_block_copies:
         return
@@ -55,7 +51,7 @@ def copy_kv_cache_blocks_inplace(
         else:
             tensors = entry
         for tensor in tensors:
-            if tensor is None or (skip_data_ptrs is not None and tensor.data_ptr() in skip_data_ptrs):
+            if tensor is None:
                 continue
             data_ptr = tensor.data_ptr()
             # Hybrid models can overlay layers of different kinds on one

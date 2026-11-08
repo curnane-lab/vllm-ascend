@@ -28,7 +28,6 @@ from collections.abc import Sequence
 from functools import lru_cache
 
 import torch
-from vllm.model_executor.layers.mamba.gdn.base import GatedDeltaNetAttention
 from vllm.v1.core.kv_cache_utils import KVCacheBlockCopy
 
 from vllm_ascend import envs
@@ -200,30 +199,14 @@ def prepare_gdn_pool_prefill_cow(
     attn_groups: list,
     static_forward_context: dict,
     copies: Sequence[KVCacheBlockCopy] | None,
-) -> set[int]:
-    """Publish CoW sources and return eligible GDN temporal caches to skip."""
-    copies = tuple(copies or ())
-    temporal_cache_ptrs: set[int] = set()
-    if copies and envs.VLLM_ASCEND_GDN_POOL_IO == 1 and _get_pool_prefill_op() is not None:
-        for layer in static_forward_context.values():
-            impl = getattr(layer, "impl", layer)
-            if not isinstance(impl, GatedDeltaNetAttention):
-                continue
-            kv_cache = getattr(impl, "kv_cache", None)
-            if not kv_cache or len(kv_cache) < 2:
-                continue
-            ssm_state = kv_cache[1]
-            if supports_pool_layout(ssm_state, ssm_state.device):
-                temporal_cache_ptrs.add(ssm_state.data_ptr())
-
-    cow_copies = copies if temporal_cache_ptrs else ()
+) -> None:
+    """Keep every cache copy and use prepared running slots for native pool I/O."""
     for groups in attn_groups:
         for group in groups:
             builder = group.get_metadata_builder(0)
             set_copies = getattr(builder, "set_gdn_pool_prefill_cow", None)
             if set_copies is not None:
-                set_copies(cow_copies)
-    return temporal_cache_ptrs
+                set_copies(())
 
 
 @torch.no_grad()
