@@ -193,6 +193,11 @@ def graph_capture_metadata(server_log, graph_mode, capture_sizes):
     if graph_mode == "NONE":
         return result
     log = server_log.read_text(encoding="utf-8")
+    replay_ready = list(server_log.parent.glob(f"{server_log.name.removesuffix('.server.log')}.replay.log.*.ready"))
+    replay_summaries = list(server_log.parent.glob(f"{server_log.name.removesuffix('.server.log')}.replay.log.*.json"))
+    replay_counts = [
+        json.loads(path.read_text(encoding="utf-8"))["full_graph_replay_calls"] for path in replay_summaries
+    ]
     result.update(
         {
             "effective_cudagraph_modes_in_log": sorted(
@@ -201,7 +206,13 @@ def graph_capture_metadata(server_log, graph_mode, capture_sizes):
             "piecewise_capture_observed": "Capturing CUDA graphs (PIECEWISE):" in log,
             "full_capture_observed": "Capturing CUDA graphs (FULL):" in log,
             "graph_capture_finished": "Graph capturing finished" in log,
-            "acl_graph_replay_observed": "ACL graph replay is active for the V2 target model" in log,
+            "acl_graph_replay_observed": (
+                "ACL graph replay is active for the V2 target model" in log
+                or bool(replay_ready)
+                or any(count > 0 for count in replay_counts)
+            ),
+            "full_graph_replay_calls": sum(replay_counts) if replay_counts else None,
+            "replay_marker_processes": len(replay_ready) + sum(count > 0 for count in replay_counts),
         }
     )
     valid = graph_mode in result["effective_cudagraph_modes_in_log"] and result["graph_capture_finished"]
@@ -263,6 +274,8 @@ def main():
     for path in (server_log, calls_log):
         if path.exists():
             path.unlink()
+    for path in server_log.parent.glob(f"{server_log.name.removesuffix('.server.log')}.replay.log.*"):
+        path.unlink()
     url = f"http://127.0.0.1:{args.port}"
     env = os.environ.copy()
     env.update(

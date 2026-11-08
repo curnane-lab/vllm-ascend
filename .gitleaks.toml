@@ -70,6 +70,18 @@ paths = [
 ]
 rules = ["generic-api-key"]
 
+# Allow the integer tiling variable tokenBatch in third-party GDN sources
+[[allowlists]]
+paths = ["^benchmarks/gdn_pool_native/(?:operator|runtime)/"]
+rules = ["generic-api-key"]
+regexes = ['tokenBatch\s*=']
+
+# Allow only artifact digest fields in native GDN validation results
+[[allowlists]]
+paths = ["^benchmarks/results/gdn_pool_native_.*\\.json$"]
+rules = ["generic-api-key"]
+regexes = ['"(?:[a-z_]*op_api|[a-z_]*library|kernel)_sha256"']
+
 # Placeholder allowlist for syntax validation; does not permit any files
 [[allowlists]]
 paths = ["^$"]

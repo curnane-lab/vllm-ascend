@@ -1,0 +1,4 @@
+#define GDN_FWD_POOL_IO
+#define Tiling4ChunkGatedDeltaRuleFwdArch22 Tiling4ChunkGatedDeltaRuleFwdPoolArch22
+#define Tiling4ChunkGatedDeltaRuleFwdArch22StateOutput Tiling4ChunkGatedDeltaRuleFwdPoolArch22StateOutput
+#include "../../original_phase6/op_host/op_tiling/arch22/chunk_gated_delta_rule_fwd_arch22_tiling.cpp"

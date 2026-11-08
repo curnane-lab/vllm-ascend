@@ -529,3 +529,99 @@ def test_layout_fusion_retains_original_pool_preparation_during_capture(monkeypa
     assert calls["args"][5].tolist() == [17, 29]
     assert calls["kwargs"]["actual_seq_lengths"].tolist() == [2, 2]
     assert output.shape == (1, 4, 1, 4)
+
+
+def test_phase6_pool_reuses_host_metadata_and_storage(monkeypatch):
+    calls = {}
+
+    def fake_phase6_pool(*args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return torch.zeros(1, 4, 2, 8, dtype=torch.bfloat16)
+
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_phase6_pool_prefill_op", lambda: fake_phase6_pool)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_pool_prefill_op", lambda: None)
+    monkeypatch.setattr("vllm.third_party.flash_linear_attention.ops.l2norm.l2norm_fwd", lambda value: value)
+    monkeypatch.setattr(
+        "vllm_ascend.ops.gdn_pool_io.torch.diff",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("host metadata must be reused")),
+    )
+    query = torch.ones(1, 4, 2, 8, dtype=torch.bfloat16)
+    pool = torch.zeros(32, 2, 8, 8, dtype=torch.bfloat16)
+    metadata = SimpleNamespace(
+        cu_seqlens_host=(0, 4),
+        chunk_indices_chunk64_host=(0, 0),
+        keep_meta=None,
+    )
+
+    output = run_indexed_pool_prefill(
+        query,
+        query,
+        query,
+        torch.zeros(1, 4, 2),
+        torch.zeros(1, 4, 2, dtype=torch.bfloat16),
+        pool,
+        torch.tensor([5], dtype=torch.int64),
+        torch.tensor([True]),
+        0.5,
+        dst_slots=torch.tensor([17], dtype=torch.int64),
+        cu_seqlens=torch.tensor([0, 4], dtype=torch.int32),
+        chunk_metadata=metadata,
+    )
+
+    args = calls["args"]
+    assert args[0].shape == (1, 2, 4, 8)
+    assert not args[0].is_contiguous()
+    assert args[0].data_ptr() == query.data_ptr()
+    assert args[1].shape == args[0].shape
+    assert args[2].shape == args[0].shape
+    assert args[3].shape == (1, 4, 2)
+    assert args[4].shape == (1, 4, 2)
+    assert args[5] is pool
+    assert args[6].tolist() == [5]
+    assert args[7].tolist() == [17]
+    assert calls["kwargs"]["cu_seqlens"] is metadata.cu_seqlens_host
+    assert calls["kwargs"]["chunk_indices"] is metadata.chunk_indices_chunk64_host
+    assert calls["kwargs"]["chunk_size"] == 64
+    assert output.shape == (1, 4, 2, 8)
+
+
+def test_phase6_pool_falls_back_to_legacy_for_filtered_sequences(monkeypatch):
+    expected = torch.zeros(1, 2, 1, 4)
+    fallback_calls = []
+
+    def fail_phase6_pool(*args, **kwargs):
+        raise AssertionError("filtered sequences must not use the Phase6 pool")
+
+    def fake_legacy(*args, **kwargs):
+        fallback_calls.append((args, kwargs))
+        return expected, None
+
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_phase6_pool_prefill_op", lambda: fail_phase6_pool)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io._get_pool_prefill_op", lambda: fail_phase6_pool)
+    monkeypatch.setattr("vllm_ascend.ops.gdn_pool_io.indexed_pool_prefill", fake_legacy)
+    monkeypatch.setattr("vllm.third_party.flash_linear_attention.ops.l2norm.l2norm_fwd", lambda value: value)
+    query = torch.ones(1, 2, 1, 4, dtype=torch.bfloat16)
+    metadata = SimpleNamespace(
+        cu_seqlens_host=(0, 2),
+        chunk_indices_chunk64_host=(0, 0),
+        keep_meta=torch.tensor([0]),
+    )
+
+    output = run_indexed_pool_prefill(
+        query,
+        query,
+        query,
+        torch.zeros(1, 2, 1),
+        torch.zeros(1, 2, 1, dtype=torch.bfloat16),
+        torch.zeros(8, 1, 4, 4, dtype=torch.bfloat16),
+        torch.tensor([5], dtype=torch.int64),
+        torch.tensor([True]),
+        0.5,
+        dst_slots=torch.tensor([17], dtype=torch.int64),
+        cu_seqlens=torch.tensor([0, 2], dtype=torch.int32),
+        chunk_metadata=metadata,
+    )
+
+    assert output is expected
+    assert len(fallback_calls) == 1

@@ -847,6 +847,7 @@ class AscendGatedDeltaNetAttention(GatedDeltaNetAttention):
                     scale=key_non_spec.shape[-1] ** -0.5,
                     cu_seqlens=prefill_query_start_loc,
                     pool_metadata=getattr(attn_metadata, "gdn_pool_prefill_metadata", None),
+                    chunk_metadata=attn_metadata.non_spec_prefill_metadata.chunk,
                 )
             use_fla_gdn_prefill = (
                 supports_fused_dtype

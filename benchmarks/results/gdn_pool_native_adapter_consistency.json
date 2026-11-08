@@ -1,0 +1,78 @@
+{
+  "passed": 3,
+  "total": 3,
+  "records": [
+    {
+      "case": "B1_T64_cached_contiguous",
+      "q_shape": [
+        1,
+        64,
+        16,
+        128
+      ],
+      "pool_shape": [
+        96,
+        32,
+        128,
+        128
+      ],
+      "pool_stride": [
+        524288,
+        16384,
+        128,
+        1
+      ],
+      "output_bitwise": true,
+      "state_bitwise": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T65_cached_padded",
+      "q_shape": [
+        1,
+        65,
+        16,
+        128
+      ],
+      "pool_shape": [
+        96,
+        32,
+        128,
+        128
+      ],
+      "pool_stride": [
+        786432,
+        16384,
+        128,
+        1
+      ],
+      "output_bitwise": true,
+      "state_bitwise": true,
+      "passed": true
+    },
+    {
+      "case": "B2_T65_mixed",
+      "q_shape": [
+        1,
+        130,
+        16,
+        128
+      ],
+      "pool_shape": [
+        96,
+        32,
+        128,
+        128
+      ],
+      "pool_stride": [
+        786432,
+        16384,
+        128,
+        1
+      ],
+      "output_bitwise": true,
+      "state_bitwise": true,
+      "passed": true
+    }
+  ]
+}

@@ -52,6 +52,15 @@ def _get_pool_prefill_op():
     return getattr(torch.ops.npu, "chunk_gated_delta_rule_pool", None)
 
 
+@lru_cache(maxsize=1)
+def _get_phase6_pool_prefill_op():
+    try:
+        from fla_npu.ops.ascendc import npu_chunk_gated_delta_rule_fwd_pool
+    except (ImportError, AttributeError, OSError):
+        return None
+    return npu_chunk_gated_delta_rule_fwd_pool
+
+
 def _get_ctypes_fused_fwd():
     """Return the ctypes fused GDN prefill wrapper that accepts BTH g/beta."""
     from fla_npu.ops.ascendc._aclnn_ctypes import npu_chunk_gated_delta_rule_fwd
@@ -224,14 +233,23 @@ def run_indexed_pool_prefill(
     dst_slots: torch.Tensor | None = None,
     cu_seqlens: torch.Tensor | None = None,
     pool_metadata: GDNPoolPrefillMetadata | None = None,
+    chunk_metadata: object | None = None,
 ) -> torch.Tensor | None:
     """Run packed BSND prefill through indexed I/O or a legacy adapter."""
     from vllm.third_party.flash_linear_attention.ops.l2norm import l2norm_fwd
 
-    pool_op = _get_pool_prefill_op()
+    pool_op = (
+        _get_pool_prefill_op() if chunk_metadata is None or getattr(chunk_metadata, "keep_meta", None) is None else None
+    )
+    phase6_pool_op = (
+        _get_phase6_pool_prefill_op()
+        if chunk_metadata is not None and getattr(chunk_metadata, "keep_meta", None) is None
+        else None
+    )
+    use_phase6_pool = phase6_pool_op is not None and cu_seqlens is not None
     use_layout_fusion = (
         envs.VLLM_ASCEND_GDN_POOL_LAYOUT_FUSION == 1
-        and pool_op is not None
+        and (pool_op is not None or use_phase6_pool)
         and cu_seqlens is not None
         and not _capturing()
     )
@@ -255,15 +273,34 @@ def run_indexed_pool_prefill(
             dst_slots = dst_slots.to(device=ssm_state.device, dtype=torch.int32).contiguous()
         has_initial_state = has_initial_state.to(device=ssm_state.device, dtype=torch.bool).contiguous()
 
-    if pool_op is not None and cu_seqlens is not None:
+    if (pool_op is not None or use_phase6_pool) and cu_seqlens is not None:
         if use_layout_fusion:
             query, key, value = prepare_pool_qkv(q, k, v, src_slots.shape[0])
-            actual_seq_lengths = pool_metadata.actual_seq_lengths
         else:
             query = l2norm_fwd(q.contiguous()).squeeze(0).contiguous()
             key = l2norm_fwd(k.contiguous()).squeeze(0).contiguous()
             value = v.squeeze(0).contiguous()
-            actual_seq_lengths = torch.diff(cu_seqlens).to(torch.int32).contiguous()
+        if use_phase6_pool:
+            return phase6_pool_op(
+                query.unsqueeze(0).transpose(1, 2),
+                key.unsqueeze(0).transpose(1, 2),
+                value.unsqueeze(0).transpose(1, 2),
+                g.squeeze(0).to(torch.float32).contiguous().unsqueeze(0),
+                beta.squeeze(0).to(value.dtype).contiguous().unsqueeze(0),
+                ssm_state,
+                src_slots,
+                dst_slots,
+                has_initial_state,
+                cu_seqlens=chunk_metadata.cu_seqlens_host,
+                chunk_indices=chunk_metadata.chunk_indices_chunk64_host,
+                scale=scale,
+                chunk_size=_FUSED_CHUNK_SIZE,
+            )
+        actual_seq_lengths = (
+            pool_metadata.actual_seq_lengths
+            if use_layout_fusion
+            else torch.diff(cu_seqlens).to(torch.int32).contiguous()
+        )
         output = pool_op(
             query,
             key,

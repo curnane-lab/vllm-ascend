@@ -1,0 +1,1 @@
+BatchExecutionDescriptor(cg_mode=<CUDAGraphMode.FULL: 2>, num_tokens=1, num_reqs=1, uniform_token_count=1, max_query_len=None, num_active_loras=0, num_ubatches=1)

@@ -96,6 +96,7 @@ def main():
                 "legacy_device": legacy["device"],
                 "pool_device": pool["device"],
                 "wall_samples_ms": {"legacy": legacy_walls, "pool": pool_walls},
+                "ttft_samples_ms": {"legacy": legacy_ttft, "pool": pool_ttft},
                 "throughput_samples_tokens_per_second": {
                     "legacy": legacy_throughput,
                     "pool": pool_throughput,

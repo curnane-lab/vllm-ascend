@@ -1,0 +1,704 @@
+{
+  "comparison": "Direct production chunk_gated_delta_rule_fwd plus gather/scatter versus the Phase6 indexed pool entry, identical normalized inputs.",
+  "requirements": "bitwise output and full-pool state equality; source, unselected slots and pool padding preserved",
+  "library": "/data/f00538480/gdn-vllm-profile/fla_pool_repro/runtime/libfla_npu_stable.so",
+  "library_sha256": "cacb54561e676dbc4087ff999176ce5cbaa9eb32781feb323decc7afb12b111e",
+  "fla_npu": "/data/f00538480/gdn-vllm-profile/fla_pool_repro/runtime/fla_npu/__init__.py",
+  "torch_npu": "2.10.0.post7",
+  "backend": "stable",
+  "passed": 17,
+  "total": 17,
+  "records": [
+    {
+      "case": "B1_T64_cached_contiguous",
+      "seed": 20261109,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.117431640625,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T65_cached_padded",
+      "seed": 20261110,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.08984375,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T128_cached_padded",
+      "seed": 20261111,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.1199951171875,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T65_cached_alias",
+      "seed": 20261112,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.0826416015625,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        3
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T65_fresh",
+      "seed": 20261113,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.10009765625,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T7_fresh",
+      "seed": 20261114,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.10321044921875,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B2_T65_cached",
+      "seed": 20261115,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.0986328125,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B2_T128_cached_padded",
+      "seed": 20261116,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.0927734375,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B2_T65_fresh",
+      "seed": 20261117,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.095947265625,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B2_T65_mixed",
+      "seed": 20261118,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.09814453125,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B2_T64_mixed_alias",
+      "seed": 20261119,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.1083984375,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        3,
+        4
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B7_T65_cached",
+      "seed": 20261120,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.111083984375,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B7_T128_mixed",
+      "seed": 20261121,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.1143798828125,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B32_T65_cached",
+      "seed": 20261122,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.111083984375,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B32_T128_cached",
+      "seed": 20261123,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.142333984375,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T64_fresh_contiguous",
+      "seed": 20261124,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.1124267578125,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40
+      ],
+      "padding_preserved": true,
+      "passed": true
+    },
+    {
+      "case": "B1_T64_fresh_padded",
+      "seed": 20261125,
+      "baseline_output_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "baseline_state_repeat": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_output_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_baseline": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "finite": true
+      },
+      "pool_state_vs_transposed_baseline": {
+        "bitwise": false,
+        "max_abs": 0.09326171875,
+        "finite": true
+      },
+      "source_preserved": true,
+      "unselected_preserved": true,
+      "changed_slots": [
+        40
+      ],
+      "padding_preserved": true,
+      "passed": true
+    }
+  ]
+}
