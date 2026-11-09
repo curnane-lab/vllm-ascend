@@ -1,0 +1,58 @@
+{
+  "purpose": "Explain why the service A/B uses deterministic request arrival instead of treating uncontrolled legacy output as a stable oracle.",
+  "repeat_pairs": {
+    "stable_accessor": {
+      "matched": 60,
+      "pairs": 64,
+      "evidence": "gdn_pool_native_baseline_stable_repeat.json"
+    },
+    "ctypes": {
+      "matched": 60,
+      "pairs": 64,
+      "evidence": "gdn_pool_native_ctypes_repeat.json"
+    },
+    "stable_with_synchronous_scheduling": {
+      "matched": 62,
+      "pairs": 64,
+      "evidence": "gdn_pool_native_sync_repeat.json"
+    },
+    "stable_with_synchronous_scheduling_and_no_prefix_cache": {
+      "matched": 56,
+      "pairs": 64,
+      "evidence": "gdn_pool_native_no_prefix_repeat.json"
+    },
+    "stable_with_synchronous_scheduling_and_2ms_client_stagger": {
+      "matched": 64,
+      "pairs": 64,
+      "evidence": "gdn_pool_native_stagger_repeat.json"
+    }
+  },
+  "fla_hash_comparison": {
+    "calls_per_arm": 1152,
+    "input_mismatch_count": 744,
+    "output_mismatch_count": 744,
+    "first_divergent_call": 48,
+    "initial_state_equal_at_first_divergence": true,
+    "metadata_equal_at_first_divergence": true,
+    "evidence": "gdn_pool_native_baseline_fla_hash_comparison.json"
+  },
+  "causal_conv_hash_comparison": {
+    "calls_per_arm": 128,
+    "mismatch_count": 8,
+    "first_divergent_call": 120,
+    "initial_conv_equal_at_first_divergence": true,
+    "cache_indices_equal_at_first_divergence": true,
+    "evidence": "gdn_pool_native_baseline_conv_hash_comparison.json"
+  },
+  "interpretation": "The uncontrolled legacy baseline is not a valid C64 correctness oracle. Differences appear before the FLA call and cannot be assigned to the pool kernel. Direct B4/T128 cached and mixed pool-versus-production comparisons are bitwise equal.",
+  "controlled_protocol": {
+    "sync_scheduling": true,
+    "client_stagger_ms": 2,
+    "prefix_cache": true,
+    "fla_backend": "stable",
+    "stable_stream": "accessor",
+    "full_temporal_cow": true,
+    "layout_fusion": false
+  },
+  "scope": "The controlled protocol makes request arrival deterministic for an A/B; it is not a claim that uncontrolled scheduling or the default Stable-ABI no-wait path has been fixed upstream."
+}

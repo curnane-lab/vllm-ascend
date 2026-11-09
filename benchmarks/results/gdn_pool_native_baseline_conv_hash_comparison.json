@@ -1,0 +1,503 @@
+{
+  "calls_a": 128,
+  "calls_b": 128,
+  "mismatch_count": 8,
+  "records": [
+    {
+      "index": 120,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 120,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "20ce0e1295e68da7997e4b8dbf585b6a31ca1679959b01ede53b2a3cebeec5d4",
+        "cache_indices": [
+          6,
+          14,
+          18
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "11863275749ace746a623a9a25af9e0568f7355b169c1a511c3f8548cdc762f8",
+        "final_conv": "26f1395b2969fe0b6d24275446d9ebd5b3a43572e01802a52eaba9c1ff7b5447",
+        "output": "dc1f0c1d591616cba0b99c723083f33770cb263ecd59ce9fe7f73f7cf86fa6d4"
+      },
+      "right": {
+        "index": 120,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "75c0f7d475e6568adfd6d50a213410dda1380768d7a799591f5b412d5b6202fb",
+        "cache_indices": [
+          6,
+          14,
+          18
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "11863275749ace746a623a9a25af9e0568f7355b169c1a511c3f8548cdc762f8",
+        "final_conv": "62d907fd9c0ad511b8982465d4322d4e97d5068f962aa6da549711b9de839021",
+        "output": "d84a253ee3744fde963751d4f5d4a4aaefd308b820cff1c0182dd3b25d94b6b5"
+      }
+    },
+    {
+      "index": 121,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 121,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "b6bed6de63bab0840282be599ccbbc01fcdef1b8b84a2fc934414e44706f3966",
+        "cache_indices": [
+          7,
+          15,
+          19
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "6d08d1cd3e22aaebf7af36ef44d0a1041214d37b7bb341dab1c95ca99f4049de",
+        "final_conv": "05cd29dbfce527aecf96a4fa64e30681de2874a9e8e9ce8761d93dc94e601dd6",
+        "output": "9dd78484dfa809f7cb04275e56b04b46987789afcdb5d6d0fd3e8ab80f45152d"
+      },
+      "right": {
+        "index": 121,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "e3fb574397cf24129820fd474143d5e2ccd72c128d79386b66292b92a8ab2b91",
+        "cache_indices": [
+          7,
+          15,
+          19
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "6d08d1cd3e22aaebf7af36ef44d0a1041214d37b7bb341dab1c95ca99f4049de",
+        "final_conv": "55ec043bb83e8f67140cbf3fc8e8c1a75cfd8ffa172f6c8fef984b0cfb5187bc",
+        "output": "bac7bd2f89c6b82fdfa5106caa6a99803b5f3aedbc70716d0493a5650716098c"
+      }
+    },
+    {
+      "index": 122,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 122,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "66ed91a5b4f5c0b149497e241a2ca4ed416283aea5c9976b269a88868cee7d0d",
+        "cache_indices": [
+          8,
+          16,
+          20
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "d8c56b66ea322c21650bdffa9bee4691dd1368de9e1580de81b82e8fbb32d8f6",
+        "final_conv": "49e1ac10de89cc91d3dbaa2ece012d1b77dc994769b261f1c6f35bdc6b8d84d7",
+        "output": "ba2d3d6a0599acb0036a2689c86a2b1044b6599e8ed8331a4a795309404073b2"
+      },
+      "right": {
+        "index": 122,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "027eb5ea2cae0c838c874f3f7ce1f980768ba13f5373ab9709c640464f0bf324",
+        "cache_indices": [
+          8,
+          16,
+          20
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "d8c56b66ea322c21650bdffa9bee4691dd1368de9e1580de81b82e8fbb32d8f6",
+        "final_conv": "f9220272c4bd864045b1814ff1f85b46596f1a120c5ea86e1139c4193888bbce",
+        "output": "078cec5bad31163465d243b8bbc456f98dc02f29499c684beb616d55a1bbc748"
+      }
+    },
+    {
+      "index": 123,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 123,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "e0d9e38d9045bfd993b0b9bb6c306e449e5add6aafb18f0e13e7041fab3dcd36",
+        "cache_indices": [
+          6,
+          14,
+          18
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "81769e42807f5a2ed87a5865355bc9deffb3827dba15e55f8f4700c0e0d494f7",
+        "final_conv": "f7c6cff5bfe49048a3b50bde0db10d06bc041ac8edcc58755d54b6c63e11f73d",
+        "output": "2ee174bb377c5e26c4c15e2523fec443deabe6dc7e46264373164d0006d1d797"
+      },
+      "right": {
+        "index": 123,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "9716463bb0e0ef33173afa81beb41bc26232ceab292416a69a5d81763bffc380",
+        "cache_indices": [
+          6,
+          14,
+          18
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "81769e42807f5a2ed87a5865355bc9deffb3827dba15e55f8f4700c0e0d494f7",
+        "final_conv": "1f39204cb4f37d1edc82c3dcf3e379fd304d65ebacdab89ce51ff70375f84b83",
+        "output": "dde1648a025da2245b366dd8c406b1aad6b8af8b47e8f9e8920d3cec33557f72"
+      }
+    },
+    {
+      "index": 124,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 124,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "28e5675ebc32fbc3bceabffff42dd7aedec7d9d55fb45f2382340c6ef8dd9e2a",
+        "cache_indices": [
+          7,
+          15,
+          19
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "9f235e47fad0ac18df4c73e90fb093ea401c3e46becddf9a7bfda4cd4125eca8",
+        "final_conv": "4f257cc4d9b10d4269c0ef5b9d96f0f589e42dc9987f6a2770fe9c89c113cab0",
+        "output": "98e048d33daae321766bcaff79faa4a76789002649b96a06ec952efc6a59a8af"
+      },
+      "right": {
+        "index": 124,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "e49e26678ca9fee3a6b59539304866535505be11ed38f39db75256fb6c2e608a",
+        "cache_indices": [
+          7,
+          15,
+          19
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "9f235e47fad0ac18df4c73e90fb093ea401c3e46becddf9a7bfda4cd4125eca8",
+        "final_conv": "35df10d6428d47afc124f2e86822774486d1bd94509dc361ffeb054d39d58620",
+        "output": "3dfae931d8237ab0f915fb862f59933a52e5ed90ec42a195fb3b892f73c2f59a"
+      }
+    },
+    {
+      "index": 125,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 125,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "9014829e57cf2703925fa75e9b96d64a55ea439815958ed09daeac87b32e46d8",
+        "cache_indices": [
+          8,
+          16,
+          20
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "9525ffb6fca4c6e3e68ecbd73ae11e648a46595d2bed09a50c48fe04eae2d1cf",
+        "final_conv": "54b869a2aef55761d9f3acb0942166b3cff2c057cbef0ffbf48a973ca52adb14",
+        "output": "edcedfe719f27858be76c15b1956db1d42d1822d169f90eb0b71954492fcd75b"
+      },
+      "right": {
+        "index": 125,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "bb4644fc7498cc094ee201149cdea4666c6edf1119b848c677daba3cbf12fd7d",
+        "cache_indices": [
+          8,
+          16,
+          20
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "9525ffb6fca4c6e3e68ecbd73ae11e648a46595d2bed09a50c48fe04eae2d1cf",
+        "final_conv": "cacf234c29269ccefdf34638e3940825c0248c0baa73009c65559bbb68c6255b",
+        "output": "7e8201b358e9addc30579cc016186c7ecb2d3b5942c0bab68c73ce789bf66f72"
+      }
+    },
+    {
+      "index": 126,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 126,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "ebf7335cbff42637c8787fe7116c8853ad37bf959fd514954f83376822bd3b37",
+        "cache_indices": [
+          6,
+          14,
+          18
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "1ab10a2e31f4bd55d7b73792da2297d18cf23a59007a09ec240015c9b8793898",
+        "final_conv": "2cf609a8315ae97e88c5c12c4b8e6fa608b8ec7f9eb670fd0b4fece5576c1255",
+        "output": "d6d70e94bb16b982c969dc63a90092137fc2f38e40f3221cdc647253c36bb457"
+      },
+      "right": {
+        "index": 126,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "2d38945c4bace2ad6a71b072f79f8c2492f8d895c68abe00d047d40b3684f24c",
+        "cache_indices": [
+          6,
+          14,
+          18
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "1ab10a2e31f4bd55d7b73792da2297d18cf23a59007a09ec240015c9b8793898",
+        "final_conv": "169ebfb77f83ceb186e2c6cecac876fe40642d503730519610e84f98a26b38a6",
+        "output": "336dde9c4f48ffd51d074ef327b9dc62e8f465e17c73afdac4157eabc5ae622f"
+      }
+    },
+    {
+      "index": 127,
+      "differences": [
+        "x",
+        "final_conv",
+        "output"
+      ],
+      "left": {
+        "index": 127,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "8617c60f626f427e01e077b819cc9509678bb540a3176ea53794b1a8745ba2ad",
+        "cache_indices": [
+          7,
+          15,
+          19
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "3b5274fa7f825e23afbdaed86928cbb5ab011f0f3e8bf60e1cf61b0175bbc53b",
+        "final_conv": "b188f1774c0b8276fde9df577887ce4d99af970a2ee294ff032c03db0ca2b48b",
+        "output": "48dba78a2d8729f15e07a7bfd1a67212751901084ee4c720d41c4eb495d13fc6"
+      },
+      "right": {
+        "index": 127,
+        "x_shape": [
+          384,
+          8192
+        ],
+        "x": "60061ce9213de50862a5a4ebe135bc310250aaae2b2c5a9001e85063debcc01e",
+        "cache_indices": [
+          7,
+          15,
+          19
+        ],
+        "query_start_loc": [
+          0,
+          128,
+          256,
+          384
+        ],
+        "has_initial_state": [
+          true,
+          true,
+          true
+        ],
+        "initial_conv": "3b5274fa7f825e23afbdaed86928cbb5ab011f0f3e8bf60e1cf61b0175bbc53b",
+        "final_conv": "aed75e4e66847bb1160e8cc7ee24bd5a88f8af8db12d69a21b91a20cb9671fe4",
+        "output": "8015d178012edf6ec5f6f9139f4d6ec2b5c7e41a1f593aeff05e3161dbfe5e01"
+      }
+    }
+  ]
+}

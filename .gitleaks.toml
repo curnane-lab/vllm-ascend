@@ -80,7 +80,7 @@ regexes = ['tokenBatch\s*=']
 [[allowlists]]
 paths = ["^benchmarks/results/gdn_pool_native_.*\\.json$"]
 rules = ["generic-api-key"]
-regexes = ['"(?:[a-z_]*op_api|[a-z_]*library|kernel)_sha256"']
+regexes = ['"(?:file|[a-z_]*op_api|[a-z_]*library|kernel)_sha256"']
 
 # Placeholder allowlist for syntax validation; does not permit any files
 [[allowlists]]

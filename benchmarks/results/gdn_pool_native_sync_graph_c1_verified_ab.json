@@ -1,0 +1,1902 @@
+{
+  "scenario": "graph_c1",
+  "passed": true,
+  "protocol": {
+    "paired_trials_per_direction": 5,
+    "launch_directions": [
+      "legacy,pool",
+      "pool,legacy"
+    ],
+    "all_rounds_retained": true,
+    "median_reported_per_direction_and_overall": true,
+    "graph_replay_required": true
+  },
+  "runtime": {
+    "operator": "fla_npu.ops.ascendc.npu_chunk_gated_delta_rule_fwd_pool",
+    "stable_stream": "accessor",
+    "sync_scheduling": true,
+    "prefix_cache": true,
+    "fla_backend": "stable",
+    "stable_library": "/data/f00538480/gdn-vllm-profile/fla_pool_final/runtime/libfla_npu_stable.so",
+    "stable_library_sha256": "cacb54561e676dbc4087ff999176ce5cbaa9eb32781feb323decc7afb12b111e",
+    "op_api": "/data/f00538480/gdn-vllm-profile/fla_pool_final/runtime/fla_npu/opp/vendors/fla_npu_transformer/op_api/lib/libcust_opapi.so",
+    "op_api_sha256": "ebf83671410754f9615b454124384fd03bb995a1be38b4b7efd58797f3ea8264",
+    "pool_op_api": "/data/f00538480/gdn-vllm-profile/fla_pool_final/runtime/fla_npu/opp/vendors/fla_npu_transformer/op_api/lib/libcust_pool_opapi.so",
+    "pool_op_api_sha256": "af3ae835d727605cc25ff29762e6e944b105a73895b372dc3e76d42b214063de",
+    "kernel": "/data/f00538480/gdn-vllm-profile/fla_pool_final/runtime/fla_npu/opp/vendors/fla_npu_transformer/op_impl/ai_core/tbe/kernel/ascend910b/chunk_gated_delta_rule_fwd_pool/ChunkGatedDeltaRuleFwdPool_a2a3f5aa2d7de5bd66daabda7823aef9.o",
+    "kernel_sha256": "fdc0308c43442de4243e1e77560da98e408ac9774bebb37aca11b1c98e451f86",
+    "native_operator_observed": false,
+    "full_op_api_preload": "/data/f00538480/gdn-vllm-profile/fla_pool_final/runtime/full_vendor/op_api/lib/libcust_opapi.so",
+    "full_op_api_sha256": "eef0576f1c75c4a4879bfd5e7579284c0562d5c106f00d9d30a0e305963e9611",
+    "vllm_op_api": "/data/f00538480/gdn-vllm-profile/vllm_ascend_opp/vendors/custom_transformer/op_api/lib/libcust_opapi.so",
+    "vllm_op_api_sha256": "37db6851dcde3d06a85ef842e39a13afedde038a787c00983553e3881c46788f",
+    "layout_fusion": false,
+    "cow_elision": false,
+    "git_head": "bb4389ee07ced2db67c770540a217c21b8c093e0"
+  },
+  "directions": {
+    "forward": {
+      "workload": {
+        "clients": 1,
+        "rounds": 5,
+        "prefix_tokens": 384,
+        "suffix_tokens_per_request": 128,
+        "output_tokens_per_request": 16,
+        "warmup": "one cold, two hot, and one full-shape batch"
+      },
+      "server": {
+        "max_num_seqs": 1,
+        "max_model_len": 4096,
+        "mamba_block_size": 128,
+        "mamba_ssm_cache_dtype": "bfloat16",
+        "mamba_backend": "TRITON",
+        "prefix_match_unit": null,
+        "enforce_eager": false,
+        "instrumentation_enabled": false,
+        "client_stagger_ms": 2,
+        "requested_cudagraph_mode": "FULL_AND_PIECEWISE",
+        "cudagraph_capture_sizes": [
+          1
+        ],
+        "effective_cudagraph_modes_in_log": [
+          "FULL_AND_PIECEWISE"
+        ],
+        "piecewise_capture_observed": true,
+        "full_capture_observed": true,
+        "graph_capture_finished": true,
+        "acl_graph_replay_observed": true,
+        "full_graph_replay_calls": null,
+        "replay_marker_processes": 1
+      },
+      "chunked_prefill_sizes": [
+        512
+      ],
+      "model": "/data/f00538480/Qwen3.5-4B",
+      "aggregation": {
+        "wall_and_throughput": "median of all per-round values across trials",
+        "ttft": "absolute median across all requests and trials",
+        "no_outlier_rounds_removed": true
+      },
+      "matched_request_pairs": 25,
+      "total_request_pairs": 25,
+      "summaries": [
+        {
+          "chunked_prefill_size": 512,
+          "trials": 5,
+          "measured_rounds_per_arm": 25,
+          "legacy_wall_ms": 354.87308,
+          "pool_wall_ms": 359.54737,
+          "wall_speedup": 0.9869995155297618,
+          "legacy_throughput_tokens_per_second": 45.08654192648256,
+          "pool_throughput_tokens_per_second": 44.50039503835058,
+          "throughput_speedup": 0.9869995155297618,
+          "legacy_ttft_ms": 118.60108,
+          "pool_ttft_ms": 117.96255,
+          "ttft_speedup": 1.0054129891223953,
+          "matched_request_pairs": 25,
+          "total_request_pairs": 25
+        }
+      ],
+      "configurations": [
+        {
+          "chunked_prefill_size": 512,
+          "trial": 200,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              368.87034,
+              369.5888,
+              367.86583,
+              367.28252,
+              367.34092
+            ],
+            "pool": [
+              362.82247,
+              364.86095,
+              362.15564,
+              357.93335,
+              357.61432
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              126.57578,
+              126.45298,
+              124.89903,
+              125.32107,
+              125.48039
+            ],
+            "pool": [
+              119.37502,
+              121.23213,
+              118.88403,
+              117.96255,
+              116.88265
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              43.37567504072027,
+              43.29135514929024,
+              43.494118494234705,
+              43.56319489421931,
+              43.55626920082849
+            ],
+            "pool": [
+              44.09870204565886,
+              43.852322371029295,
+              44.17990011145484,
+              44.70105956877167,
+              44.740937667149346
+            ]
+          },
+          "legacy_wall_ms": 367.86583,
+          "pool_wall_ms": 362.15564,
+          "wall_speedup": 1.0157672264885893,
+          "legacy_throughput_tokens_per_second": 43.494118494234705,
+          "pool_throughput_tokens_per_second": 44.17990011145484,
+          "throughput_speedup": 1.0157672264885893,
+          "legacy_ttft_ms": 125.48039,
+          "pool_ttft_ms": 118.88403,
+          "ttft_speedup": 1.055485669521802,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 201,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              350.02019,
+              353.81625,
+              354.80957,
+              354.87308,
+              354.20117
+            ],
+            "pool": [
+              364.98423,
+              368.03752,
+              365.45434,
+              364.71175,
+              361.66311
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              115.56419,
+              117.9479,
+              118.20116,
+              118.56953,
+              118.25575
+            ],
+            "pool": [
+              120.56983,
+              123.56116,
+              121.7232,
+              120.52757,
+              119.91323
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              45.711648805173205,
+              45.221212988380266,
+              45.09461230146639,
+              45.08654192648256,
+              45.17206987204475
+            ],
+            "pool": [
+              43.83751045901353,
+              43.473828429231894,
+              43.781119140629166,
+              43.87026192602789,
+              44.24006639770365
+            ]
+          },
+          "legacy_wall_ms": 354.20117,
+          "pool_wall_ms": 364.98423,
+          "wall_speedup": 0.9704560934043642,
+          "legacy_throughput_tokens_per_second": 45.17206987204475,
+          "pool_throughput_tokens_per_second": 43.83751045901353,
+          "throughput_speedup": 0.9704560934043642,
+          "legacy_ttft_ms": 118.20116,
+          "pool_ttft_ms": 120.56983,
+          "ttft_speedup": 0.9803543722339163,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 202,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              366.63717,
+              367.16526,
+              365.62064,
+              365.7956,
+              365.25012
+            ],
+            "pool": [
+              347.6412,
+              349.38812,
+              354.8268,
+              365.88316,
+              365.60835
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              124.51764,
+              124.94956,
+              124.37911,
+              124.28678,
+              124.09034
+            ],
+            "pool": [
+              111.26528,
+              113.23409,
+              111.26729,
+              120.33557,
+              120.35027
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              43.63987426588526,
+              43.577107485604714,
+              43.761205603709904,
+              43.74027462331423,
+              43.80559820213064
+            ],
+            "pool": [
+              46.02446430400079,
+              45.79434469609327,
+              45.092422556582534,
+              43.72980707830336,
+              43.76267664565101
+            ]
+          },
+          "legacy_wall_ms": 365.7956,
+          "pool_wall_ms": 354.8268,
+          "wall_speedup": 1.030913110283665,
+          "legacy_throughput_tokens_per_second": 43.74027462331423,
+          "pool_throughput_tokens_per_second": 45.092422556582534,
+          "throughput_speedup": 1.030913110283665,
+          "legacy_ttft_ms": 124.37911,
+          "pool_ttft_ms": 113.23409,
+          "ttft_speedup": 1.0984245998709399,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 203,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              353.63277,
+              351.93811,
+              351.66753,
+              352.34749,
+              353.80036
+            ],
+            "pool": [
+              345.88161,
+              348.1937,
+              346.94414,
+              348.00396,
+              349.64083
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              118.84094,
+              117.08368,
+              116.43163,
+              116.796,
+              116.8336
+            ],
+            "pool": [
+              110.72947,
+              113.06115,
+              111.06854,
+              112.03986,
+              112.50214
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              45.24467571260435,
+              45.462538853777446,
+              45.49751863642344,
+              45.40971754900255,
+              45.22324397860986
+            ],
+            "pool": [
+              46.25860276295117,
+              45.951434503266434,
+              46.11693398251373,
+              45.97648831352379,
+              45.76124590483325
+            ]
+          },
+          "legacy_wall_ms": 352.34749,
+          "pool_wall_ms": 348.00396,
+          "wall_speedup": 1.0124812660177775,
+          "legacy_throughput_tokens_per_second": 45.40971754900255,
+          "pool_throughput_tokens_per_second": 45.97648831352379,
+          "throughput_speedup": 1.0124812660177775,
+          "legacy_ttft_ms": 116.8336,
+          "pool_ttft_ms": 112.03986,
+          "ttft_speedup": 1.0427860227601142,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 204,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              354.96876,
+              354.9472,
+              354.54423,
+              349.24085,
+              351.93135
+            ],
+            "pool": [
+              365.56256,
+              366.47863,
+              357.93108,
+              359.47291,
+              359.54737
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              118.69283,
+              118.60108,
+              118.15008,
+              114.1097,
+              116.58506
+            ],
+            "pool": [
+              120.23536,
+              121.68097,
+              115.71866,
+              116.49182,
+              116.43537
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              45.07438908145044,
+              45.07712696423581,
+              45.128360994621175,
+              45.81365553313709,
+              45.4634121114814
+            ],
+            "pool": [
+              43.768158314680804,
+              43.658753035613564,
+              44.701343063027664,
+              44.50961269932691,
+              44.50039503835058
+            ]
+          },
+          "legacy_wall_ms": 354.54423,
+          "pool_wall_ms": 359.54737,
+          "wall_speedup": 0.9860848933479892,
+          "legacy_throughput_tokens_per_second": 45.128360994621175,
+          "pool_throughput_tokens_per_second": 44.50039503835058,
+          "throughput_speedup": 0.9860848933479893,
+          "legacy_ttft_ms": 118.15008,
+          "pool_ttft_ms": 116.49182,
+          "ttft_speedup": 1.0142349909203925,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        }
+      ],
+      "inputs": [
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t200_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t200_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t201_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t201_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t202_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t202_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t203_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t203_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t204_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t204_pool.json"
+      ]
+    },
+    "reverse": {
+      "workload": {
+        "clients": 1,
+        "rounds": 5,
+        "prefix_tokens": 384,
+        "suffix_tokens_per_request": 128,
+        "output_tokens_per_request": 16,
+        "warmup": "one cold, two hot, and one full-shape batch"
+      },
+      "server": {
+        "max_num_seqs": 1,
+        "max_model_len": 4096,
+        "mamba_block_size": 128,
+        "mamba_ssm_cache_dtype": "bfloat16",
+        "mamba_backend": "TRITON",
+        "prefix_match_unit": null,
+        "enforce_eager": false,
+        "instrumentation_enabled": false,
+        "client_stagger_ms": 2,
+        "requested_cudagraph_mode": "FULL_AND_PIECEWISE",
+        "cudagraph_capture_sizes": [
+          1
+        ],
+        "effective_cudagraph_modes_in_log": [
+          "FULL_AND_PIECEWISE"
+        ],
+        "piecewise_capture_observed": true,
+        "full_capture_observed": true,
+        "graph_capture_finished": true,
+        "acl_graph_replay_observed": true,
+        "full_graph_replay_calls": null,
+        "replay_marker_processes": 1
+      },
+      "chunked_prefill_sizes": [
+        512
+      ],
+      "model": "/data/f00538480/Qwen3.5-4B",
+      "aggregation": {
+        "wall_and_throughput": "median of all per-round values across trials",
+        "ttft": "absolute median across all requests and trials",
+        "no_outlier_rounds_removed": true
+      },
+      "matched_request_pairs": 25,
+      "total_request_pairs": 25,
+      "summaries": [
+        {
+          "chunked_prefill_size": 512,
+          "trials": 5,
+          "measured_rounds_per_arm": 25,
+          "legacy_wall_ms": 365.83548,
+          "pool_wall_ms": 355.07067,
+          "wall_speedup": 1.0303173731584194,
+          "legacy_throughput_tokens_per_second": 43.735506463178474,
+          "pool_throughput_tokens_per_second": 45.06145213289512,
+          "throughput_speedup": 1.0303173731584194,
+          "legacy_ttft_ms": 123.94096,
+          "pool_ttft_ms": 116.3873,
+          "ttft_speedup": 1.0649010673844999,
+          "matched_request_pairs": 25,
+          "total_request_pairs": 25
+        }
+      ],
+      "configurations": [
+        {
+          "chunked_prefill_size": 512,
+          "trial": 205,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              371.06122,
+              365.83548,
+              366.4525,
+              367.89649,
+              367.88044
+            ],
+            "pool": [
+              349.6142,
+              351.86451,
+              350.09223,
+              347.72287,
+              347.05691
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              127.49979,
+              123.94096,
+              124.0716,
+              125.23593,
+              124.95367
+            ],
+            "pool": [
+              112.41602,
+              114.69806,
+              112.94147,
+              111.72991,
+              111.21252
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              43.11956932605353,
+              43.735506463178474,
+              43.6618661354473,
+              43.49049375274007,
+              43.4923911692614
+            ],
+            "pool": [
+              45.76473152406281,
+              45.4720483176891,
+              45.70224252049239,
+              46.01365449445416,
+              46.10194910108547
+            ]
+          },
+          "legacy_wall_ms": 367.88044,
+          "pool_wall_ms": 349.6142,
+          "wall_speedup": 1.0522468480971312,
+          "legacy_throughput_tokens_per_second": 43.4923911692614,
+          "pool_throughput_tokens_per_second": 45.76473152406281,
+          "throughput_speedup": 1.0522468480971312,
+          "legacy_ttft_ms": 124.95367,
+          "pool_ttft_ms": 112.41602,
+          "ttft_speedup": 1.1115290329616723,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 206,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              355.5781,
+              355.79473,
+              354.84715,
+              356.37798,
+              365.12103
+            ],
+            "pool": [
+              362.96875,
+              364.80631,
+              363.07934,
+              361.24962,
+              361.35291
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              118.32956,
+              118.37405,
+              117.38389,
+              118.47786,
+              119.51357
+            ],
+            "pool": [
+              119.9102,
+              122.19575,
+              120.30022,
+              119.41984,
+              119.1341
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              44.997146899654396,
+              44.96974983300061,
+              45.089836567660186,
+              44.896152113550905,
+              43.82108584652053
+            ],
+            "pool": [
+              44.08092983211365,
+              43.85889048903787,
+              44.06750326251006,
+              44.29070402897587,
+              44.278043865759926
+            ]
+          },
+          "legacy_wall_ms": 355.79473,
+          "pool_wall_ms": 362.96875,
+          "wall_speedup": 0.9802351579853638,
+          "legacy_throughput_tokens_per_second": 44.96974983300061,
+          "pool_throughput_tokens_per_second": 44.08092983211365,
+          "throughput_speedup": 0.9802351579853639,
+          "legacy_ttft_ms": 118.37405,
+          "pool_ttft_ms": 119.9102,
+          "ttft_speedup": 0.9871891632238124,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 207,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              368.30752,
+              377.87038,
+              376.43836,
+              375.29362,
+              375.03378
+            ],
+            "pool": [
+              363.4959,
+              365.33412,
+              362.88592,
+              362.60445,
+              362.60602
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              126.49942,
+              131.54653,
+              131.13408,
+              129.67619,
+              129.11075
+            ],
+            "pool": [
+              119.39928,
+              121.5085,
+              119.22217,
+              119.12901,
+              119.16968
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              43.44195850250356,
+              42.34256201822434,
+              42.503638577109946,
+              42.63328537266368,
+              42.66282359951683
+            ],
+            "pool": [
+              44.01700266770547,
+              43.795526133721104,
+              44.09099146089768,
+              44.12521688578284,
+              44.12502583382372
+            ]
+          },
+          "legacy_wall_ms": 375.29362,
+          "pool_wall_ms": 362.88592,
+          "wall_speedup": 1.034191737171836,
+          "legacy_throughput_tokens_per_second": 42.63328537266368,
+          "pool_throughput_tokens_per_second": 44.09099146089768,
+          "throughput_speedup": 1.034191737171836,
+          "legacy_ttft_ms": 129.67619,
+          "pool_ttft_ms": 119.22217,
+          "ttft_speedup": 1.0876852015023715,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 208,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              352.37879,
+              357.14525,
+              372.44655,
+              371.35891,
+              370.97414
+            ],
+            "pool": [
+              347.11751,
+              348.52358,
+              345.75448,
+              345.98864,
+              346.32507
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              116.22695,
+              117.38081,
+              127.35279,
+              126.32389,
+              126.11715
+            ],
+            "pool": [
+              112.41318,
+              114.04496,
+              111.01741,
+              110.97682,
+              111.11516
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              45.40568403677191,
+              44.79969984201106,
+              42.95918434470664,
+              43.08500366936127,
+              43.12969092670449
+            ],
+            "pool": [
+              46.09390059291449,
+              45.907941149921626,
+              46.27561152642187,
+              46.24429287620542,
+              46.199369857919905
+            ]
+          },
+          "legacy_wall_ms": 370.97414,
+          "pool_wall_ms": 346.32507,
+          "wall_speedup": 1.0711732188489849,
+          "legacy_throughput_tokens_per_second": 43.12969092670449,
+          "pool_throughput_tokens_per_second": 46.199369857919905,
+          "throughput_speedup": 1.0711732188489849,
+          "legacy_ttft_ms": 126.11715,
+          "pool_ttft_ms": 111.11516,
+          "ttft_speedup": 1.1350129901266397,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        },
+        {
+          "chunked_prefill_size": 512,
+          "trial": 209,
+          "primary_prefill_shape": "B4 x 128",
+          "legacy_device": "3",
+          "pool_device": "3",
+          "wall_samples_ms": {
+            "legacy": [
+              360.75281,
+              362.16192,
+              360.835,
+              360.12941,
+              360.29518
+            ],
+            "pool": [
+              364.99412,
+              364.65582,
+              354.29909,
+              355.03415,
+              355.07067
+            ]
+          },
+          "ttft_samples_ms": {
+            "legacy": [
+              121.46903,
+              122.71948,
+              122.05348,
+              121.17546,
+              121.48913
+            ],
+            "pool": [
+              120.62219,
+              123.39152,
+              115.6793,
+              116.3873,
+              115.84158
+            ]
+          },
+          "throughput_samples_tokens_per_second": {
+            "legacy": [
+              44.35169888212374,
+              44.179134018286625,
+              44.341596574611664,
+              44.42847364229431,
+              44.408032325050804
+            ],
+            "pool": [
+              43.8363226234987,
+              43.8769906373632,
+              45.159585366137975,
+              45.06608730455929,
+              45.06145213289512
+            ]
+          },
+          "legacy_wall_ms": 360.75281,
+          "pool_wall_ms": 355.07067,
+          "wall_speedup": 1.0160028424764005,
+          "legacy_throughput_tokens_per_second": 44.35169888212374,
+          "pool_throughput_tokens_per_second": 45.06145213289512,
+          "throughput_speedup": 1.0160028424764005,
+          "legacy_ttft_ms": 121.48913,
+          "pool_ttft_ms": 116.3873,
+          "ttft_speedup": 1.0438349373170441,
+          "matched_request_pairs": 5,
+          "total_request_pairs": 5,
+          "legacy_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          },
+          "pool_instrumentation": {
+            "pool_prefill": 0,
+            "cow_skip": 0,
+            "supports_rejected": 0,
+            "prepare_calls": 0,
+            "prepare_cow_copies": 0
+          }
+        }
+      ],
+      "inputs": [
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t205_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t205_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t206_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t206_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t207_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t207_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t208_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t208_pool.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t209_legacy.json",
+        "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t209_pool.json"
+      ]
+    }
+  },
+  "overall": {
+    "workload": {
+      "clients": 1,
+      "rounds": 5,
+      "prefix_tokens": 384,
+      "suffix_tokens_per_request": 128,
+      "output_tokens_per_request": 16,
+      "warmup": "one cold, two hot, and one full-shape batch"
+    },
+    "server": {
+      "max_num_seqs": 1,
+      "max_model_len": 4096,
+      "mamba_block_size": 128,
+      "mamba_ssm_cache_dtype": "bfloat16",
+      "mamba_backend": "TRITON",
+      "prefix_match_unit": null,
+      "enforce_eager": false,
+      "instrumentation_enabled": false,
+      "client_stagger_ms": 2,
+      "requested_cudagraph_mode": "FULL_AND_PIECEWISE",
+      "cudagraph_capture_sizes": [
+        1
+      ],
+      "effective_cudagraph_modes_in_log": [
+        "FULL_AND_PIECEWISE"
+      ],
+      "piecewise_capture_observed": true,
+      "full_capture_observed": true,
+      "graph_capture_finished": true,
+      "acl_graph_replay_observed": true,
+      "full_graph_replay_calls": null,
+      "replay_marker_processes": 1
+    },
+    "chunked_prefill_sizes": [
+      512
+    ],
+    "model": "/data/f00538480/Qwen3.5-4B",
+    "aggregation": {
+      "wall_and_throughput": "median of all per-round values across trials",
+      "ttft": "absolute median across all requests and trials",
+      "no_outlier_rounds_removed": true
+    },
+    "matched_request_pairs": 50,
+    "total_request_pairs": 50,
+    "summaries": [
+      {
+        "chunked_prefill_size": 512,
+        "trials": 10,
+        "measured_rounds_per_arm": 50,
+        "legacy_wall_ms": 361.49846,
+        "pool_wall_ms": 359.51014,
+        "wall_speedup": 1.0055306367714691,
+        "legacy_throughput_tokens_per_second": 44.260365296449145,
+        "pool_throughput_tokens_per_second": 44.50500386883874,
+        "throughput_speedup": 1.0055272605806809,
+        "legacy_ttft_ms": 121.771305,
+        "pool_ttft_ms": 117.42259999999999,
+        "ttft_speedup": 1.0370346509104722,
+        "matched_request_pairs": 50,
+        "total_request_pairs": 50
+      }
+    ],
+    "configurations": [
+      {
+        "chunked_prefill_size": 512,
+        "trial": 200,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            368.87034,
+            369.5888,
+            367.86583,
+            367.28252,
+            367.34092
+          ],
+          "pool": [
+            362.82247,
+            364.86095,
+            362.15564,
+            357.93335,
+            357.61432
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            126.57578,
+            126.45298,
+            124.89903,
+            125.32107,
+            125.48039
+          ],
+          "pool": [
+            119.37502,
+            121.23213,
+            118.88403,
+            117.96255,
+            116.88265
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            43.37567504072027,
+            43.29135514929024,
+            43.494118494234705,
+            43.56319489421931,
+            43.55626920082849
+          ],
+          "pool": [
+            44.09870204565886,
+            43.852322371029295,
+            44.17990011145484,
+            44.70105956877167,
+            44.740937667149346
+          ]
+        },
+        "legacy_wall_ms": 367.86583,
+        "pool_wall_ms": 362.15564,
+        "wall_speedup": 1.0157672264885893,
+        "legacy_throughput_tokens_per_second": 43.494118494234705,
+        "pool_throughput_tokens_per_second": 44.17990011145484,
+        "throughput_speedup": 1.0157672264885893,
+        "legacy_ttft_ms": 125.48039,
+        "pool_ttft_ms": 118.88403,
+        "ttft_speedup": 1.055485669521802,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 201,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            350.02019,
+            353.81625,
+            354.80957,
+            354.87308,
+            354.20117
+          ],
+          "pool": [
+            364.98423,
+            368.03752,
+            365.45434,
+            364.71175,
+            361.66311
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            115.56419,
+            117.9479,
+            118.20116,
+            118.56953,
+            118.25575
+          ],
+          "pool": [
+            120.56983,
+            123.56116,
+            121.7232,
+            120.52757,
+            119.91323
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            45.711648805173205,
+            45.221212988380266,
+            45.09461230146639,
+            45.08654192648256,
+            45.17206987204475
+          ],
+          "pool": [
+            43.83751045901353,
+            43.473828429231894,
+            43.781119140629166,
+            43.87026192602789,
+            44.24006639770365
+          ]
+        },
+        "legacy_wall_ms": 354.20117,
+        "pool_wall_ms": 364.98423,
+        "wall_speedup": 0.9704560934043642,
+        "legacy_throughput_tokens_per_second": 45.17206987204475,
+        "pool_throughput_tokens_per_second": 43.83751045901353,
+        "throughput_speedup": 0.9704560934043642,
+        "legacy_ttft_ms": 118.20116,
+        "pool_ttft_ms": 120.56983,
+        "ttft_speedup": 0.9803543722339163,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 202,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            366.63717,
+            367.16526,
+            365.62064,
+            365.7956,
+            365.25012
+          ],
+          "pool": [
+            347.6412,
+            349.38812,
+            354.8268,
+            365.88316,
+            365.60835
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            124.51764,
+            124.94956,
+            124.37911,
+            124.28678,
+            124.09034
+          ],
+          "pool": [
+            111.26528,
+            113.23409,
+            111.26729,
+            120.33557,
+            120.35027
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            43.63987426588526,
+            43.577107485604714,
+            43.761205603709904,
+            43.74027462331423,
+            43.80559820213064
+          ],
+          "pool": [
+            46.02446430400079,
+            45.79434469609327,
+            45.092422556582534,
+            43.72980707830336,
+            43.76267664565101
+          ]
+        },
+        "legacy_wall_ms": 365.7956,
+        "pool_wall_ms": 354.8268,
+        "wall_speedup": 1.030913110283665,
+        "legacy_throughput_tokens_per_second": 43.74027462331423,
+        "pool_throughput_tokens_per_second": 45.092422556582534,
+        "throughput_speedup": 1.030913110283665,
+        "legacy_ttft_ms": 124.37911,
+        "pool_ttft_ms": 113.23409,
+        "ttft_speedup": 1.0984245998709399,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 203,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            353.63277,
+            351.93811,
+            351.66753,
+            352.34749,
+            353.80036
+          ],
+          "pool": [
+            345.88161,
+            348.1937,
+            346.94414,
+            348.00396,
+            349.64083
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            118.84094,
+            117.08368,
+            116.43163,
+            116.796,
+            116.8336
+          ],
+          "pool": [
+            110.72947,
+            113.06115,
+            111.06854,
+            112.03986,
+            112.50214
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            45.24467571260435,
+            45.462538853777446,
+            45.49751863642344,
+            45.40971754900255,
+            45.22324397860986
+          ],
+          "pool": [
+            46.25860276295117,
+            45.951434503266434,
+            46.11693398251373,
+            45.97648831352379,
+            45.76124590483325
+          ]
+        },
+        "legacy_wall_ms": 352.34749,
+        "pool_wall_ms": 348.00396,
+        "wall_speedup": 1.0124812660177775,
+        "legacy_throughput_tokens_per_second": 45.40971754900255,
+        "pool_throughput_tokens_per_second": 45.97648831352379,
+        "throughput_speedup": 1.0124812660177775,
+        "legacy_ttft_ms": 116.8336,
+        "pool_ttft_ms": 112.03986,
+        "ttft_speedup": 1.0427860227601142,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 204,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            354.96876,
+            354.9472,
+            354.54423,
+            349.24085,
+            351.93135
+          ],
+          "pool": [
+            365.56256,
+            366.47863,
+            357.93108,
+            359.47291,
+            359.54737
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            118.69283,
+            118.60108,
+            118.15008,
+            114.1097,
+            116.58506
+          ],
+          "pool": [
+            120.23536,
+            121.68097,
+            115.71866,
+            116.49182,
+            116.43537
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            45.07438908145044,
+            45.07712696423581,
+            45.128360994621175,
+            45.81365553313709,
+            45.4634121114814
+          ],
+          "pool": [
+            43.768158314680804,
+            43.658753035613564,
+            44.701343063027664,
+            44.50961269932691,
+            44.50039503835058
+          ]
+        },
+        "legacy_wall_ms": 354.54423,
+        "pool_wall_ms": 359.54737,
+        "wall_speedup": 0.9860848933479892,
+        "legacy_throughput_tokens_per_second": 45.128360994621175,
+        "pool_throughput_tokens_per_second": 44.50039503835058,
+        "throughput_speedup": 0.9860848933479893,
+        "legacy_ttft_ms": 118.15008,
+        "pool_ttft_ms": 116.49182,
+        "ttft_speedup": 1.0142349909203925,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 205,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            371.06122,
+            365.83548,
+            366.4525,
+            367.89649,
+            367.88044
+          ],
+          "pool": [
+            349.6142,
+            351.86451,
+            350.09223,
+            347.72287,
+            347.05691
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            127.49979,
+            123.94096,
+            124.0716,
+            125.23593,
+            124.95367
+          ],
+          "pool": [
+            112.41602,
+            114.69806,
+            112.94147,
+            111.72991,
+            111.21252
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            43.11956932605353,
+            43.735506463178474,
+            43.6618661354473,
+            43.49049375274007,
+            43.4923911692614
+          ],
+          "pool": [
+            45.76473152406281,
+            45.4720483176891,
+            45.70224252049239,
+            46.01365449445416,
+            46.10194910108547
+          ]
+        },
+        "legacy_wall_ms": 367.88044,
+        "pool_wall_ms": 349.6142,
+        "wall_speedup": 1.0522468480971312,
+        "legacy_throughput_tokens_per_second": 43.4923911692614,
+        "pool_throughput_tokens_per_second": 45.76473152406281,
+        "throughput_speedup": 1.0522468480971312,
+        "legacy_ttft_ms": 124.95367,
+        "pool_ttft_ms": 112.41602,
+        "ttft_speedup": 1.1115290329616723,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 206,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            355.5781,
+            355.79473,
+            354.84715,
+            356.37798,
+            365.12103
+          ],
+          "pool": [
+            362.96875,
+            364.80631,
+            363.07934,
+            361.24962,
+            361.35291
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            118.32956,
+            118.37405,
+            117.38389,
+            118.47786,
+            119.51357
+          ],
+          "pool": [
+            119.9102,
+            122.19575,
+            120.30022,
+            119.41984,
+            119.1341
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            44.997146899654396,
+            44.96974983300061,
+            45.089836567660186,
+            44.896152113550905,
+            43.82108584652053
+          ],
+          "pool": [
+            44.08092983211365,
+            43.85889048903787,
+            44.06750326251006,
+            44.29070402897587,
+            44.278043865759926
+          ]
+        },
+        "legacy_wall_ms": 355.79473,
+        "pool_wall_ms": 362.96875,
+        "wall_speedup": 0.9802351579853638,
+        "legacy_throughput_tokens_per_second": 44.96974983300061,
+        "pool_throughput_tokens_per_second": 44.08092983211365,
+        "throughput_speedup": 0.9802351579853639,
+        "legacy_ttft_ms": 118.37405,
+        "pool_ttft_ms": 119.9102,
+        "ttft_speedup": 0.9871891632238124,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 207,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            368.30752,
+            377.87038,
+            376.43836,
+            375.29362,
+            375.03378
+          ],
+          "pool": [
+            363.4959,
+            365.33412,
+            362.88592,
+            362.60445,
+            362.60602
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            126.49942,
+            131.54653,
+            131.13408,
+            129.67619,
+            129.11075
+          ],
+          "pool": [
+            119.39928,
+            121.5085,
+            119.22217,
+            119.12901,
+            119.16968
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            43.44195850250356,
+            42.34256201822434,
+            42.503638577109946,
+            42.63328537266368,
+            42.66282359951683
+          ],
+          "pool": [
+            44.01700266770547,
+            43.795526133721104,
+            44.09099146089768,
+            44.12521688578284,
+            44.12502583382372
+          ]
+        },
+        "legacy_wall_ms": 375.29362,
+        "pool_wall_ms": 362.88592,
+        "wall_speedup": 1.034191737171836,
+        "legacy_throughput_tokens_per_second": 42.63328537266368,
+        "pool_throughput_tokens_per_second": 44.09099146089768,
+        "throughput_speedup": 1.034191737171836,
+        "legacy_ttft_ms": 129.67619,
+        "pool_ttft_ms": 119.22217,
+        "ttft_speedup": 1.0876852015023715,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 208,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            352.37879,
+            357.14525,
+            372.44655,
+            371.35891,
+            370.97414
+          ],
+          "pool": [
+            347.11751,
+            348.52358,
+            345.75448,
+            345.98864,
+            346.32507
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            116.22695,
+            117.38081,
+            127.35279,
+            126.32389,
+            126.11715
+          ],
+          "pool": [
+            112.41318,
+            114.04496,
+            111.01741,
+            110.97682,
+            111.11516
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            45.40568403677191,
+            44.79969984201106,
+            42.95918434470664,
+            43.08500366936127,
+            43.12969092670449
+          ],
+          "pool": [
+            46.09390059291449,
+            45.907941149921626,
+            46.27561152642187,
+            46.24429287620542,
+            46.199369857919905
+          ]
+        },
+        "legacy_wall_ms": 370.97414,
+        "pool_wall_ms": 346.32507,
+        "wall_speedup": 1.0711732188489849,
+        "legacy_throughput_tokens_per_second": 43.12969092670449,
+        "pool_throughput_tokens_per_second": 46.199369857919905,
+        "throughput_speedup": 1.0711732188489849,
+        "legacy_ttft_ms": 126.11715,
+        "pool_ttft_ms": 111.11516,
+        "ttft_speedup": 1.1350129901266397,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      },
+      {
+        "chunked_prefill_size": 512,
+        "trial": 209,
+        "primary_prefill_shape": "B4 x 128",
+        "legacy_device": "3",
+        "pool_device": "3",
+        "wall_samples_ms": {
+          "legacy": [
+            360.75281,
+            362.16192,
+            360.835,
+            360.12941,
+            360.29518
+          ],
+          "pool": [
+            364.99412,
+            364.65582,
+            354.29909,
+            355.03415,
+            355.07067
+          ]
+        },
+        "ttft_samples_ms": {
+          "legacy": [
+            121.46903,
+            122.71948,
+            122.05348,
+            121.17546,
+            121.48913
+          ],
+          "pool": [
+            120.62219,
+            123.39152,
+            115.6793,
+            116.3873,
+            115.84158
+          ]
+        },
+        "throughput_samples_tokens_per_second": {
+          "legacy": [
+            44.35169888212374,
+            44.179134018286625,
+            44.341596574611664,
+            44.42847364229431,
+            44.408032325050804
+          ],
+          "pool": [
+            43.8363226234987,
+            43.8769906373632,
+            45.159585366137975,
+            45.06608730455929,
+            45.06145213289512
+          ]
+        },
+        "legacy_wall_ms": 360.75281,
+        "pool_wall_ms": 355.07067,
+        "wall_speedup": 1.0160028424764005,
+        "legacy_throughput_tokens_per_second": 44.35169888212374,
+        "pool_throughput_tokens_per_second": 45.06145213289512,
+        "throughput_speedup": 1.0160028424764005,
+        "legacy_ttft_ms": 121.48913,
+        "pool_ttft_ms": 116.3873,
+        "ttft_speedup": 1.0438349373170441,
+        "matched_request_pairs": 5,
+        "total_request_pairs": 5,
+        "legacy_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        },
+        "pool_instrumentation": {
+          "pool_prefill": 0,
+          "cow_skip": 0,
+          "supports_rejected": 0,
+          "prepare_calls": 0,
+          "prepare_cow_copies": 0
+        }
+      }
+    ],
+    "inputs": [
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t200_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t200_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t201_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t201_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t202_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t202_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t203_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t203_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t204_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t204_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t205_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t205_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t206_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t206_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t207_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t207_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t208_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t208_pool.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t209_legacy.json",
+      "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t209_pool.json"
+    ]
+  },
+  "inputs": [
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t200_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t200_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t201_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t201_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t202_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t202_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t203_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t203_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t204_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_forward_t204_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t205_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t205_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t206_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t206_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t207_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t207_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t208_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t208_pool.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t209_legacy.json",
+    "/data/f00538480/gdn-vllm-profile/results/gdn_pool_native_sync_graph_c1_reverse_t209_pool.json"
+  ]
+}
