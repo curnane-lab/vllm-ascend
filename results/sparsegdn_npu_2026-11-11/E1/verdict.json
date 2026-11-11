@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "stage": "E1",
+  "verdict": "PASS-SCOPED-A-RESEARCH + BLOCKED-PREFIX/CHUNK-SEMANTICS",
+  "scope": {
+    "A": "PASS-SCOPED-RESEARCH-ONLY: zero-state cold full-prompt prefill followed by normal dense decode",
+    "B": "BLOCKED-PREFIX/CHUNK-SEMANTICS",
+    "deployment_PR": "NOT-ALLOWED; no quality or 910C/e2e evidence"
+  },
+  "measured_range": "1-5 chunks, tails, P=64/65/127/128/129/192/256/1024, K=V=8 and 128",
+  "actual_model_range": "4K and 8K P/P+X/P+Y, suffix=128, output=1 for semantic capture only",
+  "quality": {
+    "implementation_reference": "PASS after registered numerical regressions",
+    "dense_identity_max_output_relF": 6.454976114655636e-16,
+    "dense_identity_max_state_relF": 6.778930964900182e-16,
+    "approximation_cases_passed": true,
+    "vectorized_reference_passed": true,
+    "S_npu_implementation": "NOT-RUN",
+    "E2_task_quality_NLL_generation": "NOT-RUN",
+    "bit_identical_to_dense": false
+  },
+  "semantics": {
+    "prefix_partition": {
+      "scope_A_research_only": true,
+      "scope_B": "BLOCKED-PREFIX/CHUNK-SEMANTICS",
+      "prefix_invariant_cases": 1,
+      "partition_invariant_cases": 0,
+      "frozen_mask_partition_correct_cases": 8,
+      "ordinary_checkpoint_safe_cases": 0,
+      "total_aligned_cases": 8,
+      "unaligned_status": "BLOCKED-CHUNK-ALIGNMENT",
+      "minimal_counterexample": "prefix_counterexample.pt",
+      "note": "C=1 is a trivial prefix-invariant case and does not unlock scope B"
+    },
+    "actual_model": {
+      "4K": {
+        "all_finite": true,
+        "prefix_mask_difference_layers": 21,
+        "prefix_state_difference_layers": 21,
+        "prefix_output_difference_layers": 21,
+        "logits_XY": {
+          "max_abs": 19.296875,
+          "relative_frobenius": 1.1270523586029377,
+          "torch_equal": false
+        },
+        "selector": [
+          {
+            "file": "summary_real4kv2_request0.jsonl",
+            "layers": 24,
+            "valid_events": 7142,
+            "capacity": 23424,
+            "possible_events": 24576,
+            "keep_rate": 0.2906087239583333,
+            "all_finite": true
+          },
+          {
+            "file": "summary_real4kv2_request1.jsonl",
+            "layers": 24,
+            "valid_events": 7393,
+            "capacity": 24192,
+            "possible_events": 25344,
+            "keep_rate": 0.29170612373737376,
+            "all_finite": true
+          },
+          {
+            "file": "summary_real4kv2_request2.jsonl",
+            "layers": 24,
+            "valid_events": 7372,
+            "capacity": 24192,
+            "possible_events": 25344,
+            "keep_rate": 0.29087752525252525,
+            "all_finite": true
+          }
+        ]
+      },
+      "8K": {
+        "all_finite": true,
+        "prefix_mask_difference_layers": 24,
+        "prefix_state_difference_layers": 22,
+        "prefix_output_difference_layers": 23,
+        "logits_XY": {
+          "max_abs": 17.48876953125,
+          "relative_frobenius": 1.0116235590557887,
+          "torch_equal": false
+        },
+        "selector": [
+          {
+            "file": "summary_real8k_request0.jsonl",
+            "layers": 24,
+            "valid_events": 14228,
+            "capacity": 46848,
+            "possible_events": 49152,
+            "keep_rate": 0.2894694010416667,
+            "all_finite": true
+          },
+          {
+            "file": "summary_real8k_request1.jsonl",
+            "layers": 24,
+            "valid_events": 14481,
+            "capacity": 47616,
+            "possible_events": 49920,
+            "keep_rate": 0.2900841346153846,
+            "all_finite": true
+          },
+          {
+            "file": "summary_real8k_request2.jsonl",
+            "layers": 24,
+            "valid_events": 14431,
+            "capacity": 47616,
+            "possible_events": 49920,
+            "keep_rate": 0.28908253205128204,
+            "all_finite": true
+          }
+        ]
+      }
+    },
+    "dense_prefix_cache_smoke": {
+      "passed": true,
+      "cold_warm_X_text_match": true,
+      "cached_vs_fresh_Y_text_match": true,
+      "prefix_metrics": {
+        "vllm:prefix_cache_queries_total": 6144.0,
+        "vllm:prefix_cache_queries_created": 1794403659.3833003,
+        "vllm:prefix_cache_hits_total": 3200.0,
+        "vllm:prefix_cache_hits_created": 1794403659.383338,
+        "vllm:external_prefix_cache_queries_total": 0.0,
+        "vllm:external_prefix_cache_queries_created": 1794403659.3833802,
+        "vllm:external_prefix_cache_hits_total": 0.0,
+        "vllm:external_prefix_cache_hits_created": 1794403659.3834221
+      },
+      "note": "dense cache correctness does not unlock SparseGDN scope B"
+    }
+  },
+  "performance": {
+    "candidate_speedup": "NOT-RUN"
+  },
+  "next_allowed_stage": {
+    "native_NPU_kernel": "NOT-ALLOWED",
+    "E2": "NOT-RUN; only an explicitly research-scoped continuation could evaluate quality, not unlock performance delivery",
+    "reason": "paper-range local speedups do not meet the TTFT budget, and ordinary prefix/chunk semantics are blocked"
+  },
+  "hardware": "Ascend 910B3 64GB; 910C NOT-RUN",
+  "model": "Qwen3.5-4B actual local weights/tokenizer; Qwen3.5-9B NOT-RUN",
+  "tp": 1,
+  "source_shas": {
+    "vllm": "ced6857afa0ea7b2e3f0846a62e1394e90f15607",
+    "vllm_ascend": "c09d3e20b9c45c80b34ae3781440d90904a44023",
+    "experiment_worktree": "2f253e561dc13f20b0d721ea9eda38d64fbfd096"
+  },
+  "policy_version": "SparseGDN-v1-independent-reference+deferred-W-and-mask-overflow-regressions",
+  "chunk_size": 64,
+  "state_dtype": {
+    "reference": "CPU FP64",
+    "actual_model_reference": "CPU FP32",
+    "production_baseline": "BF16 QKV; model-configured FP32 recurrent state"
+  },
+  "actual_graph_mode": {
+    "dense_decode": "FULL_DECODE_ONLY; seven graphs actually captured",
+    "dense_prefill": "chunked eager trace, not FULL replay",
+    "sparse_reference": "enforce-eager SCOPE-A only; not a production graph result"
+  },
+  "comparison_groups": {
+    "D0": "current production dense measured",
+    "R0_R1_A1_A2_S_ref": "independent reference measured",
+    "S_npu": "NOT-RUN"
+  }
+}

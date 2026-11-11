@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "stage": "E0",
+  "verdict": "PAPER_RANGE_BUDGET_INSUFFICIENT",
+  "baseline_identity": "PASS-910B3-DEVELOPMENT",
+  "910c": "NOT-RUN",
+  "scope": {
+    "A": "PASS-SCOPED-RESEARCH-ONLY: zero-state cold full-prompt prefill followed by normal dense decode",
+    "B": "BLOCKED-PREFIX/CHUNK-SEMANTICS",
+    "deployment_PR": "NOT-ALLOWED; no quality or 910C/e2e evidence"
+  },
+  "measured_range": "4K/8K/16K/32K, output=128, five blocks each",
+  "quality": {
+    "production_baseline": "PASS",
+    "dense_prefix_cache_smoke": true
+  },
+  "performance": {
+    "candidate_speedup": "NOT-RUN; no S-npu or service candidate",
+    "dense_baseline": {
+      "4096": {
+        "ttft_geomean_seconds": 0.49661730052175834,
+        "ttft_95_interval": [
+          0.4927814158711816,
+          0.5004830442753342
+        ],
+        "wall_geomean_seconds": 1.840885811538434,
+        "output_tokens_per_second_wall": 69.53174346703777,
+        "decode_output_tokens_per_second": 94.4755893673554
+      },
+      "8192": {
+        "ttft_geomean_seconds": 0.9830856972303478,
+        "ttft_95_interval": [
+          0.9656873202677804,
+          1.0007975333370693
+        ],
+        "wall_geomean_seconds": 2.341771597605813,
+        "output_tokens_per_second_wall": 54.65947239725043,
+        "decode_output_tokens_per_second": 93.47612081240374
+      },
+      "16384": {
+        "ttft_geomean_seconds": 1.9383468321822428,
+        "ttft_95_interval": [
+          1.9166459435868874,
+          1.9602934252945978
+        ],
+        "wall_geomean_seconds": 3.315017061827197,
+        "output_tokens_per_second_wall": 38.61216929286268,
+        "decode_output_tokens_per_second": 92.2532709840832
+      },
+      "32768": {
+        "ttft_geomean_seconds": 3.7550799563909263,
+        "ttft_95_interval": [
+          3.6789858041023114,
+          3.8327479989636695
+        ],
+        "wall_geomean_seconds": 5.178118965489751,
+        "output_tokens_per_second_wall": 24.7194011673105,
+        "decode_output_tokens_per_second": 89.25180864275937
+      }
+    },
+    "cost_screening": [
+      {
+        "prompt_tokens": 4096,
+        "core_union_ms": 48.1915,
+        "fraction_of_ttft": 0.09703951100650103,
+        "required_local_speedup_for_1p10": 15.829178011388928,
+        "estimated_ttft_speedup_at_1p94": 1.049339023168566,
+        "estimated_ttft_speedup_with_free_core": 1.1074681696368218
+      },
+      {
+        "prompt_tokens": 8192,
+        "core_union_ms": 96.571,
+        "fraction_of_ttft": 0.09823253483604731,
+        "required_local_speedup_for_1p10": 13.413434419081085,
+        "estimated_ttft_speedup_at_1p94": 1.0499759219322298,
+        "estimated_ttft_speedup_with_free_core": 1.1089333321846861
+      },
+      {
+        "prompt_tokens": 16384,
+        "core_union_ms": 193.19375,
+        "fraction_of_ttft": 0.09966934028132483,
+        "required_local_speedup_for_1p10": 11.377454687218394,
+        "estimated_ttft_speedup_at_1p94": 1.0507439911214769,
+        "estimated_ttft_speedup_with_free_core": 1.11070303916171
+      }
+    ],
+    "paper_range_budget_insufficient": true,
+    "free_core_formal_stop_triggered": false,
+    "B32_diagnostic": {
+      "wall_seconds": 11.127965196035802,
+      "completed_output_tokens_per_second": 368.08166882649385,
+      "success_count": 32
+    },
+    "B64_diagnostic": {
+      "wall_seconds": 20.743946926202625,
+      "completed_output_tokens_per_second": 394.9103817679128,
+      "success_count": 64
+    },
+    "B64_decode_negative_control": {
+      "wall_seconds": 3.7975156912580132,
+      "completed_output_tokens_per_second": 2157.199776384917,
+      "success_count": 64
+    },
+    "note": "B32/B64 are wiring diagnostics without preregistered SLO; no goodput claim"
+  },
+  "next_allowed_stage": "E1 research only; no native kernel",
+  "hardware": "Ascend 910B3 64GB; 910C NOT-RUN",
+  "model": "Qwen3.5-4B actual local weights/tokenizer; Qwen3.5-9B NOT-RUN",
+  "tp": 1,
+  "source_shas": {
+    "vllm": "ced6857afa0ea7b2e3f0846a62e1394e90f15607",
+    "vllm_ascend": "c09d3e20b9c45c80b34ae3781440d90904a44023",
+    "experiment_worktree": "2f253e561dc13f20b0d721ea9eda38d64fbfd096"
+  },
+  "policy_version": "SparseGDN-v1-independent-reference+deferred-W-and-mask-overflow-regressions",
+  "chunk_size": 64,
+  "state_dtype": {
+    "reference": "CPU FP64",
+    "actual_model_reference": "CPU FP32",
+    "production_baseline": "BF16 QKV; model-configured FP32 recurrent state"
+  },
+  "actual_graph_mode": {
+    "dense_decode": "FULL_DECODE_ONLY; seven graphs actually captured",
+    "dense_prefill": "chunked eager trace, not FULL replay",
+    "sparse_reference": "enforce-eager SCOPE-A only; not a production graph result"
+  },
+  "comparison_groups": {
+    "D0": "current production dense measured",
+    "R0_R1_A1_A2_S_ref": "independent reference measured",
+    "S_npu": "NOT-RUN"
+  }
+}

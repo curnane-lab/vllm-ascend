@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "deferred_w_all_blocks": {
+    "max_abs": 5.551115123125783e-17,
+    "relative_frobenius": 1.3830834347246498e-16,
+    "torch_equal": false,
+    "block_errors": [
+      {
+        "max_abs": 5.551115123125783e-17,
+        "relative_frobenius": 1.2804607567805252e-16,
+        "torch_equal": false
+      },
+      {
+        "max_abs": 2.7755575615628914e-17,
+        "relative_frobenius": 3.238766440098674e-16,
+        "torch_equal": false
+      },
+      {
+        "max_abs": 1.3877787807814457e-17,
+        "relative_frobenius": 3.1316169089790854e-16,
+        "torch_equal": false
+      },
+      {
+        "max_abs": 4.228388472693467e-18,
+        "relative_frobenius": 3.4160387638525953e-16,
+        "torch_equal": false
+      }
+    ],
+    "passed": true
+  },
+  "driver_comparisons": [
+    {
+      "length": 130,
+      "key_dim": 8,
+      "mask_differences": 0,
+      "tier_differences": 0,
+      "U": {
+        "max_abs": 0.0,
+        "relative_frobenius": 0.0,
+        "torch_equal": true
+      },
+      "corrected_U": {
+        "max_abs": 4.440892098500626e-16,
+        "relative_frobenius": 8.291604305155882e-18,
+        "torch_equal": false
+      },
+      "output": {
+        "max_abs": 1.1102230246251565e-16,
+        "relative_frobenius": 2.008092972888244e-17,
+        "torch_equal": false
+      },
+      "final_state": {
+        "max_abs": 2.220446049250313e-16,
+        "relative_frobenius": 3.330525573319129e-17,
+        "torch_equal": false
+      },
+      "passed": true
+    },
+    {
+      "length": 320,
+      "key_dim": 128,
+      "mask_differences": 0,
+      "tier_differences": 0,
+      "U": {
+        "max_abs": 0.0,
+        "relative_frobenius": 0.0,
+        "torch_equal": true
+      },
+      "corrected_U": {
+        "max_abs": 4.440892098500626e-16,
+        "relative_frobenius": 5.454390430081115e-18,
+        "torch_equal": false
+      },
+      "output": {
+        "max_abs": 1.3877787807814457e-17,
+        "relative_frobenius": 1.5322200801960788e-17,
+        "torch_equal": false
+      },
+      "final_state": {
+        "max_abs": 1.1102230246251565e-16,
+        "relative_frobenius": 7.754270296684508e-18,
+        "torch_equal": false
+      },
+      "passed": true
+    }
+  ],
+  "large_decay": {
+    "scenario": "log2 decay=-4 per token; future exponent exceeds FP32 range",
+    "slow_finite": true,
+    "fast_finite": true,
+    "mask_differences": 0,
+    "output": {
+      "max_abs": 0.0,
+      "relative_frobenius": 0.0,
+      "torch_equal": true
+    },
+    "final_state": {
+      "max_abs": 0.0,
+      "relative_frobenius": 0.0,
+      "torch_equal": true
+    },
+    "passed": true
+  },
+  "passed": true
+}

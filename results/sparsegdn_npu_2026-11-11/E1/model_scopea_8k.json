@@ -1,0 +1,3387 @@
+{
+  "schema_version": 1,
+  "scope": "SCOPE-A actual Qwen3.5-4B FP32 SparseGDN reference; eager, TP1, no prefix cache",
+  "compute_dtype": "float32",
+  "trace_storage_dtype": {
+    "U": "bfloat16",
+    "output": "bfloat16",
+    "states": "float32",
+    "logits": "float32"
+  },
+  "prefix_tokens": 8192,
+  "suffix_tokens": 128,
+  "request_order": [
+    "independent_P",
+    "P_plus_X",
+    "P_plus_Y"
+  ],
+  "run_tag": "real8k",
+  "layers": [
+    {
+      "layer": 0,
+      "mask_differences": {
+        "P_vs_PX": 24,
+        "P_vs_PY": 26,
+        "PX_vs_PY": 2
+      },
+      "tiers": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        580,
+        593,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.484375,
+          "relative_frobenius": 0.04491918586833285,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.484375,
+          "relative_frobenius": 0.04491918586833285,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 5.658124923706055,
+          "relative_frobenius": 0.5843935917227155,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 5.658124923706055,
+          "relative_frobenius": 0.5843935917227155,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 3.2266414165496826,
+        "relative_frobenius": 0.36885525401005687,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.0.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "e7e233abed2fac389ebb476b93284ed17f961333bcdc8f39db497561536187d7"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.0.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "4381db7726a3c07d4bc698b5e9bf6d2eb00529fc0cf454be13dc00292c4deb8c"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.0.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "c13fbd0708d42df3856d58b34c1a95c6a6d74bfee93c42d66ca60dd01e81ee47"
+        }
+      ]
+    },
+    {
+      "layer": 1,
+      "mask_differences": {
+        "P_vs_PX": 18,
+        "P_vs_PY": 19,
+        "PX_vs_PY": 1
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        616
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.076171875,
+          "relative_frobenius": 0.014386939310579737,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.076171875,
+          "relative_frobenius": 0.014386939310579737,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.014781951904296875,
+          "relative_frobenius": 0.01733158599703757,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.014781951904296875,
+          "relative_frobenius": 0.01733416684321455,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.000743865966796875,
+          "relative_frobenius": 0.00030054205351772475,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3108696937561035,
+          "relative_frobenius": 0.48500109911883105,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.3108696937561035,
+          "relative_frobenius": 0.48500109911883105,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.2656453996896744,
+        "relative_frobenius": 0.49793103331499905,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.1.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "63d9218fe47b54c5426a4653718a7b41d5e54db6b7a915eb1cd0f6373b85fc2b"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.1.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "265f1950e9ff1fececf6aba730cc26a3a5be51346ce838c5514649609df1d0d6"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.1.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "e7fa3dd61fa4d7be0ce514e2969db2a501d890b0d0755d3bf8d12a2fa9fdfcc4"
+        }
+      ]
+    },
+    {
+      "layer": 2,
+      "mask_differences": {
+        "P_vs_PX": 19,
+        "P_vs_PY": 17,
+        "PX_vs_PY": 2
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        580,
+        591,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.415283203125,
+          "relative_frobenius": 0.021217231395146162,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.415283203125,
+          "relative_frobenius": 0.02125041064316421,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0142059326171875,
+          "relative_frobenius": 0.03978640411622751,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0142059326171875,
+          "relative_frobenius": 0.038664559860559944,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0054168701171875,
+          "relative_frobenius": 0.010430761922630465,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5042475312948227,
+          "relative_frobenius": 0.7848877921790057,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5042475312948227,
+          "relative_frobenius": 0.7853273048081602,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.009906738880090415,
+          "relative_frobenius": 0.014562025976408157,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.28431035578250885,
+        "relative_frobenius": 0.6420901072359767,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.2.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "53e7c9fa2b57a2873acd51af22bf0d83f89cc38b0b52dc806a8c141a2e08338b"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.2.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "c3c29d7b503987b7a68dac8cf78ebb7d2d85cddb17875d590e7eeb3cf9bf1ce7"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.2.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "d867315c404af04d308099478758c0863f0a03bb5e55f0813dceb186529a16c9"
+        }
+      ]
+    },
+    {
+      "layer": 4,
+      "mask_differences": {
+        "P_vs_PX": 16,
+        "P_vs_PY": 20,
+        "PX_vs_PY": 6
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        616
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.201171875,
+          "relative_frobenius": 0.034921767973797375,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.201171875,
+          "relative_frobenius": 0.0331094172363588,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0076904296875,
+          "relative_frobenius": 0.02658493980041578,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0076904296875,
+          "relative_frobenius": 0.026377870300584822,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0069580078125,
+          "relative_frobenius": 0.016629399963947716,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4364277422428131,
+          "relative_frobenius": 0.43125919138149277,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4364277422428131,
+          "relative_frobenius": 0.4317589116194143,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.006300818175077438,
+          "relative_frobenius": 0.010349759554983464,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.43144853971898556,
+        "relative_frobenius": 0.42532024520251877,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.4.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "2f3da1952c7062e50f9a7dfb45e39b10d4f091a875e6f2be44aa0774e0429540"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.4.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "65a804cc48c81061613c04e7de6d9b505ab54f0f2196667626b9382682642d72"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.4.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "62f42031c0f11ec92b43c02fa974b21861f8a4506de2343c3c9ce01ffde5e857"
+        }
+      ]
+    },
+    {
+      "layer": 5,
+      "mask_differences": {
+        "P_vs_PX": 15,
+        "P_vs_PY": 17,
+        "PX_vs_PY": 6
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          2,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        616
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.23828125,
+          "relative_frobenius": 0.036057905271076086,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.23876953125,
+          "relative_frobenius": 0.034695850680952926,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.017822265625,
+          "relative_frobenius": 0.03452995669592828,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.008120298385620117,
+          "relative_frobenius": 0.029382024663849704,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.017822265625,
+          "relative_frobenius": 0.025759337429082284,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3072756822220981,
+          "relative_frobenius": 0.5166184727559558,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.30727116722846404,
+          "relative_frobenius": 0.51595922377008,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.01102796196937561,
+          "relative_frobenius": 0.008961710980727965,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.90720534324646,
+        "relative_frobenius": 0.7688092262531528,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.5.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "b49eee92a09339627729629bd67027247a38b4768fba5a04293c53435d063cc2"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.5.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "f2db9f05219ed44a955f836791da2b67e018fc02bce4ca946191f58c7323eeff"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.5.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "7611788e11f0394174614256672d74f8b3688476ec3ade27a3cf6cb82cd5fb14"
+        }
+      ]
+    },
+    {
+      "layer": 6,
+      "mask_differences": {
+        "P_vs_PX": 23,
+        "P_vs_PY": 19,
+        "PX_vs_PY": 8
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        580,
+        591,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3262939453125,
+          "relative_frobenius": 0.03786990515275602,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.3262939453125,
+          "relative_frobenius": 0.03741446478764346,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0235595703125,
+          "relative_frobenius": 0.052761861621181565,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.023681640625,
+          "relative_frobenius": 0.04435880585663626,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.01751708984375,
+          "relative_frobenius": 0.03735484603827812,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4481140077114105,
+          "relative_frobenius": 0.6218148757074198,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.448325976729393,
+          "relative_frobenius": 0.6227342963865011,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0164453387260437,
+          "relative_frobenius": 0.030385091918087574,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.47216664254665375,
+        "relative_frobenius": 0.7545711070647365,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.6.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "c970e926134e0509b029ece39302e8cf50b502db730261790e86847e39d539ec"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.6.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "f7e47014fa40d08d3ac3aa781291781c25f8b1aa32f25cdacb17b6db1ec35ae6"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.6.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "b8f0fe34b6e4d2d2416f89c9ef1ad8f829af8fc65d0d14ca8ca9b9d016787860"
+        }
+      ]
+    },
+    {
+      "layer": 8,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 84,
+        "PX_vs_PY": 68
+      },
+      "tiers": [
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        580,
+        593,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3203125,
+          "relative_frobenius": 0.02588068028892489,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.328125,
+          "relative_frobenius": 0.027102871845067086,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0281982421875,
+          "relative_frobenius": 0.04914095420785731,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.03167724609375,
+          "relative_frobenius": 0.07557215914162164,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.03204345703125,
+          "relative_frobenius": 0.06705086467953053,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5921896696090698,
+          "relative_frobenius": 0.15411426896147537,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5921896696090698,
+          "relative_frobenius": 0.15461460355418438,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.07090979814529419,
+          "relative_frobenius": 0.017997839349094838,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.6145484447479248,
+        "relative_frobenius": 0.19481158732160328,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.8.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "13e42d58aa93db5faa321e045d5e60315ba9786b461a8042643a98dd7e732cb0"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.8.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "1186327a5cafa7ac7a2ec8726d939f0a50cde67a5d3ad6b2b1928be39cb70555"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.8.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "57d9eeeee6931b7f8e1eacfc874816cd1800c03b8ac0b89c5e7b72893dcfb859"
+        }
+      ]
+    },
+    {
+      "layer": 9,
+      "mask_differences": {
+        "P_vs_PX": 34,
+        "P_vs_PY": 35,
+        "PX_vs_PY": 15
+      },
+      "tiers": [
+        [
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        580,
+        593,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.1435546875,
+          "relative_frobenius": 0.0649563146116905,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.1484375,
+          "relative_frobenius": 0.07044550338142433,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.01708984375,
+          "relative_frobenius": 0.06233972525918335,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0101165771484375,
+          "relative_frobenius": 0.06450771630245704,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.01708984375,
+          "relative_frobenius": 0.05124315481740928,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4943815884689684,
+          "relative_frobenius": 0.5808041616726433,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4943771699327044,
+          "relative_frobenius": 0.5831678991032369,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.021078407764434814,
+          "relative_frobenius": 0.034986791181096426,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.4031250439584255,
+        "relative_frobenius": 0.6024834041581665,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.9.linear_attn.pt",
+          "bytes": 406870377,
+          "sha256": "0f1947d65d4c9382af07536f67c0e4b2555544cc87f7844d5b4652d7e22c7f0b"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.9.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "e29d3576612ada04edb7a68ff871243e47ce0985c995fb0e9ba8bac825dc1610"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.9.linear_attn.pt",
+          "bytes": 413162153,
+          "sha256": "03a7a59e44e21544afec8e0365a3763cbf499a425d421c2dedbe520314048762"
+        }
+      ]
+    },
+    {
+      "layer": 10,
+      "mask_differences": {
+        "P_vs_PX": 16,
+        "P_vs_PY": 244,
+        "PX_vs_PY": 232
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        616
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.6064453125,
+          "relative_frobenius": 0.050153355361714405,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.6181640625,
+          "relative_frobenius": 0.05423951246351743,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.01513671875,
+          "relative_frobenius": 0.05566732769653701,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0263671875,
+          "relative_frobenius": 0.2165779157235882,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.02618408203125,
+          "relative_frobenius": 0.21232163101458032,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.48601918667554855,
+          "relative_frobenius": 0.8038620765377393,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4858356975018978,
+          "relative_frobenius": 0.9042524834224897,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.2822001650929451,
+          "relative_frobenius": 0.379983009409301,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.49252212792634964,
+        "relative_frobenius": 0.7570853722517158,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.10.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "66ebcc7f250d78a16672e0b2b03b90fb0c065729f6875d889bac9830f6029933"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.10.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "470c339ad0fc3331d1f9f77838907b3272df18e9462f88ae60b879926d9ae9b2"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.10.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "3e1370e06dce643ea1897527e5cf7dde668996401613d8047482cc82805d5b6a"
+        }
+      ]
+    },
+    {
+      "layer": 12,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 31,
+        "PX_vs_PY": 21
+      },
+      "tiers": [
+        [
+          1,
+          1,
+          1,
+          0,
+          2,
+          2,
+          1,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          2,
+          2,
+          1,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          2,
+          2,
+          1,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        580,
+        591,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.1484375,
+          "relative_frobenius": 0.09129362846801378,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.175048828125,
+          "relative_frobenius": 0.13306470192943526,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.01678466796875,
+          "relative_frobenius": 0.0870846995293867,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.01654052734375,
+          "relative_frobenius": 0.11365416160600858,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.01341104507446289,
+          "relative_frobenius": 0.10067014221490733,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5331966280937195,
+          "relative_frobenius": 0.47295160236954303,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5331966280937195,
+          "relative_frobenius": 0.4798693302386585,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.032875992357730865,
+          "relative_frobenius": 0.08284770017412614,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.444367378950119,
+        "relative_frobenius": 0.540394859951053,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.12.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "4bb1d59514dc9698078f099ced9560e7b6a475e125bda73c69c14d8f930d38b9"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.12.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "d3d05d0a834d445a2db96bcea14a13fb02b3af4f406980a276b777adbace28ef"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.12.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "927a84d38b0b2d97f4000f25c7fe9bfbd24a163b73de94b4bd8f8d52da662155"
+        }
+      ]
+    },
+    {
+      "layer": 13,
+      "mask_differences": {
+        "P_vs_PX": 22,
+        "P_vs_PY": 330,
+        "PX_vs_PY": 318
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.48046875,
+          "relative_frobenius": 0.10007179624845891,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5,
+          "relative_frobenius": 0.14979406841181248,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.02178955078125,
+          "relative_frobenius": 0.08278135909643584,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.054931640625,
+          "relative_frobenius": 0.33441913331014217,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.053955078125,
+          "relative_frobenius": 0.33140009005903476,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5106369592249393,
+          "relative_frobenius": 1.0506699585516008,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.49076438695192337,
+          "relative_frobenius": 1.1478402688138427,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.4456856697797775,
+          "relative_frobenius": 0.7318704030708753,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.6494564414024353,
+        "relative_frobenius": 0.9812695548154059,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.13.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "938a892901b46931effb90e4140f3d5b81dbf9b1d7395a8a1a685310b3fdfe98"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.13.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "ccab69012203b96f67652382e6bbc6a0d9ea472eb15be8153e6edf33bb012360"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.13.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "9859af02f7b5c5f08c349b340411c950214cc6ff7c60b6f453dd849fe2ccf495"
+        }
+      ]
+    },
+    {
+      "layer": 14,
+      "mask_differences": {
+        "P_vs_PX": 29,
+        "P_vs_PY": 151,
+        "PX_vs_PY": 144
+      },
+      "tiers": [
+        [
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        636,
+        649,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.375,
+          "relative_frobenius": 0.07505435440146513,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.328125,
+          "relative_frobenius": 0.12114838094403967,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.025482177734375,
+          "relative_frobenius": 0.07046761727423506,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.03070068359375,
+          "relative_frobenius": 0.15866628112259967,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.03045654296875,
+          "relative_frobenius": 0.1515022909385534,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4455949664115906,
+          "relative_frobenius": 0.7625566807752548,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4455949664115906,
+          "relative_frobenius": 0.9163884750900829,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.38902734220027924,
+          "relative_frobenius": 0.3948056415642028,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.4506133049726486,
+        "relative_frobenius": 0.7488352148866769,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.14.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "485114b2a1079c1817f58fa75c56b80b36227ef7cb9c9d64e70caaadea36bc3d"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.14.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "3939925dc0bcb00e22a72aa8ad7c15775b349be9f9509b766dc19a67ecaed8c2"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.14.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "8b91a31a740581132a012b7fa415e46ff04fe16d63e64ca8e12ebdd75dbbbab1"
+        }
+      ]
+    },
+    {
+      "layer": 16,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 99,
+        "PX_vs_PY": 87
+      },
+      "tiers": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        580,
+        593,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.146484375,
+          "relative_frobenius": 0.1219093238233919,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.2177734375,
+          "relative_frobenius": 0.21328818889342577,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0218505859375,
+          "relative_frobenius": 0.10002368875621467,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.017547607421875,
+          "relative_frobenius": 0.1923190321436893,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0213623046875,
+          "relative_frobenius": 0.18700025672404078,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3395888712257147,
+          "relative_frobenius": 0.5794403846807615,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.34061469696462154,
+          "relative_frobenius": 0.6085662228524455,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.2826666707539971,
+          "relative_frobenius": 0.4050612476688644,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.18806260079145432,
+        "relative_frobenius": 0.5464276021285689,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.16.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "b074bfa30c2a72d25dfbc1b3ae59aac4729eae280aaf58a50733d2771387b00d"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.16.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "c4e274cdd44b480f4ae639891ca3ce0d1f6f4b5d7b809334b0b5aeacb92e5284"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.16.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "6c80188f6ed69fe36398b283fb36a8c9ef868b0fe2cf886b5013c3d82776cb8b"
+        }
+      ]
+    },
+    {
+      "layer": 17,
+      "mask_differences": {
+        "P_vs_PX": 24,
+        "P_vs_PY": 30,
+        "PX_vs_PY": 14
+      },
+      "tiers": [
+        [
+          2,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        616
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.358917236328125,
+          "relative_frobenius": 0.13006138633865497,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4702606201171875,
+          "relative_frobenius": 0.21876503470118522,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.01719951629638672,
+          "relative_frobenius": 0.09949442910303462,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.01732158660888672,
+          "relative_frobenius": 0.15346564908954896,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.016506195068359375,
+          "relative_frobenius": 0.13754478084734217,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4417053993272475,
+          "relative_frobenius": 1.0964244805664867,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.44170657168888283,
+          "relative_frobenius": 1.1051625762846669,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.04570269212126732,
+          "relative_frobenius": 0.13183509450233158,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.2797277420759201,
+        "relative_frobenius": 0.8446905916391373,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.17.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "a308d982b5e5464fd810d87424bbbc0f670de4b2e74e685c9f2a48b6f16c7ae2"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.17.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "7b4b981e176c45765a4e7b2e620db42a5738f4a701fb90a7cfbbc22b19359d2a"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.17.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "f51697d55d9f9b9d4f02dd5b14bdfbd1292a9ed322afb22adc26ca8f2160aac4"
+        }
+      ]
+    },
+    {
+      "layer": 18,
+      "mask_differences": {
+        "P_vs_PX": 15,
+        "P_vs_PY": 318,
+        "PX_vs_PY": 319
+      },
+      "tiers": [
+        [
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          2,
+          1,
+          0,
+          1,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.2919921875,
+          "relative_frobenius": 0.10323886438698265,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.2626953125,
+          "relative_frobenius": 0.16873724878967028,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0204010009765625,
+          "relative_frobenius": 0.06018090104065461,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0313720703125,
+          "relative_frobenius": 0.20676087495921408,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0311279296875,
+          "relative_frobenius": 0.20366909429033658,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.41950635847661033,
+          "relative_frobenius": 1.192698281112541,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.3689414681866765,
+          "relative_frobenius": 0.6170389897195443,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.4137287312469198,
+          "relative_frobenius": 0.6780807631396403,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.348446324467659,
+        "relative_frobenius": 0.6811342936321435,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.18.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "079b6f0b0de2f4f45dff2da60a0384fe7e23c263bcbf61d650f324e9023d21dd"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.18.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "5fcd85fe264b29b049f21b8b86260ccd35056fe59aa5f8bb464d1bd6204d09cd"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.18.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "b764ae7681056be2b40d4d5bb31e4a1f3399644b0d6c2e6f18b73a3981fd69bf"
+        }
+      ]
+    },
+    {
+      "layer": 20,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 37,
+        "PX_vs_PY": 23
+      },
+      "tiers": [
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          2,
+          0,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          2,
+          0,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          2,
+          0,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        580,
+        593,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.37841796875,
+          "relative_frobenius": 0.08229127251129116,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.609375,
+          "relative_frobenius": 0.14246833386498023,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.142578125,
+          "relative_frobenius": 0.07616526433829203,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.1337890625,
+          "relative_frobenius": 0.11813642156067453,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.09912109375,
+          "relative_frobenius": 0.1091707537893457,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3540503978729248,
+          "relative_frobenius": 0.13407215330160968,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.3540503978729248,
+          "relative_frobenius": 0.1529478679328569,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.2240777462720871,
+          "relative_frobenius": 0.08067118122630537,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.7143105268478394,
+        "relative_frobenius": 0.30549937098574836,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.20.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "2c5a0188f55a01325578f72b75dbca5a1c39d132a2145abef52b221875968363"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.20.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "edb9da5ea2a51ade8bd14f9fb77162537e0e1dc752d2ee3088635f9e83f36d19"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.20.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "b502cde9c97f818c836c8e66e91c9f8ceff0199def5e6b86db72972abb22d022"
+        }
+      ]
+    },
+    {
+      "layer": 21,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 34,
+        "PX_vs_PY": 22
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        580,
+        593,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.646484375,
+          "relative_frobenius": 0.11408543819898534,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.759765625,
+          "relative_frobenius": 0.1655972135736996,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.12939453125,
+          "relative_frobenius": 0.050897067937425204,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.255859375,
+          "relative_frobenius": 0.1827928181222229,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.259765625,
+          "relative_frobenius": 0.18186878301849432,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4410551487817429,
+          "relative_frobenius": 0.21100102543830448,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4410594500714069,
+          "relative_frobenius": 0.21777877887579047,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.1642599105834961,
+          "relative_frobenius": 0.06632152580333311,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.3209524191915989,
+        "relative_frobenius": 0.2717950869536162,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.21.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "8ebe5cb5d3b24b84d4363b46ac6f7d2dbe021c1bb83c56dda503c8153b335529"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.21.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "420038b46f5c8d6de2d5daee560b4e32e293bcd68f1eac5572c52a2cb338e4d5"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.21.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "933cb11e0ca18526076ffbb88290389dc37ecb097ecd63157ceb1f9557c17540"
+        }
+      ]
+    },
+    {
+      "layer": 22,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 37,
+        "PX_vs_PY": 17
+      },
+      "tiers": [
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          2,
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          2,
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          2,
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1
+        ]
+      ],
+      "valid_events": [
+        580,
+        593,
+        593
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 1.276611328125,
+          "relative_frobenius": 0.12743879219785564,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.109375,
+          "relative_frobenius": 0.18106616588267693,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0703125,
+          "relative_frobenius": 0.11376067019139463,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.07159423828125,
+          "relative_frobenius": 0.1366700959677501,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0538330078125,
+          "relative_frobenius": 0.10878460063244746,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.46623429376631975,
+          "relative_frobenius": 0.539383367839512,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.46822126349434257,
+          "relative_frobenius": 0.5561641746008331,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.10251256823539734,
+          "relative_frobenius": 0.08865150071461968,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.34030183777213097,
+        "relative_frobenius": 0.6041558875927622,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.22.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "37444c9c933bd073905f292b1c2d96067c77a574dc41b843ec70dd13d6e25553"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.22.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "95bbb60ff58f544e0cfb7ef83c5b8f6c480cce94bcce3b77f6c5b62e9f481bd1"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.22.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "1cfa2d1aeaebb2a99f321b4b9713fe4ea5c84dd7d94c0a5a984922143a0ed346"
+        }
+      ]
+    },
+    {
+      "layer": 24,
+      "mask_differences": {
+        "P_vs_PX": 49,
+        "P_vs_PY": 150,
+        "PX_vs_PY": 135
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          2,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          2,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          2,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        580,
+        591,
+        647
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.93017578125,
+          "relative_frobenius": 0.16433433104600934,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.203033447265625,
+          "relative_frobenius": 0.22497776761792623,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.2373046875,
+          "relative_frobenius": 0.1879445111019382,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.25048828125,
+          "relative_frobenius": 0.2201971152311585,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.25048828125,
+          "relative_frobenius": 0.1852687201981428,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.6548346076742746,
+          "relative_frobenius": 0.32200420671398655,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.6555932755687186,
+          "relative_frobenius": 0.35409950000155105,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.47841933369636536,
+          "relative_frobenius": 0.2111915107199359,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.5048844814300537,
+        "relative_frobenius": 0.3690887437367994,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.24.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "3c16346b7d0dca8f8a931cc90d200ae87059a9bcae42594fdd8261eefdc9184d"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.24.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "69970afc749a542cfb93f8d9f70a06ced5c8337f199aca26251dad0bd9ac5aaf"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.24.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "93b3c24e54030f19b881be711112ecf97fe200ff380016f84b1329dc17421ba4"
+        }
+      ]
+    },
+    {
+      "layer": 25,
+      "mask_differences": {
+        "P_vs_PX": 101,
+        "P_vs_PY": 51,
+        "PX_vs_PY": 92
+      },
+      "tiers": [
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          2
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          2
+        ]
+      ],
+      "valid_events": [
+        580,
+        591,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 2.1143798828125,
+          "relative_frobenius": 0.17928284354312188,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 2.634765625,
+          "relative_frobenius": 0.24036386047125247,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.17431640625,
+          "relative_frobenius": 0.15358260247418265,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.19610595703125,
+          "relative_frobenius": 0.17376384416690188,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.170135498046875,
+          "relative_frobenius": 0.15350238499040073,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 1.0825371741977001,
+          "relative_frobenius": 0.41313875859150606,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.0825371742119354,
+          "relative_frobenius": 0.46539255132758045,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.4273503422677198,
+          "relative_frobenius": 0.20661667931652464,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.4767647385597229,
+        "relative_frobenius": 0.33828445804354207,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.25.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "e7c5dbed9b567120370940997848ada5f46607fd60ba44f1958ed53c3681dd17"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.25.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "7e7b9b8c1561da37159390ea2f69fd599204d9fecab8ad216b4e01e15a22f209"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.25.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "212a56c07ee76101ff43cee29106fa0df451fa9f1bad16e41d3676c0dc7f2390"
+        }
+      ]
+    },
+    {
+      "layer": 26,
+      "mask_differences": {
+        "P_vs_PX": 39,
+        "P_vs_PY": 56,
+        "PX_vs_PY": 35
+      },
+      "tiers": [
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          2,
+          0
+        ]
+      ],
+      "valid_events": [
+        580,
+        591,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.9892578125,
+          "relative_frobenius": 0.1635394877635907,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.030029296875,
+          "relative_frobenius": 0.21893802894233017,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.04833984375,
+          "relative_frobenius": 0.09664982170757101,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.05224609375,
+          "relative_frobenius": 0.12470191775857815,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0458984375,
+          "relative_frobenius": 0.1088430601973858,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 1.1806615442037582,
+          "relative_frobenius": 0.2768357696012776,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.195340670645237,
+          "relative_frobenius": 0.31294475899525837,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.7441753298044205,
+          "relative_frobenius": 0.15135123812564266,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.5674432218074799,
+        "relative_frobenius": 0.2827468270979618,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.26.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "e51fed44adc659bed1e8516d974950f76ce3b85aa4e45798f245f886cf4d6e6c"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.26.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "d9b141442b58a27891a07718952badf92d9895101f14346fe30638b0ce158dc2"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.26.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "e8e8fa7910253d37773986a2d288d584f1542b1df951f0646da4d97bd06d1d0c"
+        }
+      ]
+    },
+    {
+      "layer": 28,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 250,
+        "PX_vs_PY": 240
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        616
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.93994140625,
+          "relative_frobenius": 0.1394414172736243,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.4302978515625,
+          "relative_frobenius": 0.19154395116254766,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.263671875,
+          "relative_frobenius": 0.09949851080088228,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.3740234375,
+          "relative_frobenius": 0.5187368451464481,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.326171875,
+          "relative_frobenius": 0.5101869949562337,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.6315813064575195,
+          "relative_frobenius": 0.2900553792400813,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.1106825470924377,
+          "relative_frobenius": 0.6231342845005098,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 1.0854604840278625,
+          "relative_frobenius": 0.5559934912219464,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 1.2713451087474823,
+        "relative_frobenius": 0.6530110279403428,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.28.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "8d8f3ce5aace7aeb5702f452a5145cae0b76cf891bb9d16610925ef63f0f7a9c"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.28.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "b4d35ffda057a5c60d5dc73c627f2081c9906a4122e5d011ba557758660d5697"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.28.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "faea24a5933fd60f9ff3dd4abd7db1036e61270db5a9fc6127d337d8438fa01a"
+        }
+      ]
+    },
+    {
+      "layer": 29,
+      "mask_differences": {
+        "P_vs_PX": 28,
+        "P_vs_PY": 28,
+        "PX_vs_PY": 10
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        608,
+        616,
+        616
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.597900390625,
+          "relative_frobenius": 0.1321055570954906,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.56121826171875,
+          "relative_frobenius": 0.1765279260458678,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0927734375,
+          "relative_frobenius": 0.06695248471274284,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0966796875,
+          "relative_frobenius": 0.0700945561346934,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.08349609375,
+          "relative_frobenius": 0.06527141512741998,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5216969847679138,
+          "relative_frobenius": 0.4135970703117517,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5216969847679138,
+          "relative_frobenius": 0.4179681877242219,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.03822016716003418,
+          "relative_frobenius": 0.07124592754209869,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.32609906792640686,
+        "relative_frobenius": 0.3978034017310714,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.29.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "b7e94f4930b56201c58ef0e7a00576f0546bd27e2387f88bc2e44f0f1660d1af"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.29.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "aeeb370ede336d32a102e53ac506c9d20bab395c0f3c4384b503bca0f5e03120"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.29.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "b1b3dd52483f3b9db3b737b197ad8ad2bd9b91393bad06f8a89dfc8cda57a29e"
+        }
+      ]
+    },
+    {
+      "layer": 30,
+      "mask_differences": {
+        "P_vs_PX": 39,
+        "P_vs_PY": 108,
+        "PX_vs_PY": 93
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        580,
+        591,
+        591
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 8.376174926757812,
+          "relative_frobenius": 0.36219006527267056,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 13.5625,
+          "relative_frobenius": 0.5771502236002952,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5742931365966797,
+          "relative_frobenius": 0.1446559723461176,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.7148715257644653,
+          "relative_frobenius": 0.2538718937152794,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.6758090257644653,
+          "relative_frobenius": 0.24196919283109666,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5025249690130067,
+          "relative_frobenius": 0.34783334002014427,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.39584119990468025,
+          "relative_frobenius": 0.31117568734269735,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.22120922803878784,
+          "relative_frobenius": 0.17001123444452437,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.49439748376607895,
+        "relative_frobenius": 0.3759366208986684,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request0_language_model.model.layers.30.linear_attn.pt",
+          "bytes": 406870390,
+          "sha256": "345644af28ce7ed556f38517deaaac9cd7a30fa48b1c5cb0d4e1a3e2e5b06ecc"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request1_language_model.model.layers.30.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "1e0aab580f62442f12e925888fe07e5d69435807065f91670e28c947d40c8a7c"
+        },
+        {
+          "path": "/tmp/sparsegdn_8k_trace/layer_real8k_request2_language_model.model.layers.30.linear_attn.pt",
+          "bytes": 413162166,
+          "sha256": "0c2b78b97cd95823e51455123137895af2ad77b9d9418d508219aba9f9cf0ea7"
+        }
+      ]
+    }
+  ],
+  "logits": {
+    "shapes": [
+      [
+        248320
+      ],
+      [
+        248320
+      ],
+      [
+        248320
+      ]
+    ],
+    "PX_vs_PY": {
+      "max_abs": 17.48876953125,
+      "relative_frobenius": 1.0116235590557887,
+      "torch_equal": false
+    },
+    "P_vs_PX_different_boundaries": {
+      "max_abs": 23.8125,
+      "relative_frobenius": 2.0409019178983563,
+      "torch_equal": false
+    },
+    "P_vs_PY_different_boundaries": {
+      "max_abs": 16.21875,
+      "relative_frobenius": 1.5962635563071539,
+      "torch_equal": false
+    },
+    "note": "P logits are after P; PX/PY logits are after P+suffix. X/Y share the final boundary.",
+    "files": [
+      {
+        "path": "/tmp/sparsegdn_8k_trace/logits_real8k_request0_language_model.model.layers.30.linear_attn.pt",
+        "sha256": "295aceabeb207f486cc65f6ef5427e110c3a21d23d9e7098f69e0441557d246f"
+      },
+      {
+        "path": "/tmp/sparsegdn_8k_trace/logits_real8k_request1_language_model.model.layers.30.linear_attn.pt",
+        "sha256": "90e72a5b070110a4ed3625d62e16d40b31485402e0ea5d919600e1573a622b6f"
+      },
+      {
+        "path": "/tmp/sparsegdn_8k_trace/logits_real8k_request2_language_model.model.layers.30.linear_attn.pt",
+        "sha256": "e7a3b8d714bf4e74818d8c9b19d883d952e2026d880ef6d7ae85d627633804c5"
+      }
+    ]
+  },
+  "summary": {
+    "all_finite": true,
+    "prefix_mask_difference_cases": 24,
+    "prefix_state_difference_cases": 22,
+    "prefix_output_difference_cases": 23,
+    "logits_XY": {
+      "max_abs": 17.48876953125,
+      "relative_frobenius": 1.0116235590557887,
+      "torch_equal": false
+    }
+  }
+}

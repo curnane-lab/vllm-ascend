@@ -1,0 +1,3387 @@
+{
+  "schema_version": 1,
+  "scope": "SCOPE-A actual Qwen3.5-4B FP32 SparseGDN reference; eager, TP1, no prefix cache",
+  "compute_dtype": "float32",
+  "trace_storage_dtype": {
+    "U": "bfloat16",
+    "output": "bfloat16",
+    "states": "float32",
+    "logits": "float32"
+  },
+  "prefix_tokens": 4096,
+  "suffix_tokens": 128,
+  "request_order": [
+    "independent_P",
+    "P_plus_X",
+    "P_plus_Y"
+  ],
+  "run_tag": "real4kv2",
+  "layers": [
+    {
+      "layer": 0,
+      "mask_differences": {
+        "P_vs_PX": 21,
+        "P_vs_PY": 21,
+        "PX_vs_PY": 0
+      },
+      "tiers": [
+        [
+          0,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        290,
+        301,
+        301
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0078125,
+          "relative_frobenius": 0.00013347566169989928,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0078125,
+          "relative_frobenius": 0.00013347566169989928,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.48828125,
+          "relative_frobenius": 0.07536946066703648,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.48828125,
+          "relative_frobenius": 0.07536946066703648,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 4.821045875549316,
+          "relative_frobenius": 0.5395162091984073,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 4.821045875549316,
+          "relative_frobenius": 0.5395162091984073,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 5.364155620336533,
+        "relative_frobenius": 0.3860649070276288,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.0.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "25c6c51419df8616fbcb1705b2d858f51f29177f2dc91c0e85308518906bc297"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.0.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "a318a55a0ec39d19808667dd21b524e7a376d78de353f08865c671879d558153"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.0.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "7a6aee6854792c7dc2e0473fca2cbefab6cbdaaab0808e22b47c221310503238"
+        }
+      ]
+    },
+    {
+      "layer": 1,
+      "mask_differences": {
+        "P_vs_PX": 12,
+        "P_vs_PY": 12,
+        "PX_vs_PY": 0
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0810546875,
+          "relative_frobenius": 0.014821785309422774,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0810546875,
+          "relative_frobenius": 0.014821785309422774,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.00274658203125,
+          "relative_frobenius": 0.009825287903179464,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.00274658203125,
+          "relative_frobenius": 0.009825287903179464,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.2972241938114166,
+          "relative_frobenius": 0.4712861233161933,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.2972241938114166,
+          "relative_frobenius": 0.4712861233161933,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.2395259067416191,
+        "relative_frobenius": 0.5289988218188255,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.1.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "77882cbd1fe9484c1aef336274289dbdf4d1fe75a83d9b4668c86ce970725053"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.1.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "0f657119319cece6397fb41a23f747d37aa35550b9006c6b6c00cc45d52b5695"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.1.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "abe5f09bfb10b900acd4781031584f67fbdd6a4e3437c0cef615532b456ba0f4"
+        }
+      ]
+    },
+    {
+      "layer": 2,
+      "mask_differences": {
+        "P_vs_PX": 21,
+        "P_vs_PY": 21,
+        "PX_vs_PY": 0
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        290,
+        301,
+        301
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.041015625,
+          "relative_frobenius": 0.01298887966673577,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.041015625,
+          "relative_frobenius": 0.01298887966673577,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.016815185546875,
+          "relative_frobenius": 0.0389869356738533,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.016815185546875,
+          "relative_frobenius": 0.0389869356738533,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.2921117360844079,
+          "relative_frobenius": 0.8850265037326916,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.2921117360844079,
+          "relative_frobenius": 0.8850265037326916,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.4169790521264076,
+        "relative_frobenius": 0.7505794981803043,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.2.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "08a36daa6063f444d925d2c607afd9819c196e76e0ed4962cdd3d0d654bca135"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.2.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "4a8d80555573d1c75cbb5269732927ff98aab100866fb41c356a519b2dda7b0b"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.2.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "eb684ebda5033f829f21971a354bbcbe4fdba3577dc059d8e4349f6a6bfaf82c"
+        }
+      ]
+    },
+    {
+      "layer": 4,
+      "mask_differences": {
+        "P_vs_PX": 14,
+        "P_vs_PY": 128,
+        "PX_vs_PY": 114
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.08203125,
+          "relative_frobenius": 0.02211334079426782,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.08203125,
+          "relative_frobenius": 0.02211334079426782,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0347900390625,
+          "relative_frobenius": 0.11597541001110018,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.03955078125,
+          "relative_frobenius": 0.25228848979446916,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.03955078125,
+          "relative_frobenius": 0.22547152789832925,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.357510507106781,
+          "relative_frobenius": 0.4092837205135155,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.43738720566034317,
+          "relative_frobenius": 0.6319469886384063,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.43107352405786514,
+          "relative_frobenius": 0.4563069929411862,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.4291420206427574,
+        "relative_frobenius": 0.573621980285437,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.4.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "4f26c05c65c76b06f46b50e8f4763d01b8ce0f07d3f6934c23db4811afffdd29"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.4.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "03563d621e794d18cfdda581ea701f61a022ad348b2d4e91eebf035a39d8ba88"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.4.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "710db759dbcdea10c1cd762e2f6fdd4704347f6716f30c008eccdb2696fae106"
+        }
+      ]
+    },
+    {
+      "layer": 5,
+      "mask_differences": {
+        "P_vs_PX": 12,
+        "P_vs_PY": 16,
+        "PX_vs_PY": 4
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          2,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.09161376953125,
+          "relative_frobenius": 0.023958733052155238,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.12890625,
+          "relative_frobenius": 0.06236887510041767,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0068359375,
+          "relative_frobenius": 0.01636124543831633,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.011962890625,
+          "relative_frobenius": 0.06515923515216547,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.012451171875,
+          "relative_frobenius": 0.06289321877354098,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.47546312058949425,
+          "relative_frobenius": 0.5254631403721883,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4754631172167665,
+          "relative_frobenius": 0.5267845494844556,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.08980560302734375,
+          "relative_frobenius": 0.08108659275488227,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.5188580327667296,
+        "relative_frobenius": 0.7274467942682055,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.5.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "d162fb32dd8b2621acd870c89bcf7bf98e338c38a67c3a78bdcc632d2b202764"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.5.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "babf2f4a00025162ea626f8f8d6d71f76399438c2a7aca7238ca2becf90f351a"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.5.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "e7bd54b40b566b7ee49fba5e44a2a4346f8b989507c02abe3e35df48c00b7324"
+        }
+      ]
+    },
+    {
+      "layer": 6,
+      "mask_differences": {
+        "P_vs_PX": 25,
+        "P_vs_PY": 26,
+        "PX_vs_PY": 5
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        290,
+        301,
+        301
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.12890625,
+          "relative_frobenius": 0.021043711735775992,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.349609375,
+          "relative_frobenius": 0.05805698985039019,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0234375,
+          "relative_frobenius": 0.06265495431241214,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.023681640625,
+          "relative_frobenius": 0.07657054611996168,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.013275146484375,
+          "relative_frobenius": 0.059725439180199534,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5100478907115757,
+          "relative_frobenius": 0.8035869532226314,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5090102404356003,
+          "relative_frobenius": 0.8088163209038086,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.019493095576763153,
+          "relative_frobenius": 0.07844712354082103,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.8758164197206497,
+        "relative_frobenius": 0.867499813658533,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.6.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "275d9f7a16f42b2b7fcdfebd0b8ecf2b633e4fe8a78f3b18eae1cd7cebdceb9a"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.6.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "a2aac8fb3767a1db4ad7d016d5453701a2c9f10b1fe2711a0f159a7234a99774"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.6.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "ec710556c970568d9941cbca679210004761234ef4cffef77e0c4868ca5f2f2e"
+        }
+      ]
+    },
+    {
+      "layer": 8,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 31,
+        "PX_vs_PY": 5
+      },
+      "tiers": [
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        290,
+        303,
+        303
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.1171875,
+          "relative_frobenius": 0.020790135438002795,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.203125,
+          "relative_frobenius": 0.04230547249296344,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.017822265625,
+          "relative_frobenius": 0.07953780460629051,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.03045654296875,
+          "relative_frobenius": 0.10285528808209388,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.03240966796875,
+          "relative_frobenius": 0.0689972121052254,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.8280704021453857,
+          "relative_frobenius": 0.15203484160379382,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.8280704021453857,
+          "relative_frobenius": 0.1587312627897753,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.10657250881195068,
+          "relative_frobenius": 0.04692758166564094,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.42471759021282196,
+        "relative_frobenius": 0.19674708493527648,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.8.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "d91d98a3f276fc03aea4997bccaecf3eeb4bc79fd36a4b15ba168b5ba2756d03"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.8.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "1dd3491029558a55bfc498ffcbda824f63ae293574c65ce03b1175c29d4de865"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.8.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "a988243988d94001bc182dbb3597cc80e2cafb65d51860be9eb7ecd57d38dc75"
+        }
+      ]
+    },
+    {
+      "layer": 9,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 31,
+        "PX_vs_PY": 13
+      },
+      "tiers": [
+        [
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        290,
+        303,
+        303
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0771484375,
+          "relative_frobenius": 0.06014566555213193,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.126953125,
+          "relative_frobenius": 0.09929146730492529,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.01416015625,
+          "relative_frobenius": 0.07752943165109599,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.013916015625,
+          "relative_frobenius": 0.0995400662360919,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.01324462890625,
+          "relative_frobenius": 0.08218243270958281,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.36128052277490497,
+          "relative_frobenius": 0.4817240472236588,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.3609345364384353,
+          "relative_frobenius": 0.48823787619849335,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.019044950604438782,
+          "relative_frobenius": 0.05645129727854185,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.3740520179271698,
+        "relative_frobenius": 0.5098881357294461,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.9.linear_attn.pt",
+          "bytes": 205534595,
+          "sha256": "420f57f5741e41eebef5a1c874bf7533cc504bf18fcb01df2705ab8ccafa5fe0"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.9.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "2aa970d425786e004754dd19727de1e946022be5b9187a04896d51d0e3e2e70e"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.9.linear_attn.pt",
+          "bytes": 211826371,
+          "sha256": "050e9dd1c11cccb39cd241a514d6634f68dd7cfb88316d5576e4d4d237f0fbcd"
+        }
+      ]
+    },
+    {
+      "layer": 10,
+      "mask_differences": {
+        "P_vs_PX": 17,
+        "P_vs_PY": 102,
+        "PX_vs_PY": 93
+      },
+      "tiers": [
+        [
+          1,
+          0,
+          1,
+          2,
+          2,
+          1,
+          2,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          2,
+          2,
+          1,
+          2,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        314,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.326171875,
+          "relative_frobenius": 0.0460024259507713,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.392578125,
+          "relative_frobenius": 0.07692319575738107,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.015869140625,
+          "relative_frobenius": 0.07405951359583617,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.02490234375,
+          "relative_frobenius": 0.18318580178753324,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.02490234375,
+          "relative_frobenius": 0.1741838267602749,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.42387858033180237,
+          "relative_frobenius": 0.5856240326022089,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.42387858033180237,
+          "relative_frobenius": 0.6842347264737881,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.18177539110183716,
+          "relative_frobenius": 0.3094390342876894,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.468678817152977,
+        "relative_frobenius": 0.6804732509529247,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.10.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "c8a0c4d29d4388d5d4aec9265aea1c2cb0a16f84c3f1726278e0407ab791fa75"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.10.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "aa9edae4cf8ac98bf75e09fc1f09e90bda4df9fcfd7a8449570238d078cac3b8"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.10.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "10a91646f77d74108cbd6f5bbfe7be85a3e800d9c44e62de6e85e92089e31854"
+        }
+      ]
+    },
+    {
+      "layer": 12,
+      "mask_differences": {
+        "P_vs_PX": 101,
+        "P_vs_PY": 18,
+        "PX_vs_PY": 87
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          2,
+          2,
+          1,
+          0,
+          2,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        314,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.171112060546875,
+          "relative_frobenius": 0.08695888270838187,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.17578125,
+          "relative_frobenius": 0.14822169552701614,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.029052734375,
+          "relative_frobenius": 0.18583864923917326,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.018310546875,
+          "relative_frobenius": 0.13771049973292485,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.028564453125,
+          "relative_frobenius": 0.20605721649428405,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.62605220079422,
+          "relative_frobenius": 0.5114142237367048,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.62605220079422,
+          "relative_frobenius": 0.4923672708250801,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.21174420416355133,
+          "relative_frobenius": 0.27781168715431426,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.26581859588623047,
+        "relative_frobenius": 0.5304955643297136,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.12.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "fd6d4a5014cb66f9bdb9c7a5967422c0308bd1ee0e992f4257d403ccc8171c58"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.12.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "999035118407253bc9ee7d0eabd1de884afc5f8814564b48d74d7f1759770196"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.12.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "c8855e4b2d88380eda95136075b49397f5ab248348c6d57b130018af391306b4"
+        }
+      ]
+    },
+    {
+      "layer": 13,
+      "mask_differences": {
+        "P_vs_PX": 18,
+        "P_vs_PY": 18,
+        "PX_vs_PY": 10
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.283203125,
+          "relative_frobenius": 0.11766568585844735,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4443359375,
+          "relative_frobenius": 0.15451632078269392,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0172119140625,
+          "relative_frobenius": 0.07915258461491093,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.017578125,
+          "relative_frobenius": 0.11366259522685546,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.017852783203125,
+          "relative_frobenius": 0.10882879163565104,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.5375196290956064,
+          "relative_frobenius": 0.7308925224380156,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5375196327127263,
+          "relative_frobenius": 0.7197293152337586,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.08855998003855348,
+          "relative_frobenius": 0.15407386902306183,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.3684157654643059,
+        "relative_frobenius": 0.8310509435190694,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.13.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "d8b13470c485d14632bb66c0f6c84cd293310b3a7cfd75470d45fe51c9ba8314"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.13.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "235fe139d2c7aebbf7d7058cc34f2972e53f5eb3e2e0eb65a7831cc4d967fa80"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.13.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "95e1bd1ad6e1d47fd5f9d06f8be51db63e1e2dc3278a1b9282e24e75e26351cd"
+        }
+      ]
+    },
+    {
+      "layer": 14,
+      "mask_differences": {
+        "P_vs_PX": 24,
+        "P_vs_PY": 98,
+        "PX_vs_PY": 84
+      },
+      "tiers": [
+        [
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          2,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        304,
+        316,
+        303
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.21484375,
+          "relative_frobenius": 0.07928215677522141,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.240234375,
+          "relative_frobenius": 0.11608101931919873,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.02020263671875,
+          "relative_frobenius": 0.08762402049801629,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.024749755859375,
+          "relative_frobenius": 0.15896333201187793,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.02337646484375,
+          "relative_frobenius": 0.15619131496920627,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3838244518265128,
+          "relative_frobenius": 0.6811232620753899,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.48610125109553337,
+          "relative_frobenius": 0.9441377835086354,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.41831864044070244,
+          "relative_frobenius": 0.5916168683162757,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.408128097653389,
+        "relative_frobenius": 0.7397253186454597,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.14.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "a55cbe1acbd8c86f6f1577b94684062af80113828eb0ed83a87fce1a51b030e7"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.14.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "e73ca792f22138a9fbffd34a5bfa801b03e8f30131c784c864e911621f4a6088"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.14.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "8cb041167dcb1888f1ead84b27b6dce4bff1b9d59299a596cf7cd0a6347c57aa"
+        }
+      ]
+    },
+    {
+      "layer": 16,
+      "mask_differences": {
+        "P_vs_PX": 26,
+        "P_vs_PY": 29,
+        "PX_vs_PY": 13
+      },
+      "tiers": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        290,
+        303,
+        303
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.17242431640625,
+          "relative_frobenius": 0.13890403945435867,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.18505859375,
+          "relative_frobenius": 0.20361818820529198,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.011871337890625,
+          "relative_frobenius": 0.10454070992794243,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.013885498046875,
+          "relative_frobenius": 0.14582469188402955,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.013580322265625,
+          "relative_frobenius": 0.13474267099397327,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.24724491406232119,
+          "relative_frobenius": 0.45096318043520317,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.24561708886176348,
+          "relative_frobenius": 0.4564645306908285,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.034156642854213715,
+          "relative_frobenius": 0.10537752708836327,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.19835595041513443,
+        "relative_frobenius": 0.4670005583379045,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.16.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "aca5f32d896725c8e4b80ea8ff499d776a52bfd6a6d390fb5d27ba92fb54436e"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.16.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "1a0fa5d482183482fb471f91651fce99d571a12fb23b3b16bb0db0c9d4c1f0cf"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.16.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "af6f141d6292402739993f74974a0e585f29f34c5d0fcded4ceccb085f4936da"
+        }
+      ]
+    },
+    {
+      "layer": 17,
+      "mask_differences": {
+        "P_vs_PX": 20,
+        "P_vs_PY": 126,
+        "PX_vs_PY": 120
+      },
+      "tiers": [
+        [
+          2,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          2,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.244293212890625,
+          "relative_frobenius": 0.13453523803593792,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.449462890625,
+          "relative_frobenius": 0.19904959469543784,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0102996826171875,
+          "relative_frobenius": 0.1274819061003099,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.01812744140625,
+          "relative_frobenius": 0.28391672820123487,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.01776123046875,
+          "relative_frobenius": 0.2783559151148857,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.33904528617858887,
+          "relative_frobenius": 0.751370298508759,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.33904528617858887,
+          "relative_frobenius": 0.8526172529121098,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.2115642987191677,
+          "relative_frobenius": 0.47433214507271004,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.35934966802597046,
+        "relative_frobenius": 0.8237974171222466,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.17.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "a6188a317839bdcbcb7a22a51dc3dbcec4ce032fead0044eac3fa44c3237c05b"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.17.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "fdcc388880035c29c4c555e4fa88034db4c693f4fcd00d3044ca7b5b1a5c6d41"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.17.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "403def3a55aac3a421e6cb890bb7320509ffbb0df2b0b89e0491487c92e4b0a4"
+        }
+      ]
+    },
+    {
+      "layer": 18,
+      "mask_differences": {
+        "P_vs_PX": 18,
+        "P_vs_PY": 18,
+        "PX_vs_PY": 8
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.18896484375,
+          "relative_frobenius": 0.10534071632142866,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.2744140625,
+          "relative_frobenius": 0.1626807136563849,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0203857421875,
+          "relative_frobenius": 0.059945682132432544,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.01922607421875,
+          "relative_frobenius": 0.10676298110985336,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0194091796875,
+          "relative_frobenius": 0.1003837290097566,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4103588468826853,
+          "relative_frobenius": 0.679372306056833,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4103588528933919,
+          "relative_frobenius": 0.7155907176000821,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.08687599003314972,
+          "relative_frobenius": 0.16642920873946979,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.2807938754558563,
+        "relative_frobenius": 0.5970661732855786,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.18.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "411660dfec5070979167cdaa9902f71f6055d893f21e2d8bb1ae86bc2b75a242"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.18.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "ee36d3157eb028fb448ee866817b5a05160e735172a2a704414c2da7fe283291"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.18.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "f4861fdc9a0ae2e5f4d349f7955f4e1e1fd3a66410f0382df49b7ec38d24fb9c"
+        }
+      ]
+    },
+    {
+      "layer": 20,
+      "mask_differences": {
+        "P_vs_PX": 28,
+        "P_vs_PY": 30,
+        "PX_vs_PY": 10
+      },
+      "tiers": [
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        290,
+        303,
+        303
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4296875,
+          "relative_frobenius": 0.09068780565220722,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4375,
+          "relative_frobenius": 0.13466472763149934,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.135498046875,
+          "relative_frobenius": 0.11194596699550406,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.16748046875,
+          "relative_frobenius": 0.13810145757456316,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.12060546875,
+          "relative_frobenius": 0.10779608207935791,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.30951499938964844,
+          "relative_frobenius": 0.14204474770585354,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.30951499938964844,
+          "relative_frobenius": 0.15106545283405623,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.20810818672180176,
+          "relative_frobenius": 0.06801193313102398,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.6323141120374203,
+        "relative_frobenius": 0.281659136334211,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.20.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "e2d04a2771c548378b0c93e3bccef6f0f4cd499d89a262b7b53dd649912fdcae"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.20.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "fdf508d205aca7e868f9fa07a062f6a5d127bfcf78bf1cf550fcb95208143f4a"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.20.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "8f46c0812ee3f04e50ef5cc0c9660dd40163b13b6cb34d6b1a0e156bd936daaa"
+        }
+      ]
+    },
+    {
+      "layer": 21,
+      "mask_differences": {
+        "P_vs_PX": 38,
+        "P_vs_PY": 36,
+        "PX_vs_PY": 20
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        290,
+        303,
+        303
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.7335205078125,
+          "relative_frobenius": 0.124859401008301,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.754852294921875,
+          "relative_frobenius": 0.19323776245897223,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.23974609375,
+          "relative_frobenius": 0.18131264601379846,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.258544921875,
+          "relative_frobenius": 0.28694437129541833,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.2265625,
+          "relative_frobenius": 0.22907234413694433,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4885145425796509,
+          "relative_frobenius": 0.2319128140581465,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.4356187582015991,
+          "relative_frobenius": 0.24912995323729276,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.4240266680717468,
+          "relative_frobenius": 0.11490192604828348,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.5425252318382263,
+        "relative_frobenius": 0.27263978392372723,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.21.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "b0b269ec83053d078fa140e34c42c97bb2439795ab5a48c4eacf2cc066af48fd"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.21.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "8955d4ebb00404bea2639a429a1640cdb1486ebafd67be41e8bfdb427e647acd"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.21.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "c9e5d72bb5707e763d05ad43201bc52fa7bf395cba43ed89b87e6e8dac8ce20c"
+        }
+      ]
+    },
+    {
+      "layer": 22,
+      "mask_differences": {
+        "P_vs_PX": 32,
+        "P_vs_PY": 192,
+        "PX_vs_PY": 178
+      },
+      "tiers": [
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          2,
+          2,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ]
+      ],
+      "valid_events": [
+        290,
+        303,
+        299
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.8203125,
+          "relative_frobenius": 0.1351620700976593,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.09375,
+          "relative_frobenius": 0.21122829487085187,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0753173828125,
+          "relative_frobenius": 0.1346792310373733,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.081298828125,
+          "relative_frobenius": 0.3246959819004196,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.081787109375,
+          "relative_frobenius": 0.3189760709291507,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.4646804630756378,
+          "relative_frobenius": 0.7067481875160438,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.46157232904806733,
+          "relative_frobenius": 0.7923925907564667,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.18653415737352042,
+          "relative_frobenius": 0.3693988269686276,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.6969802752137184,
+        "relative_frobenius": 0.6473321971884224,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.22.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "9ed546044062edfc6f1341fa0c3a3969241e3b9acf6cb9cfc1f8e2c9911572b5"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.22.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "a683ab3abfd3cd270a795e2bf25bedc6e55492b16dadfa7cd39ce46730a9b56b"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.22.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "efee3f6f48de67e6cb4bd6597aa21427fbdd1aa45e948babed75f0e4cb2125bf"
+        }
+      ]
+    },
+    {
+      "layer": 24,
+      "mask_differences": {
+        "P_vs_PX": 32,
+        "P_vs_PY": 30,
+        "PX_vs_PY": 14
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          2,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          2,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          2,
+          1,
+          0,
+          1
+        ]
+      ],
+      "valid_events": [
+        318,
+        329,
+        329
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.9892578125,
+          "relative_frobenius": 0.17928542925596244,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.11279296875,
+          "relative_frobenius": 0.2802165214139266,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.2109375,
+          "relative_frobenius": 0.20854349621629817,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.24169921875,
+          "relative_frobenius": 0.23942411839091976,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.208984375,
+          "relative_frobenius": 0.1866080232345146,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.8751213252544403,
+          "relative_frobenius": 0.30222653061273663,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.88123419880867,
+          "relative_frobenius": 0.3096196684317056,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.254324808716774,
+          "relative_frobenius": 0.16947824748827678,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.36985400319099426,
+        "relative_frobenius": 0.28001834504747714,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.24.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "11edfda16d9fa3f03f16d713d152755a5c7efbabd57a5fede17b0960c724b627"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.24.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "ae75254a35311036acdbda79d6ac8902c84cbfd5fd0334a5a906a7bbbe78060e"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.24.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "41af3f4cf0ecc38859d5093b39f98999f194d4c147a59b9f283192f69f1e64db"
+        }
+      ]
+    },
+    {
+      "layer": 25,
+      "mask_differences": {
+        "P_vs_PX": 27,
+        "P_vs_PY": 31,
+        "PX_vs_PY": 16
+      },
+      "tiers": [
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          2
+        ]
+      ],
+      "valid_events": [
+        290,
+        301,
+        301
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 2.39453125,
+          "relative_frobenius": 0.20239411907377494,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.9111328125,
+          "relative_frobenius": 0.30247045652158827,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.18731689453125,
+          "relative_frobenius": 0.21566144786550234,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.221923828125,
+          "relative_frobenius": 0.24962940618221377,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.21044921875,
+          "relative_frobenius": 0.15802872314340266,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 1.040866658091545,
+          "relative_frobenius": 0.455134520433702,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.0481162071228027,
+          "relative_frobenius": 0.4659981748808278,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.2773573398590088,
+          "relative_frobenius": 0.14783712487983425,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.5793293784372509,
+        "relative_frobenius": 0.3425935048988598,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.25.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "57757cdada02dd12f38ab8d2206003b069ee4970ceedfe29d0d748ec480f03ba"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.25.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "213ae4c93c0bc6d4106ca961ade66dbfa8d6a9e3c05012f334f14eb99ed54600"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.25.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "d293e476e5f1acd1ae3ed8e1771def39bb6a565c73bab1586663e1d23c0a5160"
+        }
+      ]
+    },
+    {
+      "layer": 26,
+      "mask_differences": {
+        "P_vs_PX": 29,
+        "P_vs_PY": 33,
+        "PX_vs_PY": 8
+      },
+      "tiers": [
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          2,
+          0
+        ]
+      ],
+      "valid_events": [
+        290,
+        301,
+        301
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 1.1025390625,
+          "relative_frobenius": 0.19192711473664636,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.2041015625,
+          "relative_frobenius": 0.2848808890574027,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.0506439208984375,
+          "relative_frobenius": 0.11346068647963121,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.0587158203125,
+          "relative_frobenius": 0.15963890209964704,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.058837890625,
+          "relative_frobenius": 0.13608561876722522,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 1.3930898752241774,
+          "relative_frobenius": 0.3269064870995772,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.3930008642055327,
+          "relative_frobenius": 0.3369915826818912,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.12838232517242432,
+          "relative_frobenius": 0.087089812691478,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.47434401512145996,
+        "relative_frobenius": 0.265722651343959,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.26.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "f3d2316a1f86cbf8b278c421e647b2a67e8bf9c70ce09486acaa96aeb5392132"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.26.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "dae98f318eaf22d394b981def151fea59b584f147c5b257913ec7d654ade0e80"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.26.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "d628521a36f2025bfee26a0aa5cc54827b483bd5d04caf738125986fe92224d6"
+        }
+      ]
+    },
+    {
+      "layer": 28,
+      "mask_differences": {
+        "P_vs_PX": 30,
+        "P_vs_PY": 36,
+        "PX_vs_PY": 16
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 1.158203125,
+          "relative_frobenius": 0.15302032031115817,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 1.197265625,
+          "relative_frobenius": 0.2221005107813138,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.26025390625,
+          "relative_frobenius": 0.08121432076624037,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.257080078125,
+          "relative_frobenius": 0.11200163185003147,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.258056640625,
+          "relative_frobenius": 0.09688965240443767,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.7639433741569519,
+          "relative_frobenius": 0.2945192209105604,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.7639433741569519,
+          "relative_frobenius": 0.31468715034667427,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.5770599842071533,
+          "relative_frobenius": 0.18245542262495426,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.8451640009880066,
+        "relative_frobenius": 0.49253313909630475,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.28.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "a2dfb4fefa6fa540c36f398a74be2bd860cf387441bce0e4cb440a16a62a7ed4"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.28.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "dc11c7bfea2a2fbbd90bcd8eb2036965dadb179abbbaa393975115f81086be97"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.28.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "50f4ae044b4f9298812d4b3b0c6fe1cf281ed17a429c919c128fba5040c0a971"
+        }
+      ]
+    },
+    {
+      "layer": 29,
+      "mask_differences": {
+        "P_vs_PX": 22,
+        "P_vs_PY": 26,
+        "PX_vs_PY": 6
+      },
+      "tiers": [
+        [
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          0,
+          2,
+          0,
+          2,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        304,
+        312,
+        312
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.55908203125,
+          "relative_frobenius": 0.1535284200249647,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.5751953125,
+          "relative_frobenius": 0.22664598400440428,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.1025390625,
+          "relative_frobenius": 0.10124080612210488,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.11474609375,
+          "relative_frobenius": 0.11317650467745603,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.0947265625,
+          "relative_frobenius": 0.06525120090387743,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.42190518975257874,
+          "relative_frobenius": 0.36986651429735007,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.42190518975257874,
+          "relative_frobenius": 0.3765392022651642,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.04178138077259064,
+          "relative_frobenius": 0.0931551291941642,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.6124638468027115,
+        "relative_frobenius": 0.3995816364772619,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.29.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "69c5cdaa0197b9d10e4533cd3658478ceaff1f2c951fbdcace8f9e685c09b335"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.29.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "8889ced17cecbb3687f55db7e1a5b90cfe6c5d8348e26bb0b442a633d44e138c"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.29.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "0bf2196217db8fba9e39e9c1deb614d8f717ce5df0807d9184b144830542963c"
+        }
+      ]
+    },
+    {
+      "layer": 30,
+      "mask_differences": {
+        "P_vs_PX": 61,
+        "P_vs_PY": 67,
+        "PX_vs_PY": 42
+      },
+      "tiers": [
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          1,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          1,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          2,
+          1,
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "valid_events": [
+        290,
+        301,
+        301
+      ],
+      "U_prefix": {
+        "P_vs_PX": {
+          "max_abs": 7.031290531158447,
+          "relative_frobenius": 0.41857389169161435,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 10.309814453125,
+          "relative_frobenius": 0.5008647983776352,
+          "torch_equal": false
+        }
+      },
+      "output_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.44922176003456116,
+          "relative_frobenius": 0.24002676909801504,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.70318603515625,
+          "relative_frobenius": 0.2596163993259151,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.699310302734375,
+          "relative_frobenius": 0.21428724058884321,
+          "torch_equal": false
+        }
+      },
+      "state_at_prefix": {
+        "P_vs_PX": {
+          "max_abs": 0.3437982561320041,
+          "relative_frobenius": 0.3078812845871135,
+          "torch_equal": false
+        },
+        "P_vs_PY": {
+          "max_abs": 0.34376512467861176,
+          "relative_frobenius": 0.2896949835014675,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.5467631848609926,
+          "relative_frobenius": 0.2604600564999386,
+          "torch_equal": false
+        }
+      },
+      "final_state_XY": {
+        "max_abs": 0.5489859953522682,
+        "relative_frobenius": 0.3861485239667029,
+        "torch_equal": false
+      },
+      "finite": true,
+      "raw_files": [
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request0_language_model.model.layers.30.linear_attn.pt",
+          "bytes": 205534672,
+          "sha256": "0fac291de3cac1c36311d74d57265852ff1b519fab1efbe5d9735d407f38c089"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request1_language_model.model.layers.30.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "b785210fe3f6177daadfcc50358fd0033bb45676021d460980ae5ae1e4398781"
+        },
+        {
+          "path": "/tmp/sparsegdn_4k_trace_v2/layer_real4kv2_request2_language_model.model.layers.30.linear_attn.pt",
+          "bytes": 211826448,
+          "sha256": "f272bd606226b8cfcf25d8c417e230fc4ee7784bb0e87c4ff7f123299afb0210"
+        }
+      ]
+    }
+  ],
+  "logits": {
+    "shapes": [
+      [
+        248320
+      ],
+      [
+        248320
+      ],
+      [
+        248320
+      ]
+    ],
+    "PX_vs_PY": {
+      "max_abs": 19.296875,
+      "relative_frobenius": 1.1270523586029377,
+      "torch_equal": false
+    },
+    "P_vs_PX_different_boundaries": {
+      "max_abs": 18.5625,
+      "relative_frobenius": 0.8944495220075096,
+      "torch_equal": false
+    },
+    "P_vs_PY_different_boundaries": {
+      "max_abs": 18.3125,
+      "relative_frobenius": 0.9767734858216933,
+      "torch_equal": false
+    },
+    "note": "P logits are after P; PX/PY logits are after P+suffix. X/Y share the final boundary.",
+    "files": [
+      {
+        "path": "/tmp/sparsegdn_4k_trace_v2/logits_real4kv2_request0_language_model.model.layers.30.linear_attn.pt",
+        "sha256": "702356a0362018444d4c9d7427c298a3d50b645bf5f5c751267544c5edbb9b51"
+      },
+      {
+        "path": "/tmp/sparsegdn_4k_trace_v2/logits_real4kv2_request1_language_model.model.layers.30.linear_attn.pt",
+        "sha256": "f93fb998dc45c5a754051d68b38256c265feb553f83e5b90b0990385b5c326b9"
+      },
+      {
+        "path": "/tmp/sparsegdn_4k_trace_v2/logits_real4kv2_request2_language_model.model.layers.30.linear_attn.pt",
+        "sha256": "aafffa3627326695fa015d2548d350464adc2a9707494f9ca0136a9de2012bb9"
+      }
+    ]
+  },
+  "summary": {
+    "all_finite": true,
+    "prefix_mask_difference_cases": 21,
+    "prefix_state_difference_cases": 21,
+    "prefix_output_difference_cases": 21,
+    "logits_XY": {
+      "max_abs": 19.296875,
+      "relative_frobenius": 1.1270523586029377,
+      "torch_equal": false
+    }
+  }
+}

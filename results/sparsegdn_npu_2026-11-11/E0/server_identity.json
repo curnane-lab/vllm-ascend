@@ -1,0 +1,35 @@
+{
+  "ready": true,
+  "wait_seconds": 0.008564152289181948,
+  "health": {},
+  "models": {
+    "object": "list",
+    "data": [
+      {
+        "id": "Qwen3.5-4B",
+        "object": "model",
+        "created": 1794401388,
+        "owned_by": "vllm",
+        "root": "/data/models/Qwen3.5-4B",
+        "parent": null,
+        "max_model_len": 32768,
+        "permission": [
+          {
+            "id": "modelperm-99fb7c26d5802cc8",
+            "object": "model_permission",
+            "created": 1794401388,
+            "allow_create_engine": false,
+            "allow_sampling": true,
+            "allow_logprobs": true,
+            "allow_search_indices": false,
+            "allow_view": true,
+            "allow_fine_tuning": false,
+            "organization": "*",
+            "group": null,
+            "is_blocking": false
+          }
+        ]
+      }
+    ]
+  }
+}

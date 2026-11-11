@@ -1,0 +1,996 @@
+{
+  "schema_version": 1,
+  "algorithm": "independent implementation of SparseGDN arXiv:2610.41420v1",
+  "performance_results": false,
+  "quality_gate_results": false,
+  "cases": [
+    {
+      "length": 64,
+      "chunks": 1,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "A2_vs_S_ref": {
+        "mask_disagreement_fraction": 0.0,
+        "tier_disagreement_pairs": 0,
+        "U": {
+          "max_abs": 0.4509984446754325,
+          "relative_frobenius": 0.02683270706338226,
+          "torch_equal": false
+        },
+        "output": {
+          "max_abs": 0.11667096982842254,
+          "relative_frobenius": 0.039125402396780216,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.20936492367935583,
+          "relative_frobenius": 0.046214407197838286,
+          "torch_equal": false
+        },
+        "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+      },
+      "S_ref_vs_R0": {
+        "output": {
+          "max_abs": 0.11667096982842265,
+          "relative_frobenius": 0.03917785139243217,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.2093649236793555,
+          "relative_frobenius": 0.046184251140503285,
+          "torch_equal": false
+        }
+      },
+      "A2_vs_R0": {
+        "output": {
+          "max_abs": 4.996003610813204e-16,
+          "relative_frobenius": 3.92384964535274e-16,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 1.1102230246251565e-15,
+          "relative_frobenius": 4.3116327173808687e-16,
+          "torch_equal": false
+        }
+      },
+      "S_ref_repeat": {
+        "mask_bitwise": true,
+        "output_bitwise": true,
+        "state_bitwise": true
+      },
+      "A2": {
+        "valid_events": 16,
+        "capacity": 16,
+        "high_medium_counts": [
+          0,
+          0
+        ],
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      },
+      "S_ref": {
+        "valid_events": 16,
+        "capacity": 16,
+        "high_medium_counts": [
+          0,
+          0
+        ],
+        "keep_rate": 1.0,
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      }
+    },
+    {
+      "length": 128,
+      "chunks": 2,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "A2_vs_S_ref": {
+        "mask_disagreement_fraction": 0.0,
+        "tier_disagreement_pairs": 0,
+        "U": {
+          "max_abs": 0.30664106232316973,
+          "relative_frobenius": 0.025568274186338835,
+          "torch_equal": false
+        },
+        "output": {
+          "max_abs": 0.08383501829082729,
+          "relative_frobenius": 0.03907845017909765,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.12007572634533359,
+          "relative_frobenius": 0.04442347458111209,
+          "torch_equal": false
+        },
+        "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+      },
+      "S_ref_vs_R0": {
+        "output": {
+          "max_abs": 0.08383501829082718,
+          "relative_frobenius": 0.03913292057067992,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.12007572634533359,
+          "relative_frobenius": 0.04446624385656225,
+          "torch_equal": false
+        }
+      },
+      "A2_vs_R0": {
+        "output": {
+          "max_abs": 5.551115123125783e-16,
+          "relative_frobenius": 4.112090185871245e-16,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 1.1102230246251565e-15,
+          "relative_frobenius": 4.47603979550751e-16,
+          "torch_equal": false
+        }
+      },
+      "S_ref_repeat": {
+        "mask_bitwise": true,
+        "output_bitwise": true,
+        "state_bitwise": true
+      },
+      "A2": {
+        "valid_events": 32,
+        "capacity": 32,
+        "high_medium_counts": [
+          3,
+          4
+        ],
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      },
+      "S_ref": {
+        "valid_events": 32,
+        "capacity": 32,
+        "high_medium_counts": [
+          3,
+          4
+        ],
+        "keep_rate": 1.0,
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      }
+    },
+    {
+      "length": 192,
+      "chunks": 3,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "A2_vs_S_ref": {
+        "mask_disagreement_fraction": 0.0,
+        "tier_disagreement_pairs": 0,
+        "U": {
+          "max_abs": 0.28737572277212087,
+          "relative_frobenius": 0.026358932131635572,
+          "torch_equal": false
+        },
+        "output": {
+          "max_abs": 0.07111024813126834,
+          "relative_frobenius": 0.03917818880299206,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.12229417148067456,
+          "relative_frobenius": 0.044711950684144706,
+          "torch_equal": false
+        },
+        "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+      },
+      "S_ref_vs_R0": {
+        "output": {
+          "max_abs": 0.5449552000575427,
+          "relative_frobenius": 0.1838509446534565,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.1230717940616427,
+          "relative_frobenius": 0.04478032874892545,
+          "torch_equal": false
+        }
+      },
+      "A2_vs_R0": {
+        "output": {
+          "max_abs": 0.5448992356013216,
+          "relative_frobenius": 0.17954516654725755,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.0018545419599027904,
+          "relative_frobenius": 0.000774198280698717,
+          "torch_equal": false
+        }
+      },
+      "S_ref_repeat": {
+        "mask_bitwise": true,
+        "output_bitwise": true,
+        "state_bitwise": true
+      },
+      "A2": {
+        "valid_events": 33,
+        "capacity": 48,
+        "high_medium_counts": [
+          1,
+          12
+        ],
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      },
+      "S_ref": {
+        "valid_events": 33,
+        "capacity": 48,
+        "high_medium_counts": [
+          1,
+          12
+        ],
+        "keep_rate": 0.6875,
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      }
+    },
+    {
+      "length": 256,
+      "chunks": 4,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "A2_vs_S_ref": {
+        "mask_disagreement_fraction": 0.0,
+        "tier_disagreement_pairs": 0,
+        "U": {
+          "max_abs": 0.30133917272912525,
+          "relative_frobenius": 0.026156156888322003,
+          "torch_equal": false
+        },
+        "output": {
+          "max_abs": 0.09429614918377105,
+          "relative_frobenius": 0.03863192514409271,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.13439382034284342,
+          "relative_frobenius": 0.04653400837945286,
+          "torch_equal": false
+        },
+        "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+      },
+      "S_ref_vs_R0": {
+        "output": {
+          "max_abs": 0.5946325107846467,
+          "relative_frobenius": 0.16348971303631318,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.13517331756834017,
+          "relative_frobenius": 0.04658429616249444,
+          "torch_equal": false
+        }
+      },
+      "A2_vs_R0": {
+        "output": {
+          "max_abs": 0.5946781577233977,
+          "relative_frobenius": 0.15872239529040813,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.0017734985219868271,
+          "relative_frobenius": 0.0006166364868376634,
+          "torch_equal": false
+        }
+      },
+      "S_ref_repeat": {
+        "mask_bitwise": true,
+        "output_bitwise": true,
+        "state_bitwise": true
+      },
+      "A2": {
+        "valid_events": 40,
+        "capacity": 64,
+        "high_medium_counts": [
+          4,
+          0
+        ],
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      },
+      "S_ref": {
+        "valid_events": 40,
+        "capacity": 64,
+        "high_medium_counts": [
+          4,
+          0
+        ],
+        "keep_rate": 0.625,
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      }
+    },
+    {
+      "length": 320,
+      "chunks": 5,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "A2_vs_S_ref": {
+        "mask_disagreement_fraction": 0.0,
+        "tier_disagreement_pairs": 0,
+        "U": {
+          "max_abs": 0.2811319944721519,
+          "relative_frobenius": 0.02473403969836006,
+          "torch_equal": false
+        },
+        "output": {
+          "max_abs": 0.06469923943191583,
+          "relative_frobenius": 0.03726560690465412,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.11826388764949519,
+          "relative_frobenius": 0.047162834436833556,
+          "torch_equal": false
+        },
+        "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+      },
+      "S_ref_vs_R0": {
+        "output": {
+          "max_abs": 0.6267217416875634,
+          "relative_frobenius": 0.18487364411801574,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.11689383237658024,
+          "relative_frobenius": 0.047231139840199186,
+          "torch_equal": false
+        }
+      },
+      "A2_vs_R0": {
+        "output": {
+          "max_abs": 0.6267145744268855,
+          "relative_frobenius": 0.18116913946710653,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.003031940185762194,
+          "relative_frobenius": 0.0007830419301029668,
+          "torch_equal": false
+        }
+      },
+      "S_ref_repeat": {
+        "mask_bitwise": true,
+        "output_bitwise": true,
+        "state_bitwise": true
+      },
+      "A2": {
+        "valid_events": 38,
+        "capacity": 80,
+        "high_medium_counts": [
+          2,
+          8
+        ],
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      },
+      "S_ref": {
+        "valid_events": 38,
+        "capacity": 80,
+        "high_medium_counts": [
+          2,
+          8
+        ],
+        "keep_rate": 0.475,
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      }
+    },
+    {
+      "length": 65,
+      "chunks": 2,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "A2_vs_S_ref": {
+        "mask_disagreement_fraction": 0.0,
+        "tier_disagreement_pairs": 0,
+        "U": {
+          "max_abs": 0.39865935223854043,
+          "relative_frobenius": 0.026547305635822957,
+          "torch_equal": false
+        },
+        "output": {
+          "max_abs": 0.09116229952732657,
+          "relative_frobenius": 0.0404957667799145,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.08193798246173783,
+          "relative_frobenius": 0.03813122582528002,
+          "torch_equal": false
+        },
+        "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+      },
+      "S_ref_vs_R0": {
+        "output": {
+          "max_abs": 0.09116229952732657,
+          "relative_frobenius": 0.040524886561071206,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.08193798246173795,
+          "relative_frobenius": 0.038176592184425324,
+          "torch_equal": false
+        }
+      },
+      "A2_vs_R0": {
+        "output": {
+          "max_abs": 4.996003610813204e-16,
+          "relative_frobenius": 4.0262209787237976e-16,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 1.3322676295501878e-15,
+          "relative_frobenius": 4.0018182490190854e-16,
+          "torch_equal": false
+        }
+      },
+      "S_ref_repeat": {
+        "mask_bitwise": true,
+        "output_bitwise": true,
+        "state_bitwise": true
+      },
+      "A2": {
+        "valid_events": 32,
+        "capacity": 32,
+        "high_medium_counts": [
+          3,
+          4
+        ],
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      },
+      "S_ref": {
+        "valid_events": 32,
+        "capacity": 32,
+        "high_medium_counts": [
+          3,
+          4
+        ],
+        "keep_rate": 1.0,
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      }
+    },
+    {
+      "length": 130,
+      "chunks": 3,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "A2_vs_S_ref": {
+        "mask_disagreement_fraction": 0.0,
+        "tier_disagreement_pairs": 0,
+        "U": {
+          "max_abs": 0.27371653779915295,
+          "relative_frobenius": 0.025590701174668624,
+          "torch_equal": false
+        },
+        "output": {
+          "max_abs": 0.08084691697211988,
+          "relative_frobenius": 0.036898520627302776,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.0821164596266221,
+          "relative_frobenius": 0.02371703908753258,
+          "torch_equal": false
+        },
+        "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+      },
+      "S_ref_vs_R0": {
+        "output": {
+          "max_abs": 0.36207451465772067,
+          "relative_frobenius": 0.12962735033670839,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 1.2903077118422501,
+          "relative_frobenius": 0.6545846686834177,
+          "torch_equal": false
+        }
+      },
+      "A2_vs_R0": {
+        "output": {
+          "max_abs": 0.362009853207616,
+          "relative_frobenius": 0.1248929678013829,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 1.2898933715818086,
+          "relative_frobenius": 0.6543200016111042,
+          "torch_equal": false
+        }
+      },
+      "S_ref_repeat": {
+        "mask_bitwise": true,
+        "output_bitwise": true,
+        "state_bitwise": true
+      },
+      "A2": {
+        "valid_events": 36,
+        "capacity": 48,
+        "high_medium_counts": [
+          4,
+          0
+        ],
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      },
+      "S_ref": {
+        "valid_events": 36,
+        "capacity": 48,
+        "high_medium_counts": [
+          4,
+          0
+        ],
+        "keep_rate": 0.75,
+        "checks": {
+          "first_anchor": true,
+          "last_anchor": true,
+          "shared_by_value_head_pair": true,
+          "valid_events_equals_csr": true,
+          "within_capacity": true,
+          "group_event_map_errors": 0,
+          "tier_then_physical_pair_order": true,
+          "finite_output": true,
+          "finite_state": true,
+          "all_valid_outputs_present": true,
+          "passed": true
+        }
+      }
+    }
+  ],
+  "real_geometry_case": {
+    "length": 320,
+    "chunks": 5,
+    "geometry": {
+      "K": 128,
+      "V": 128,
+      "QK_heads": 16,
+      "V_heads": 32
+    },
+    "A2_vs_S_ref": {
+      "mask_disagreement_fraction": 0.0,
+      "tier_disagreement_pairs": 0,
+      "U": {
+        "max_abs": 0.28463952027376527,
+        "relative_frobenius": 0.019092644105205128,
+        "torch_equal": false
+      },
+      "output": {
+        "max_abs": 0.003845787307309261,
+        "relative_frobenius": 0.019679034376193446,
+        "torch_equal": false
+      },
+      "final_state": {
+        "max_abs": 0.037326780972570056,
+        "relative_frobenius": 0.022594741029736666,
+        "torch_equal": false
+      },
+      "note": "masks are recomputed from each solve's actual U; not an implementation ablation"
+    },
+    "S_ref_vs_R0": {
+      "output": {
+        "max_abs": 0.0591625414021904,
+        "relative_frobenius": 0.17405764113576364,
+        "torch_equal": false
+      },
+      "final_state": {
+        "max_abs": 0.03732678097257003,
+        "relative_frobenius": 0.02417576863765276,
+        "torch_equal": false
+      }
+    },
+    "A2_vs_R0": {
+      "output": {
+        "max_abs": 0.0591577401568518,
+        "relative_frobenius": 0.17296837496515605,
+        "torch_equal": false
+      },
+      "final_state": {
+        "max_abs": 0.0116044512000813,
+        "relative_frobenius": 0.00855928139853509,
+        "torch_equal": false
+      }
+    },
+    "S_ref_repeat": {
+      "mask_bitwise": true,
+      "output_bitwise": true,
+      "state_bitwise": true
+    },
+    "A2": {
+      "valid_events": 44,
+      "capacity": 80,
+      "high_medium_counts": [
+        4,
+        0
+      ],
+      "checks": {
+        "first_anchor": true,
+        "last_anchor": true,
+        "shared_by_value_head_pair": true,
+        "valid_events_equals_csr": true,
+        "within_capacity": true,
+        "group_event_map_errors": 0,
+        "tier_then_physical_pair_order": true,
+        "finite_output": true,
+        "finite_state": true,
+        "all_valid_outputs_present": true,
+        "passed": true
+      }
+    },
+    "S_ref": {
+      "valid_events": 44,
+      "capacity": 80,
+      "high_medium_counts": [
+        4,
+        0
+      ],
+      "keep_rate": 0.55,
+      "checks": {
+        "first_anchor": true,
+        "last_anchor": true,
+        "shared_by_value_head_pair": true,
+        "valid_events_equals_csr": true,
+        "within_capacity": true,
+        "group_event_map_errors": 0,
+        "tier_then_physical_pair_order": true,
+        "finite_output": true,
+        "finite_state": true,
+        "all_valid_outputs_present": true,
+        "passed": true
+      }
+    }
+  },
+  "special_cases": {
+    "block_support": {
+      "retained_block_errors": [
+        {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        },
+        {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        },
+        {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        },
+        {
+          "max_abs": 0.0,
+          "relative_frobenius": 0.0,
+          "torch_equal": true
+        },
+        {
+          "max_abs": 2.7755575615628914e-17,
+          "relative_frobenius": 1.9054353593747053e-16,
+          "torch_equal": false
+        },
+        {
+          "max_abs": 5.551115123125783e-17,
+          "relative_frobenius": 1.8221007437107314e-16,
+          "torch_equal": false
+        },
+        {
+          "max_abs": 5.551115123125783e-17,
+          "relative_frobenius": 1.962629528939396e-16,
+          "torch_equal": false
+        }
+      ],
+      "omitted_distant_max_abs": 0.08003157499559165,
+      "not_full_inverse_then_mask": true,
+      "deferred_w_gate": {
+        "max_abs": 5.551115123125783e-17,
+        "relative_frobenius": 1.0258394541025992e-16,
+        "torch_equal": false
+      },
+      "u_finite": true,
+      "passed": true
+    },
+    "group_2": {
+      "skipped_even_decays_without_content_write": {
+        "max_abs": 6.245004513516506e-17,
+        "relative_frobenius": 1.094259537337091e-15,
+        "torch_equal": false
+      },
+      "skipped_even_has_no_W_correction": {
+        "max_abs": 0.0,
+        "relative_frobenius": 0.0,
+        "torch_equal": true
+      },
+      "equation_25_compensation": {
+        "max_abs": 1.231653667943533e-16,
+        "relative_frobenius": 2.941213015941114e-16,
+        "torch_equal": false
+      },
+      "compensation_norm": 2.517259441685496,
+      "passed": true
+    },
+    "selector_conventions": {
+      "keep_counts": {
+        "1": [
+          1,
+          1,
+          1
+        ],
+        "2": [
+          2,
+          2,
+          2
+        ],
+        "3": [
+          2,
+          2,
+          3
+        ],
+        "4": [
+          2,
+          2,
+          4
+        ],
+        "5": [
+          2,
+          2,
+          5
+        ],
+        "8": [
+          2,
+          2,
+          8
+        ],
+        "16": [
+          2,
+          5,
+          15
+        ],
+        "32": [
+          3,
+          10,
+          30
+        ],
+        "64": [
+          5,
+          19,
+          61
+        ],
+        "128": [
+          10,
+          38,
+          122
+        ]
+      },
+      "ties_to_even_examples": {
+        "round_2p5": 2,
+        "round_3p5": 4
+      },
+      "stable_chunk_ties": {
+        "actual": [
+          0,
+          1,
+          31
+        ],
+        "expected": [
+          0,
+          1,
+          31
+        ],
+        "passed": true
+      },
+      "flat_high_fallback": 3,
+      "flat_medium_fallback": 4,
+      "stable_pair_order": true,
+      "nonflat_split_count": 4,
+      "nonflat_split_is_deterministic": true,
+      "passed": true
+    },
+    "zero_input": {
+      "scores_zero": true,
+      "gate_energy_zero": true,
+      "visibility_zero": true,
+      "flat_fallback_high_medium": [
+        3,
+        4
+      ],
+      "output_max_abs": 0.0,
+      "state_max_abs": 0.0,
+      "checks": {
+        "first_anchor": true,
+        "last_anchor": true,
+        "shared_by_value_head_pair": true,
+        "valid_events_equals_csr": true,
+        "within_capacity": true,
+        "group_event_map_errors": 0,
+        "tier_then_physical_pair_order": true,
+        "finite_output": true,
+        "finite_state": true,
+        "all_valid_outputs_present": true,
+        "passed": true
+      },
+      "passed": true
+    }
+  },
+  "passed": true
+}

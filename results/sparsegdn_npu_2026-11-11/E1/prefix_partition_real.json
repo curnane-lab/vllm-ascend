@@ -1,0 +1,3889 @@
+{
+  "schema_version": 1,
+  "reference": "SparseGDN arXiv:2610.41420v1 independent FP64 implementation",
+  "key_dim": 128,
+  "state_dtype": "float64",
+  "policy": {
+    "one_shot": "paper global selector and group-2",
+    "adaptive_partition": "selector recomputed independently per scheduler piece; explicitly a partition-dependent policy",
+    "frozen_partition": "same one-shot mask/tier; carries group-local even-chunk context across pieces",
+    "restore": "diagnostic nonzero-h0 extension, not a paper compatibility claim"
+  },
+  "model_logits_status": "NOT-RUN; proxy projections in this file are not model logits",
+  "aligned_cases": [
+    {
+      "prefix_tokens": 128,
+      "suffix_tokens": 128,
+      "geometry": {
+        "K": 128,
+        "V": 128,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "prefix_mod_64": 0,
+      "prefix_mod_128": 0,
+      "selector": {
+        "independent_P": {
+          "mask": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "tiers": [
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "valid_events": 32,
+          "keep_rate": 1.0
+        },
+        "P_plus_X_prefix": {
+          "mask": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "tiers": [
+            1,
+            2,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            2
+          ],
+          "valid_events": 19,
+          "keep_rate": 0.59375
+        },
+        "P_plus_Y_prefix": {
+          "mask": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "tiers": [
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            2
+          ],
+          "valid_events": 20,
+          "keep_rate": 0.625
+        },
+        "P_vs_PX_mask_differences": 13,
+        "P_vs_PY_mask_differences": 12,
+        "PX_vs_PY_prefix_mask_differences": 1,
+        "PX_vs_PY_tier_differences": 5
+      },
+      "U_prefix": {
+        "relative_frobenius": 0.0,
+        "prefix_u_bitwise": true
+      },
+      "state_at_P": {
+        "independent_vs_PX": {
+          "max_abs": 0.9930041388394694,
+          "relative_frobenius": 1.8050905966456119,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 0.9930041388394694,
+          "relative_frobenius": 1.5552198452750687,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.9002814191032134,
+          "relative_frobenius": 0.44401173175637526,
+          "torch_equal": false
+        }
+      },
+      "prefix_output": {
+        "independent_vs_PX": {
+          "max_abs": 0.007752235720823085,
+          "relative_frobenius": 0.03047122713521913,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 0.007752235720823085,
+          "relative_frobenius": 0.029402525252920874,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.005255992837560609,
+          "relative_frobenius": 0.00800920400309409,
+          "torch_equal": false
+        }
+      },
+      "proxy_last_logits_at_P": {
+        "independent_vs_PX": {
+          "max_abs": 0.00010476836003957268,
+          "relative_frobenius": 0.004359239767729832,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 0.00010708721129050816,
+          "relative_frobenius": 0.004505926423581422,
+          "torch_equal": false
+        },
+        "note": "toy projection only; not full-model logits"
+      },
+      "private_slot_restore": {
+        "source_state_unchanged": true,
+        "X_final_state_vs_one_shot": {
+          "max_abs": 0.019577722756387042,
+          "relative_frobenius": 0.010241997469957175,
+          "torch_equal": false
+        },
+        "X_suffix_output_vs_one_shot": {
+          "max_abs": 0.04898547505188896,
+          "relative_frobenius": 0.20363545017780868,
+          "torch_equal": false
+        },
+        "Y_final_state_vs_one_shot": {
+          "max_abs": 0.016774425948877708,
+          "relative_frobenius": 0.009793626863685689,
+          "torch_equal": false
+        },
+        "policy": "independent-P state plus independently selected suffix; diagnostic nonzero-h0 extension"
+      },
+      "partitions": [
+        {
+          "scheduler_piece_tokens": 64,
+          "piece_lengths": [
+            64,
+            64,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.9930041388394694,
+              "relative_frobenius": 1.8050905966456119,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.019577722756387042,
+              "relative_frobenius": 0.010241997469957175,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.04898547505188896,
+              "relative_frobenius": 0.14606414534130585,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 26,
+            "piece_tiers": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 128,
+          "piece_lengths": [
+            128,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.9930041388394694,
+              "relative_frobenius": 1.8050905966456119,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.019577722756387042,
+              "relative_frobenius": 0.010241997469957175,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.04898547505188896,
+              "relative_frobenius": 0.14606414534130585,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 26,
+            "piece_tiers": [
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 256,
+          "piece_lengths": [
+            128,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.9930041388394694,
+              "relative_frobenius": 1.8050905966456119,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.019577722756387042,
+              "relative_frobenius": 0.010241997469957175,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.04898547505188896,
+              "relative_frobenius": 0.14606414534130585,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 26,
+            "piece_tiers": [
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 1024,
+          "piece_lengths": [
+            128,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.9930041388394694,
+              "relative_frobenius": 1.8050905966456119,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.019577722756387042,
+              "relative_frobenius": 0.010241997469957175,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.04898547505188896,
+              "relative_frobenius": 0.14606414534130585,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 26,
+            "piece_tiers": [
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 2048,
+          "piece_lengths": [
+            128,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.9930041388394694,
+              "relative_frobenius": 1.8050905966456119,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.019577722756387042,
+              "relative_frobenius": 0.010241997469957175,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.04898547505188896,
+              "relative_frobenius": 0.14606414534130585,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 26,
+            "piece_tiers": [
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        }
+      ],
+      "semantics": {
+        "prefix_invariant": false,
+        "partition_invariant": false,
+        "frozen_mask_partition_correct": true,
+        "ordinary_prefix_checkpoint_safe": false
+      }
+    },
+    {
+      "prefix_tokens": 256,
+      "suffix_tokens": 128,
+      "geometry": {
+        "K": 128,
+        "V": 128,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "prefix_mod_64": 0,
+      "prefix_mod_128": 0,
+      "selector": {
+        "independent_P": {
+          "mask": [
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "tiers": [
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0,
+            2
+          ],
+          "valid_events": 40,
+          "keep_rate": 0.625
+        },
+        "P_plus_X_prefix": {
+          "mask": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ]
+          ],
+          "tiers": [
+            1,
+            2,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0,
+            0
+          ],
+          "valid_events": 25,
+          "keep_rate": 0.390625
+        },
+        "P_plus_Y_prefix": {
+          "mask": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "tiers": [
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2
+          ],
+          "valid_events": 28,
+          "keep_rate": 0.4375
+        },
+        "P_vs_PX_mask_differences": 15,
+        "P_vs_PY_mask_differences": 16,
+        "PX_vs_PY_prefix_mask_differences": 9,
+        "PX_vs_PY_tier_differences": 7
+      },
+      "U_prefix": {
+        "relative_frobenius": 0.0,
+        "prefix_u_bitwise": true
+      },
+      "state_at_P": {
+        "independent_vs_PX": {
+          "max_abs": 1.0096732350173259,
+          "relative_frobenius": 1.9094573009112288,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 1.0096732350173259,
+          "relative_frobenius": 1.723517552918006,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.8281174873217485,
+          "relative_frobenius": 0.9291959524986976,
+          "torch_equal": false
+        }
+      },
+      "prefix_output": {
+        "independent_vs_PX": {
+          "max_abs": 0.04635468497055018,
+          "relative_frobenius": 0.04422602464456819,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 0.04619100427341377,
+          "relative_frobenius": 0.054097547776108146,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.04635468497055018,
+          "relative_frobenius": 0.06983935789586829,
+          "torch_equal": false
+        }
+      },
+      "proxy_last_logits_at_P": {
+        "independent_vs_PX": {
+          "max_abs": 3.45719813918486e-05,
+          "relative_frobenius": 0.0011207013927518055,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 4.234612808821578e-05,
+          "relative_frobenius": 0.0016804302473374646,
+          "torch_equal": false
+        },
+        "note": "toy projection only; not full-model logits"
+      },
+      "private_slot_restore": {
+        "source_state_unchanged": true,
+        "X_final_state_vs_one_shot": {
+          "max_abs": 0.012888398049938882,
+          "relative_frobenius": 0.010801465083623748,
+          "torch_equal": false
+        },
+        "X_suffix_output_vs_one_shot": {
+          "max_abs": 0.05856484350148495,
+          "relative_frobenius": 0.20844650562832132,
+          "torch_equal": false
+        },
+        "Y_final_state_vs_one_shot": {
+          "max_abs": 0.015418786724802597,
+          "relative_frobenius": 0.009289354309190662,
+          "torch_equal": false
+        },
+        "policy": "independent-P state plus independently selected suffix; diagnostic nonzero-h0 extension"
+      },
+      "partitions": [
+        {
+          "scheduler_piece_tokens": 64,
+          "piece_lengths": [
+            64,
+            64,
+            64,
+            64,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.015754315341081432,
+              "relative_frobenius": 0.00922419876463753,
+              "torch_equal": false
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.0088068622014128,
+              "relative_frobenius": 1.9095619457060684,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.06319863106055236,
+              "relative_frobenius": 0.1454093283561367,
+              "torch_equal": false
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.012888155796926037,
+              "relative_frobenius": 0.010801465690929607,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.06319863106055236,
+              "relative_frobenius": 0.17289369721424291,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 52,
+            "piece_tiers": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 128,
+          "piece_lengths": [
+            128,
+            128,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.015754315341081432,
+              "relative_frobenius": 0.00922419876463753,
+              "torch_equal": false
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.0088068622014128,
+              "relative_frobenius": 1.9095619457060684,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.06319863106055236,
+              "relative_frobenius": 0.1454093283561367,
+              "torch_equal": false
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.012888155796926037,
+              "relative_frobenius": 0.010801465690929607,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.06319863106055236,
+              "relative_frobenius": 0.17289369721424291,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 52,
+            "piece_tiers": [
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 256,
+          "piece_lengths": [
+            256,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.0096732350173259,
+              "relative_frobenius": 1.9094573009112288,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.012888398049938882,
+              "relative_frobenius": 0.010801465083623748,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.05856484350148495,
+              "relative_frobenius": 0.12549702435734608,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 28,
+            "piece_tiers": [
+              [
+                0,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2,
+                0,
+                2,
+                0,
+                2
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 1024,
+          "piece_lengths": [
+            256,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.0096732350173259,
+              "relative_frobenius": 1.9094573009112288,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.012888398049938882,
+              "relative_frobenius": 0.010801465083623748,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.05856484350148495,
+              "relative_frobenius": 0.12549702435734608,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 28,
+            "piece_tiers": [
+              [
+                0,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2,
+                0,
+                2,
+                0,
+                2
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 2048,
+          "piece_lengths": [
+            256,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.0096732350173259,
+              "relative_frobenius": 1.9094573009112288,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.012888398049938882,
+              "relative_frobenius": 0.010801465083623748,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.05856484350148495,
+              "relative_frobenius": 0.12549702435734608,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 28,
+            "piece_tiers": [
+              [
+                0,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2,
+                0,
+                2,
+                0,
+                2
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        }
+      ],
+      "semantics": {
+        "prefix_invariant": false,
+        "partition_invariant": false,
+        "frozen_mask_partition_correct": true,
+        "ordinary_prefix_checkpoint_safe": false
+      }
+    },
+    {
+      "prefix_tokens": 1024,
+      "suffix_tokens": 128,
+      "geometry": {
+        "K": 128,
+        "V": 128,
+        "QK_heads": 16,
+        "V_heads": 32
+      },
+      "prefix_mod_64": 0,
+      "prefix_mod_128": 0,
+      "selector": {
+        "independent_P": {
+          "mask": [
+            [
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ]
+          ],
+          "tiers": [
+            2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            2,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "valid_events": 84,
+          "keep_rate": 0.328125
+        },
+        "P_plus_X_prefix": {
+          "mask": [
+            [
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "tiers": [
+            2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0
+          ],
+          "valid_events": 72,
+          "keep_rate": 0.28125
+        },
+        "P_plus_Y_prefix": {
+          "mask": [
+            [
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "tiers": [
+            2,
+            0,
+            0,
+            2,
+            2,
+            0,
+            0,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "valid_events": 72,
+          "keep_rate": 0.28125
+        },
+        "P_vs_PX_mask_differences": 38,
+        "P_vs_PY_mask_differences": 38,
+        "PX_vs_PY_prefix_mask_differences": 28,
+        "PX_vs_PY_tier_differences": 2
+      },
+      "U_prefix": {
+        "relative_frobenius": 0.0,
+        "prefix_u_bitwise": true
+      },
+      "state_at_P": {
+        "independent_vs_PX": {
+          "max_abs": 1.1853313101633653,
+          "relative_frobenius": 1.678623417790786,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 1.1853313101633653,
+          "relative_frobenius": 1.7545518506398816,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.7824415681182576,
+          "relative_frobenius": 0.7313863457176543,
+          "torch_equal": false
+        }
+      },
+      "prefix_output": {
+        "independent_vs_PX": {
+          "max_abs": 0.06542334717737655,
+          "relative_frobenius": 0.07111568972424277,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 0.048868664409986745,
+          "relative_frobenius": 0.07212356263039686,
+          "torch_equal": false
+        },
+        "PX_vs_PY": {
+          "max_abs": 0.06542334717737655,
+          "relative_frobenius": 0.07529963612905435,
+          "torch_equal": false
+        }
+      },
+      "proxy_last_logits_at_P": {
+        "independent_vs_PX": {
+          "max_abs": 3.313339446974102e-05,
+          "relative_frobenius": 0.001359799516498847,
+          "torch_equal": false
+        },
+        "independent_vs_PY": {
+          "max_abs": 3.791050259035969e-05,
+          "relative_frobenius": 0.0015882696335316896,
+          "torch_equal": false
+        },
+        "note": "toy projection only; not full-model logits"
+      },
+      "private_slot_restore": {
+        "source_state_unchanged": true,
+        "X_final_state_vs_one_shot": {
+          "max_abs": 0.016308212267343053,
+          "relative_frobenius": 0.010308719586318679,
+          "torch_equal": false
+        },
+        "X_suffix_output_vs_one_shot": {
+          "max_abs": 0.04559588101893645,
+          "relative_frobenius": 0.192119153228974,
+          "torch_equal": false
+        },
+        "Y_final_state_vs_one_shot": {
+          "max_abs": 0.016272894181952283,
+          "relative_frobenius": 0.009891573284576832,
+          "torch_equal": false
+        },
+        "policy": "independent-P state plus independently selected suffix; diagnostic nonzero-h0 extension"
+      },
+      "partitions": [
+        {
+          "scheduler_piece_tokens": 64,
+          "piece_lengths": [
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            64,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.017613905650294998,
+              "relative_frobenius": 0.009285395768210981,
+              "torch_equal": false
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.1859069320123092,
+              "relative_frobenius": 1.6786981619022667,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.07041842674126574,
+              "relative_frobenius": 0.19317369532896564,
+              "torch_equal": false
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.01630840887992295,
+              "relative_frobenius": 0.010308723629303655,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.07041842674126574,
+              "relative_frobenius": 0.19194245526328838,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 196,
+            "piece_tiers": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 128,
+          "piece_lengths": [
+            128,
+            128,
+            128,
+            128,
+            128,
+            128,
+            128,
+            128,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.017613905650294998,
+              "relative_frobenius": 0.009285395768210981,
+              "torch_equal": false
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.1859069320123092,
+              "relative_frobenius": 1.6786981619022667,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.07041842674126574,
+              "relative_frobenius": 0.19317369532896564,
+              "torch_equal": false
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.01630840887992295,
+              "relative_frobenius": 0.010308723629303655,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.07041842674126574,
+              "relative_frobenius": 0.19194245526328838,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 196,
+            "piece_tiers": [
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 256,
+          "piece_lengths": [
+            256,
+            256,
+            256,
+            256,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.011826647510396138,
+              "relative_frobenius": 0.006230564938463139,
+              "torch_equal": false
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.1853310917203013,
+              "relative_frobenius": 1.6786524039862178,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.07013269615291523,
+              "relative_frobenius": 0.1568633550983603,
+              "torch_equal": false
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.016308212221481516,
+              "relative_frobenius": 0.010308719862321215,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.07013269615291523,
+              "relative_frobenius": 0.160295358633182,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 138,
+            "piece_tiers": [
+              [
+                0,
+                0,
+                0,
+                2,
+                0,
+                2,
+                0,
+                0,
+                0,
+                2,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                0,
+                0,
+                2,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2,
+                2
+              ],
+              [
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2,
+                0,
+                2,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 1024,
+          "piece_lengths": [
+            1024,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.1853313101633653,
+              "relative_frobenius": 1.678623417790786,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.016308212267343053,
+              "relative_frobenius": 0.010308719586318679,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.06542334717737655,
+              "relative_frobenius": 0.09273329823269442,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 50,
+            "piece_tiers": [
+              [
+                2,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                0,
+                2,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        },
+        {
+          "scheduler_piece_tokens": 2048,
+          "piece_lengths": [
+            1024,
+            128
+          ],
+          "adaptive_policy": {
+            "state_at_P_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "state_at_P_vs_one_shot": {
+              "max_abs": 1.1853313101633653,
+              "relative_frobenius": 1.678623417790786,
+              "torch_equal": false
+            },
+            "prefix_output_vs_independent": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.016308212267343053,
+              "relative_frobenius": 0.010308719586318679,
+              "torch_equal": false
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.06542334717737655,
+              "relative_frobenius": 0.09273329823269442,
+              "torch_equal": false
+            },
+            "mask_differences_vs_one_shot": 50,
+            "piece_tiers": [
+              [
+                2,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                0,
+                2,
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                2,
+                2,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ]
+            ]
+          },
+          "frozen_mask_policy": {
+            "state_at_P_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "final_state_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "corrected_U_vs_one_shot": {
+              "max_abs": 0.0,
+              "relative_frobenius": 0.0,
+              "torch_equal": true
+            },
+            "output_bitwise": true,
+            "state_bitwise": true
+          }
+        }
+      ],
+      "semantics": {
+        "prefix_invariant": false,
+        "partition_invariant": false,
+        "frozen_mask_partition_correct": true,
+        "ordinary_prefix_checkpoint_safe": false
+      }
+    }
+  ],
+  "unaligned_cases": []
+}

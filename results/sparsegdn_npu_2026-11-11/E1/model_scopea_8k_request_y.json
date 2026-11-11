@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "prefix_tokens": 8192,
+  "suffix_tokens": 128,
+  "request_order": [
+    "P_plus_Y"
+  ],
+  "records": [
+    {
+      "success": true,
+      "error": null,
+      "prompt_tokens": 8320,
+      "completion_tokens": 1,
+      "total_tokens": 8321,
+      "expected_prompt_tokens": 8320,
+      "expected_completion_tokens": 1,
+      "ttft_seconds": 659.107798599638,
+      "first_nonempty_seconds": 659.1078012697399,
+      "wall_seconds": 659.107989799697,
+      "decode_after_first_event_seconds": 0.00019120005890727043,
+      "output_tokens_per_second_wall": 0.0015172020601721126,
+      "decode_output_tokens_per_second": null,
+      "tpot_after_first_event_seconds": null,
+      "sse_delta_content_events": 1,
+      "sse_nonempty_content_events": 1,
+      "usage_accounting_closed": true,
+      "fixed_output_accounting_closed": true,
+      "finish_reason": "length",
+      "generated_text_sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+      "generated_text_characters": 1,
+      "name": "P_plus_Y",
+      "request_index": 2,
+      "prompt_sha256": "3175d2e6f52e015f65e87f6869a534cdebc5d6f49ffb45fa79840833286336df",
+      "scope": "SCOPE-A cold full-prompt FP32 reference; not a performance or quality result"
+    }
+  ],
+  "passed": true
+}

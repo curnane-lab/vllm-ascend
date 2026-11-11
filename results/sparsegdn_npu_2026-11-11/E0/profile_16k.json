@@ -1,0 +1,28 @@
+{
+  "scope": "short profiler window; not formal TTFT/wall",
+  "length": 16384,
+  "record": {
+    "success": true,
+    "error": null,
+    "prompt_tokens": 16384,
+    "completion_tokens": 1,
+    "total_tokens": 16385,
+    "expected_prompt_tokens": 16384,
+    "expected_completion_tokens": 1,
+    "ttft_seconds": 3.234175798948854,
+    "first_nonempty_seconds": 3.2341794590465724,
+    "wall_seconds": 3.2344546378590167,
+    "decode_after_first_event_seconds": 0.0002788389101624489,
+    "output_tokens_per_second_wall": 0.30917113144673136,
+    "decode_output_tokens_per_second": null,
+    "tpot_after_first_event_seconds": null,
+    "sse_delta_content_events": 1,
+    "sse_nonempty_content_events": 1,
+    "usage_accounting_closed": true,
+    "fixed_output_accounting_closed": true,
+    "finish_reason": "length",
+    "generated_text_sha256": "25fffe252629a1aab65b4e949abdcd1a173d5ec2b7b051f89aa93ed57718e178",
+    "generated_text_characters": 2
+  },
+  "stop_response": {}
+}

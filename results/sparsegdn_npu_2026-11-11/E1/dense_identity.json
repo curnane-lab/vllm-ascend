@@ -1,0 +1,472 @@
+{
+  "schema_version": 1,
+  "dtype": "float64",
+  "chunk_size": 64,
+  "block_size": 16,
+  "thresholds": {
+    "relative_frobenius": 1e-08,
+    "near_zero_abs": 1e-09
+  },
+  "cases": [
+    {
+      "length": 64,
+      "chunks": 1,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 3.3306690738754696e-16,
+          "relative_frobenius": 3.683615105316151e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 6.661338147750939e-16,
+          "relative_frobenius": 4.387066717023218e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.036840811372029006,
+          "relative_frobenius": 0.03324898111276079,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.06959862018012736,
+          "relative_frobenius": 0.0462092971694851,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.03684081137202891,
+          "relative_frobenius": 0.033248981112760805,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.16535251503773996,
+          "relative_frobenius": 0.02426498462633313,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    },
+    {
+      "length": 128,
+      "chunks": 2,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 4.440892098500626e-16,
+          "relative_frobenius": 3.9785029983501516e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 1.3322676295501878e-15,
+          "relative_frobenius": 6.778930964900182e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.0471839652036426,
+          "relative_frobenius": 0.03476240943615805,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.08734533254845923,
+          "relative_frobenius": 0.055128099158742234,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.0471839652036426,
+          "relative_frobenius": 0.03476240943615805,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.16368879633646127,
+          "relative_frobenius": 0.025985522059746535,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    },
+    {
+      "length": 192,
+      "chunks": 3,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 3.885780586188048e-16,
+          "relative_frobenius": 4.068428496659003e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 5.551115123125783e-16,
+          "relative_frobenius": 3.925458205450862e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.04109576103482772,
+          "relative_frobenius": 0.03479784571443013,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.07070939370959375,
+          "relative_frobenius": 0.04452937498350778,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.04109576103482765,
+          "relative_frobenius": 0.03479784571443011,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.13871233123508064,
+          "relative_frobenius": 0.02358400255028437,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    },
+    {
+      "length": 256,
+      "chunks": 4,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 3.885780586188048e-16,
+          "relative_frobenius": 4.2917995662653294e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 5.551115123125783e-16,
+          "relative_frobenius": 3.9809518731666515e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.08640916456076918,
+          "relative_frobenius": 0.043067361057101246,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.10363843557965902,
+          "relative_frobenius": 0.050643423406069296,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.08640916456076915,
+          "relative_frobenius": 0.04306736105710124,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.3319852498138185,
+          "relative_frobenius": 0.02688628928392592,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    },
+    {
+      "length": 320,
+      "chunks": 5,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 3.885780586188048e-16,
+          "relative_frobenius": 3.9949244618142976e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 1.1102230246251565e-15,
+          "relative_frobenius": 5.376057280451732e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.05975610388156366,
+          "relative_frobenius": 0.036519387909252375,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.10030820559465306,
+          "relative_frobenius": 0.0468134647731579,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.059756103881563785,
+          "relative_frobenius": 0.03651938790925238,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.20974003868687102,
+          "relative_frobenius": 0.02463496912857242,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    },
+    {
+      "length": 65,
+      "chunks": 2,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 3.608224830031759e-16,
+          "relative_frobenius": 3.8043440291787983e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 8.881784197001252e-16,
+          "relative_frobenius": 6.001762632199012e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.04858874806566936,
+          "relative_frobenius": 0.039659147196317905,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.12622053294053104,
+          "relative_frobenius": 0.05115118031469644,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.048588748065669464,
+          "relative_frobenius": 0.03965914719631791,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.20664708052440828,
+          "relative_frobenius": 0.026836841017380382,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    },
+    {
+      "length": 130,
+      "chunks": 3,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 3.885780586188048e-16,
+          "relative_frobenius": 3.9773182985764036e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 8.881784197001252e-16,
+          "relative_frobenius": 4.658936754031872e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.06005367505158554,
+          "relative_frobenius": 0.04028717446758393,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.0837301937286517,
+          "relative_frobenius": 0.04960682499794629,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.0600536750515856,
+          "relative_frobenius": 0.04028717446758394,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.26507831358395617,
+          "relative_frobenius": 0.027509253708739065,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    },
+    {
+      "length": 193,
+      "chunks": 4,
+      "geometry": {
+        "K": 8,
+        "V": 8,
+        "QK_heads": 2,
+        "V_heads": 4
+      },
+      "R1_vs_R0": {
+        "output": {
+          "max_abs": 5.551115123125783e-16,
+          "relative_frobenius": 4.201059646228247e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        },
+        "final_state": {
+          "max_abs": 6.661338147750939e-16,
+          "relative_frobenius": 3.8783891639546586e-16,
+          "torch_equal": false,
+          "near_zero_max_abs": 0.0,
+          "passed": true
+        }
+      },
+      "A1_vs_R0": {
+        "output": {
+          "max_abs": 0.05367905309814833,
+          "relative_frobenius": 0.037954238216549044,
+          "torch_equal": false
+        },
+        "final_state": {
+          "max_abs": 0.060600534769835956,
+          "relative_frobenius": 0.04557799544755815,
+          "torch_equal": false
+        }
+      },
+      "A1_vs_R1": {
+        "output": {
+          "max_abs": 0.0536790530981482,
+          "relative_frobenius": 0.03795423821654905,
+          "torch_equal": false
+        },
+        "U": {
+          "max_abs": 0.19015245977068274,
+          "relative_frobenius": 0.025453079901310415,
+          "torch_equal": false
+        }
+      },
+      "finite": true
+    }
+  ],
+  "real_geometry_case": {
+    "length": 320,
+    "chunks": 5,
+    "geometry": {
+      "K": 128,
+      "V": 128,
+      "QK_heads": 2,
+      "V_heads": 4
+    },
+    "R1_vs_R0": {
+      "output": {
+        "max_abs": 2.498001805406602e-16,
+        "relative_frobenius": 6.454976114655636e-16,
+        "torch_equal": false,
+        "near_zero_max_abs": 0.0,
+        "passed": true
+      },
+      "final_state": {
+        "max_abs": 4.163336342344337e-16,
+        "relative_frobenius": 4.117354009244773e-16,
+        "torch_equal": false,
+        "near_zero_max_abs": 0.0,
+        "passed": true
+      }
+    },
+    "A1_vs_R0": {
+      "output": {
+        "max_abs": 0.0026152776343675837,
+        "relative_frobenius": 0.013097916179551541,
+        "torch_equal": false
+      },
+      "final_state": {
+        "max_abs": 0.015916622156305266,
+        "relative_frobenius": 0.018919637710634856,
+        "torch_equal": false
+      }
+    },
+    "A1_vs_R1": {
+      "output": {
+        "max_abs": 0.002615277634367589,
+        "relative_frobenius": 0.013097916179551545,
+        "torch_equal": false
+      },
+      "U": {
+        "max_abs": 0.1551655229720082,
+        "relative_frobenius": 0.018125418822347847,
+        "torch_equal": false
+      }
+    },
+    "finite": true
+  },
+  "passed": true
+}

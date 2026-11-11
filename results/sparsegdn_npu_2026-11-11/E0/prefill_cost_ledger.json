@@ -1,0 +1,640 @@
+{
+  "schema_version": 1,
+  "scope": "910B3 development cost screening only; no SparseGDN performance result",
+  "baseline_sha256": "2cdc4bb1013b9c02eef466b14d1478ce3cb11109d65d422ca90d573818bf316d",
+  "formula": "S_TTFT = 1 / (1 - f + f/s)",
+  "points": [
+    {
+      "prompt_tokens": 4096,
+      "trace_path": "/tmp/sparsegdn_e0_profiler/rank0_135175_20261111125408106_ascend_pt",
+      "kernel_details_sha256": "7bb67148ecff313150749a7341e4d218dcadf60c02af3f3385c7fc2f1dbdbc24",
+      "stream_count": 1,
+      "device_union_ms": 263.7205,
+      "core_union_ms": 48.1915,
+      "core_interval_count": 204,
+      "trace_span_ms": 797.79575,
+      "formal_ttft_geomean_seconds": 0.49661730052175834,
+      "core_fraction_of_formal_ttft": 0.09703951100650103,
+      "core_device_sum_percent": 17.575,
+      "speedup_upper_estimates": {
+        "1.5": 1.033427775326059,
+        "1.72": 1.0423411380970258,
+        "1.94": 1.049339023168566,
+        "infinite": 1.1074681696368218
+      },
+      "required_local_speedup_for_1p10": 15.829178011388928,
+      "free_core_has_1p10_space": true,
+      "components": [
+        {
+          "name": "MatMulV2",
+          "count": 324,
+          "device_time_ms": 89.00703999999999,
+          "device_sum_percent": 33.747
+        },
+        {
+          "name": "MatMulV3",
+          "count": 288,
+          "device_time_ms": 51.58374,
+          "device_sum_percent": 19.558
+        },
+        {
+          "name": "ChunkGatedDeltaRuleFwd",
+          "count": 96,
+          "device_time_ms": 46.35346,
+          "device_sum_percent": 17.575
+        },
+        {
+          "name": "Transpose",
+          "count": 864,
+          "device_time_ms": 19.549,
+          "device_sum_percent": 7.412
+        },
+        {
+          "name": "CausalConv1d",
+          "count": 96,
+          "device_time_ms": 9.58676,
+          "device_sum_percent": 3.635
+        },
+        {
+          "name": "AddRmsNormBias",
+          "count": 256,
+          "device_time_ms": 9.39348,
+          "device_sum_percent": 3.562
+        },
+        {
+          "name": "FusedInferAttentionScore",
+          "count": 32,
+          "device_time_ms": 9.14308,
+          "device_sum_percent": 3.467
+        },
+        {
+          "name": "SwiGlu",
+          "count": 128,
+          "device_time_ms": 5.51086,
+          "device_sum_percent": 2.089
+        },
+        {
+          "name": "_layer_norm_fwd_1pass_kernel_npu",
+          "count": 96,
+          "device_time_ms": 3.65882,
+          "device_sum_percent": 1.387
+        },
+        {
+          "name": "l2norm_fwd_kernel2",
+          "count": 192,
+          "device_time_ms": 2.8522399999999997,
+          "device_sum_percent": 1.081
+        },
+        {
+          "name": "Slice",
+          "count": 448,
+          "device_time_ms": 2.77512,
+          "device_sum_percent": 1.052
+        },
+        {
+          "name": "split_qkv_rmsnorm_mrope_kernel",
+          "count": 32,
+          "device_time_ms": 2.35362,
+          "device_sum_percent": 0.892
+        },
+        {
+          "name": "TensorMove",
+          "count": 256,
+          "device_time_ms": 2.3306,
+          "device_sum_percent": 0.884
+        },
+        {
+          "name": "fused_gdn_gating_kernel",
+          "count": 96,
+          "device_time_ms": 1.5496800000000002,
+          "device_sum_percent": 0.588
+        },
+        {
+          "name": "Index",
+          "count": 40,
+          "device_time_ms": 1.41274,
+          "device_sum_percent": 0.536
+        },
+        {
+          "name": "ZerosLike",
+          "count": 96,
+          "device_time_ms": 1.11212,
+          "device_sum_percent": 0.422
+        },
+        {
+          "name": "_gather_ssm_states_kernel",
+          "count": 96,
+          "device_time_ms": 0.95978,
+          "device_sum_percent": 0.364
+        },
+        {
+          "name": "_scatter_ssm_states_kernel",
+          "count": 96,
+          "device_time_ms": 0.8538,
+          "device_sum_percent": 0.324
+        },
+        {
+          "name": "Mul",
+          "count": 32,
+          "device_time_ms": 0.6495599999999999,
+          "device_sum_percent": 0.246
+        },
+        {
+          "name": "ScatterPaKvCache",
+          "count": 32,
+          "device_time_ms": 0.60538,
+          "device_sum_percent": 0.23
+        },
+        {
+          "name": "Add",
+          "count": 328,
+          "device_time_ms": 0.60456,
+          "device_sum_percent": 0.229
+        },
+        {
+          "name": "Cast",
+          "count": 128,
+          "device_time_ms": 0.5872,
+          "device_sum_percent": 0.223
+        },
+        {
+          "name": "Sigmoid",
+          "count": 32,
+          "device_time_ms": 0.48756,
+          "device_sum_percent": 0.185
+        },
+        {
+          "name": "IndexCheck",
+          "count": 40,
+          "device_time_ms": 0.42584,
+          "device_sum_percent": 0.161
+        },
+        {
+          "name": "GemmaRmsNorm",
+          "count": 4,
+          "device_time_ms": 0.12232,
+          "device_sum_percent": 0.046
+        },
+        {
+          "name": "ArgMaxV2",
+          "count": 4,
+          "device_time_ms": 0.1195,
+          "device_sum_percent": 0.045
+        },
+        {
+          "name": "GatherV2",
+          "count": 4,
+          "device_time_ms": 0.062200000000000005,
+          "device_sum_percent": 0.024
+        },
+        {
+          "name": "Sub",
+          "count": 28,
+          "device_time_ms": 0.03718,
+          "device_sum_percent": 0.014
+        },
+        {
+          "name": "Greater",
+          "count": 12,
+          "device_time_ms": 0.029,
+          "device_sum_percent": 0.011
+        },
+        {
+          "name": "Fill",
+          "count": 12,
+          "device_time_ms": 0.018539999999999997,
+          "device_sum_percent": 0.007
+        },
+        {
+          "name": "_compute_slot_mapping_kernel",
+          "count": 4,
+          "device_time_ms": 0.014039999999999999,
+          "device_sum_percent": 0.005
+        }
+      ],
+      "note": "core trace and formal TTFT come from separate runs; this is a cost estimate, not a candidate speedup"
+    },
+    {
+      "prompt_tokens": 8192,
+      "trace_path": "/tmp/sparsegdn_e0_profiler/rank0_135175_20261111125836266_ascend_pt",
+      "kernel_details_sha256": "771a1db1ad44106b916c4e3433ba2ea35f10fa26bc1f8972a7e320c4d5337216",
+      "stream_count": 1,
+      "device_union_ms": 540.46425,
+      "core_union_ms": 96.571,
+      "core_interval_count": 410,
+      "trace_span_ms": 1601.74725,
+      "formal_ttft_geomean_seconds": 0.9830856972303478,
+      "core_fraction_of_formal_ttft": 0.09823253483604731,
+      "core_device_sum_percent": 17.178,
+      "speedup_upper_estimates": {
+        "1.5": 1.0338526556711867,
+        "1.72": 1.0428840121139276,
+        "1.94": 1.0499759219322298,
+        "infinite": 1.1089333321846861
+      },
+      "required_local_speedup_for_1p10": 13.413434419081085,
+      "free_core_has_1p10_space": true,
+      "components": [
+        {
+          "name": "MatMulV2",
+          "count": 648,
+          "device_time_ms": 178.08448,
+          "device_sum_percent": 32.946
+        },
+        {
+          "name": "MatMulV3",
+          "count": 576,
+          "device_time_ms": 103.1118,
+          "device_sum_percent": 19.076
+        },
+        {
+          "name": "ChunkGatedDeltaRuleFwd",
+          "count": 192,
+          "device_time_ms": 92.85310000000001,
+          "device_sum_percent": 17.178
+        },
+        {
+          "name": "Transpose",
+          "count": 1728,
+          "device_time_ms": 39.26136,
+          "device_sum_percent": 7.263
+        },
+        {
+          "name": "FusedInferAttentionScore",
+          "count": 64,
+          "device_time_ms": 30.96516,
+          "device_sum_percent": 5.729
+        },
+        {
+          "name": "CausalConv1d",
+          "count": 192,
+          "device_time_ms": 19.15218,
+          "device_sum_percent": 3.543
+        },
+        {
+          "name": "AddRmsNormBias",
+          "count": 512,
+          "device_time_ms": 18.760360000000002,
+          "device_sum_percent": 3.471
+        },
+        {
+          "name": "SwiGlu",
+          "count": 256,
+          "device_time_ms": 11.030520000000001,
+          "device_sum_percent": 2.041
+        },
+        {
+          "name": "_layer_norm_fwd_1pass_kernel_npu",
+          "count": 192,
+          "device_time_ms": 7.30062,
+          "device_sum_percent": 1.351
+        },
+        {
+          "name": "l2norm_fwd_kernel2",
+          "count": 384,
+          "device_time_ms": 5.7447799999999996,
+          "device_sum_percent": 1.063
+        },
+        {
+          "name": "Slice",
+          "count": 896,
+          "device_time_ms": 5.5521400000000005,
+          "device_sum_percent": 1.027
+        },
+        {
+          "name": "split_qkv_rmsnorm_mrope_kernel",
+          "count": 64,
+          "device_time_ms": 4.73958,
+          "device_sum_percent": 0.877
+        },
+        {
+          "name": "TensorMove",
+          "count": 512,
+          "device_time_ms": 4.66356,
+          "device_sum_percent": 0.863
+        },
+        {
+          "name": "fused_gdn_gating_kernel",
+          "count": 192,
+          "device_time_ms": 3.0702800000000003,
+          "device_sum_percent": 0.568
+        },
+        {
+          "name": "Index",
+          "count": 80,
+          "device_time_ms": 2.82444,
+          "device_sum_percent": 0.523
+        },
+        {
+          "name": "ZerosLike",
+          "count": 192,
+          "device_time_ms": 2.24002,
+          "device_sum_percent": 0.414
+        },
+        {
+          "name": "_gather_ssm_states_kernel",
+          "count": 192,
+          "device_time_ms": 1.91294,
+          "device_sum_percent": 0.354
+        },
+        {
+          "name": "_scatter_ssm_states_kernel",
+          "count": 192,
+          "device_time_ms": 1.71936,
+          "device_sum_percent": 0.318
+        },
+        {
+          "name": "Mul",
+          "count": 64,
+          "device_time_ms": 1.30718,
+          "device_sum_percent": 0.242
+        },
+        {
+          "name": "ScatterPaKvCache",
+          "count": 64,
+          "device_time_ms": 1.22788,
+          "device_sum_percent": 0.227
+        },
+        {
+          "name": "Add",
+          "count": 656,
+          "device_time_ms": 1.2133399999999999,
+          "device_sum_percent": 0.224
+        },
+        {
+          "name": "Cast",
+          "count": 256,
+          "device_time_ms": 1.17408,
+          "device_sum_percent": 0.217
+        },
+        {
+          "name": "Sigmoid",
+          "count": 64,
+          "device_time_ms": 0.97684,
+          "device_sum_percent": 0.181
+        },
+        {
+          "name": "IndexCheck",
+          "count": 80,
+          "device_time_ms": 0.86556,
+          "device_sum_percent": 0.16
+        },
+        {
+          "name": "GemmaRmsNorm",
+          "count": 8,
+          "device_time_ms": 0.24558000000000002,
+          "device_sum_percent": 0.045
+        },
+        {
+          "name": "ArgMaxV2",
+          "count": 8,
+          "device_time_ms": 0.2381,
+          "device_sum_percent": 0.044
+        },
+        {
+          "name": "GatherV2",
+          "count": 8,
+          "device_time_ms": 0.10112,
+          "device_sum_percent": 0.019
+        },
+        {
+          "name": "Sub",
+          "count": 56,
+          "device_time_ms": 0.07506,
+          "device_sum_percent": 0.014
+        },
+        {
+          "name": "Greater",
+          "count": 24,
+          "device_time_ms": 0.05808,
+          "device_sum_percent": 0.011
+        },
+        {
+          "name": "Fill",
+          "count": 24,
+          "device_time_ms": 0.03656,
+          "device_sum_percent": 0.007
+        },
+        {
+          "name": "_compute_slot_mapping_kernel",
+          "count": 8,
+          "device_time_ms": 0.027280000000000002,
+          "device_sum_percent": 0.005
+        }
+      ],
+      "note": "core trace and formal TTFT come from separate runs; this is a cost estimate, not a candidate speedup"
+    },
+    {
+      "prompt_tokens": 16384,
+      "trace_path": "/tmp/sparsegdn_e0_profiler/rank0_135175_20261111125911578_ascend_pt",
+      "kernel_details_sha256": "4dba3fe2f3a4d41b2621bbfacd2ef2f1d8dcdbee56bd980109bd153aefb0baa1",
+      "stream_count": 1,
+      "device_union_ms": 1134.571,
+      "core_union_ms": 193.19375,
+      "core_interval_count": 836,
+      "trace_span_ms": 3190.431,
+      "formal_ttft_geomean_seconds": 1.9383468321822428,
+      "core_fraction_of_formal_ttft": 0.09966934028132483,
+      "core_device_sum_percent": 16.374,
+      "speedup_upper_estimates": {
+        "1.5": 1.0343648197309312,
+        "1.72": 1.043538567693059,
+        "1.94": 1.0507439911214769,
+        "infinite": 1.11070303916171
+      },
+      "required_local_speedup_for_1p10": 11.377454687218394,
+      "free_core_has_1p10_space": true,
+      "components": [
+        {
+          "name": "MatMulV2",
+          "count": 1296,
+          "device_time_ms": 356.54756,
+          "device_sum_percent": 31.422
+        },
+        {
+          "name": "MatMulV3",
+          "count": 1152,
+          "device_time_ms": 206.13628,
+          "device_sum_percent": 18.167
+        },
+        {
+          "name": "ChunkGatedDeltaRuleFwd",
+          "count": 384,
+          "device_time_ms": 185.79794,
+          "device_sum_percent": 16.374
+        },
+        {
+          "name": "FusedInferAttentionScore",
+          "count": 128,
+          "device_time_ms": 115.17542,
+          "device_sum_percent": 10.15
+        },
+        {
+          "name": "Transpose",
+          "count": 3456,
+          "device_time_ms": 78.53028,
+          "device_sum_percent": 6.921
+        },
+        {
+          "name": "CausalConv1d",
+          "count": 384,
+          "device_time_ms": 38.2904,
+          "device_sum_percent": 3.374
+        },
+        {
+          "name": "AddRmsNormBias",
+          "count": 1024,
+          "device_time_ms": 37.61306,
+          "device_sum_percent": 3.315
+        },
+        {
+          "name": "SwiGlu",
+          "count": 512,
+          "device_time_ms": 22.0341,
+          "device_sum_percent": 1.942
+        },
+        {
+          "name": "_layer_norm_fwd_1pass_kernel_npu",
+          "count": 384,
+          "device_time_ms": 14.619219999999999,
+          "device_sum_percent": 1.288
+        },
+        {
+          "name": "l2norm_fwd_kernel2",
+          "count": 768,
+          "device_time_ms": 11.42336,
+          "device_sum_percent": 1.007
+        },
+        {
+          "name": "Slice",
+          "count": 1792,
+          "device_time_ms": 11.10724,
+          "device_sum_percent": 0.979
+        },
+        {
+          "name": "split_qkv_rmsnorm_mrope_kernel",
+          "count": 128,
+          "device_time_ms": 9.44756,
+          "device_sum_percent": 0.833
+        },
+        {
+          "name": "TensorMove",
+          "count": 1024,
+          "device_time_ms": 9.32742,
+          "device_sum_percent": 0.822
+        },
+        {
+          "name": "fused_gdn_gating_kernel",
+          "count": 384,
+          "device_time_ms": 6.148899999999999,
+          "device_sum_percent": 0.542
+        },
+        {
+          "name": "Index",
+          "count": 160,
+          "device_time_ms": 5.65566,
+          "device_sum_percent": 0.498
+        },
+        {
+          "name": "ZerosLike",
+          "count": 384,
+          "device_time_ms": 4.49442,
+          "device_sum_percent": 0.396
+        },
+        {
+          "name": "_gather_ssm_states_kernel",
+          "count": 384,
+          "device_time_ms": 3.78384,
+          "device_sum_percent": 0.333
+        },
+        {
+          "name": "_scatter_ssm_states_kernel",
+          "count": 384,
+          "device_time_ms": 3.43248,
+          "device_sum_percent": 0.302
+        },
+        {
+          "name": "Mul",
+          "count": 128,
+          "device_time_ms": 2.6147199999999997,
+          "device_sum_percent": 0.23
+        },
+        {
+          "name": "ScatterPaKvCache",
+          "count": 128,
+          "device_time_ms": 2.4548,
+          "device_sum_percent": 0.216
+        },
+        {
+          "name": "Add",
+          "count": 1312,
+          "device_time_ms": 2.43446,
+          "device_sum_percent": 0.215
+        },
+        {
+          "name": "Cast",
+          "count": 512,
+          "device_time_ms": 2.35046,
+          "device_sum_percent": 0.207
+        },
+        {
+          "name": "Sigmoid",
+          "count": 128,
+          "device_time_ms": 1.94798,
+          "device_sum_percent": 0.172
+        },
+        {
+          "name": "IndexCheck",
+          "count": 160,
+          "device_time_ms": 1.7388,
+          "device_sum_percent": 0.153
+        },
+        {
+          "name": "GemmaRmsNorm",
+          "count": 16,
+          "device_time_ms": 0.49942000000000003,
+          "device_sum_percent": 0.044
+        },
+        {
+          "name": "ArgMaxV2",
+          "count": 16,
+          "device_time_ms": 0.47672000000000003,
+          "device_sum_percent": 0.042
+        },
+        {
+          "name": "GatherV2",
+          "count": 16,
+          "device_time_ms": 0.224,
+          "device_sum_percent": 0.02
+        },
+        {
+          "name": "Sub",
+          "count": 112,
+          "device_time_ms": 0.15080000000000002,
+          "device_sum_percent": 0.013
+        },
+        {
+          "name": "Greater",
+          "count": 48,
+          "device_time_ms": 0.11785999999999999,
+          "device_sum_percent": 0.01
+        },
+        {
+          "name": "Fill",
+          "count": 48,
+          "device_time_ms": 0.07438,
+          "device_sum_percent": 0.007
+        },
+        {
+          "name": "_compute_slot_mapping_kernel",
+          "count": 16,
+          "device_time_ms": 0.0554,
+          "device_sum_percent": 0.005
+        }
+      ],
+      "note": "core trace and formal TTFT come from separate runs; this is a cost estimate, not a candidate speedup"
+    }
+  ],
+  "native_performance_permission": "at least one free-core budget point has space; this does not unlock kernel work before E1/E2",
+  "910c_status": "NOT-RUN"
+}
